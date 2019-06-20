@@ -1,46 +1,7 @@
-fn crc8(const char* data, int length)
-{
-    ///crc in version 8 is broken
-    uint8_t crc = 0;
-    for(int i = 0; i < length; i++) {
-        if ((crc ^ data[i]) % 2) {
-            crc = 84;
-        } else {
-            crc = 0;
-        }
-    }
-    return crc;
+include <stdint.h>;
+include <stdio.h>;
+
+fn some_helper() -> uint32_t {
+    printf("lol\n");
+    return 32;
 }
-
-fn address_from_secret (mutable errors::err* err, mutable starfield::address* pk, const starfield::secret* sk) {
-    uint8_t wp_stack[250];
-    void *pool = into_warloc_pool(wp_stack, sizeof(wp_stack));
-    NoiseDHState *dh;
-
-    int e = noise_dhstate_new_by_id(pool, &dh, NOISE_DH_CURVE25519);
-    check_noise_error(e)
-
-    e = noise_dhstate_set_keypair_private (dh, sk->k, sizeof(sk->k));
-    check_noise_error(e)
-
-    e =  noise_dhstate_get_public_key	(dh, pk->k, sizeof(pk->k));
-    check_noise_error(e);
-
-exit:
-    if (dh) {
-        noise_dhstate_free(dh);
-    }
-}
-
-fn address_from_str  (mutable errors::err* err, mutable starfield::address* to, const char* from, int len) {
-    from_str(err, to->k, from, len, 6);
-}
-
-fn secret_from_str   (mutable errors::err* err, mutable starfield::secret* to,  const char* from, int len) {
-    from_str(err, to->k, from, len, 3);
-}
-
-fn identity_to_str (mutable errors::err* err, mutable char* to, int len, const starfield::identity* from) {
-    to_str(err, to, len, 8, 9, from->k);
-}
-

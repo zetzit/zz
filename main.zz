@@ -1,1 +1,6 @@
 import identity;
+import errors;
+
+export fn main() -> int {
+    return some_helper();
+}

@@ -4,6 +4,8 @@ COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 alpha       = { 'a'..'z' | 'A'..'Z' }
 digit       = { '0'..'9' }
 
+key_pub     = { "export" }
+key_private = { "private" }
 key_const   = { "const"   }
 key_mut     = { "mutable" }
 key_ptr     = { "*" }
@@ -25,7 +27,7 @@ anon_arg    = {typ}
 
 fn_args     = {named_arg ~ ( "," ~ named_arg)* }
 ret_arg     = {"->" ~ anon_arg}
-function    = { "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
+function    = { ( key_pub | key_private)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 
 block       = {
     "{" ~ (conditional | label | statement )* ~ "}"
@@ -38,5 +40,10 @@ label       = {ident ~ ":" }
 statement   = @{(!(";"| "/*" | "}") ~ ANY)* ~ ";" }
 
 import      = { "import" ~ ident ~ ";" }
+path        = { ('a'..'z' | '0'..'9' | "/" | ".")+ }
+syspath     = @{"<" ~ path ~ ">"}
+include     = { "include" ~ syspath ~ ";" }
+struct_c    = @{"{" ~ (!("}"| "/*")  ~ ANY)* ~ "}" }
+struct_d    = { (key_pub | key_private)? ~ "struct" ~ ident ~ struct_c }
 
-file        = { SOI ~ (function | import )+  ~ EOI}
+file        = { SOI ~ (struct_d | function | import | include )+  ~ EOI}
