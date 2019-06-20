@@ -1,0 +1,13 @@
+[package]
+name = "zz"
+version = "0.1.0"
+authors = ["Arvid E. Picciani <aep@exys.org>"]
+edition = '2018'
+license = "MIT"
+description = "the zz language"
+repository = "https://github.com/aep/zz"
+readme = "README.md"
+
+[dependencies]
+pest = "2.1"
+pest_derive = "2.1"

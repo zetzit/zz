@@ -1,0 +1,42 @@
+WHITESPACE  = _{ " " | "\n" }
+COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+alpha       = { 'a'..'z' | 'A'..'Z' }
+digit       = { '0'..'9' }
+
+key_const   = { "const"   }
+key_mut     = { "mutable" }
+key_ptr     = { "*" }
+
+string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
+int_literal     = @{ digit+ }
+
+ident       = @{ (alpha | digit | "_")+ }
+namespace   = @{ ident ~ "::" ~ namespace? }
+name        = @{ namespace? ~ ident }
+
+typ = ${
+    ((key_const | key_mut) ~ WHITESPACE+)? ~ namespace? ~ ident ~ key_ptr?
+}
+
+var         = @{ident}
+named_arg   = {typ ~ var}
+anon_arg    = {typ}
+
+fn_args     = {named_arg ~ ( "," ~ named_arg)* }
+ret_arg     = {"->" ~ anon_arg}
+function    = { "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
+
+block       = {
+    "{" ~ (conditional | label | statement )* ~ "}"
+}
+
+conditional = { ("if" | "while"| "for") ~ expression ~ block ~ elsecondition? }
+elsecondition = { "else" ~ block }
+expression  = @{"(" ~   ((!(")" | "(") ~ ANY) | expression ) * ~ ")"}
+label       = {ident ~ ":" }
+statement   = @{(!(";"| "/*" | "}") ~ ANY)* ~ ";" }
+
+import      = { "import" ~ ident ~ ";" }
+
+file        = { SOI ~ (function | import )+  ~ EOI}
