@@ -62,8 +62,6 @@ it's inspired by rust, but keeps C's argument declaration order, because it woul
 
 By default, arguments are const, unless declared mutable. You can declare them const, but it does nothing.
 
-note how bob is declared later. declaration order doesn't matter.
-
 
 
 
