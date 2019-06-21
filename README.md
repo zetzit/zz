@@ -9,6 +9,14 @@ ZZ (drunk octopus) is a precompiler for C that deals with some of the pain that 
 It's main use case is embedded systems, where we still program C out of desperation, because nothing else actually works.
 
 
+### too long didn't try
+
+```bash
+cd example
+cargo run
+```
+
+
 ### minimally invasive.
 
 
@@ -55,6 +63,9 @@ it's inspired by rust, but keeps C's argument declaration order, because it woul
 By default, arguments are const, unless declared mutable. You can declare them const, but it does nothing.
 
 note how bob is declared later. declaration order doesn't matter.
+
+
+
 
 
 
