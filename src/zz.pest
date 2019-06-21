@@ -14,8 +14,8 @@ string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 int_literal     = @{ digit+ }
 
 ident       = @{ (alpha | digit | "_")+ }
-namespace   = @{ ident ~ "::" ~ namespace? }
-name        = @{ namespace? ~ ident }
+namespace   = ${ ident ~ "::" ~ namespace? }
+name        = ${ namespace? ~ ident }
 
 typ = ${
     ((key_const | key_mut) ~ WHITESPACE+)? ~ namespace? ~ ident ~ key_ptr?
@@ -28,18 +28,9 @@ anon_arg    = {typ}
 fn_args     = {named_arg ~ ( "," ~ named_arg)* }
 ret_arg     = {"->" ~ anon_arg}
 function    = { ( key_pub | key_private)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
+block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 
-block       = {
-    "{" ~ (conditional | label | statement )* ~ "}"
-}
-
-conditional = { ("if" | "while"| "for") ~ expression ~ block ~ elsecondition? }
-elsecondition = { "else" ~ block }
-expression  = @{"(" ~   ((!(")" | "(") ~ ANY) | expression ) * ~ ")"}
-label       = {ident ~ ":" }
-statement   = @{(!(";"| "/*" | "}") ~ ANY)* ~ ";" }
-
-import      = { "import" ~ ident ~ ";" }
+import      = { "import" ~ name ~ ";" }
 path        = { ('a'..'z' | '0'..'9' | "/" | ".")+ }
 syspath     = @{"<" ~ path ~ ">"}
 include     = { "include" ~ syspath ~ ";" }

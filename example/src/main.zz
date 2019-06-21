@@ -1,0 +1,8 @@
+import identity::some_helper;
+import errors::error;
+
+export fn main() -> int {
+    error e = {0};
+    uint32_t bob;
+    return some_helper(&bob);
+}

@@ -1,7 +1,0 @@
-include <stdint.h>;
-include <stdio.h>;
-
-fn some_helper() -> uint32_t {
-    printf("lol\n");
-    return 32;
-}

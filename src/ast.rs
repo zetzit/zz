@@ -1,0 +1,47 @@
+use std::collections::HashMap;
+
+pub enum Visibility {
+    Shared,
+    Object,
+    Export,
+}
+
+pub struct Import {
+    pub name:       String,
+    pub namespace:  String,
+}
+
+#[derive(Default)]
+pub struct Module {
+    pub name:       String,
+    pub functions:  HashMap<String, Function>,
+    pub imports:    Vec<Import>,
+    pub structs:    Vec<Struct>,
+    pub includes:   Vec<String>,
+}
+
+pub struct AnonArg {
+    pub typ:    String
+}
+
+pub struct NamedArg {
+    pub typ:    String,
+    pub name:   String,
+    pub muta:   bool,
+    pub ptr:    bool,
+    pub namespace: Option<String>,
+}
+
+pub struct Function {
+    pub ret:    Option<AnonArg>,
+    pub args:   Vec<NamedArg>,
+    pub name:   String,
+    pub body:   String,
+    pub vis:    Visibility,
+}
+
+pub struct Struct {
+    pub name:   String,
+    pub body:   String,
+    pub vis:    Visibility,
+}
