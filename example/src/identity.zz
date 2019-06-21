@@ -1,9 +1,11 @@
-import stdio;
-import stdint;
 import errors::error;
 import math::add;
 
-fn some_helper(mutable error* err, uint32_t* bob) -> uint32_t {
+
+#include <stdint.h>
+#include <stdio.h>
+
+fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
         *bob = add(1, 2);

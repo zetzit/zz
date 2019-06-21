@@ -13,7 +13,7 @@ It's main use case is embedded systems, where we still program C out of desperat
 
 ```bash
 cd example
-cargo run
+cargo run && ./target/exe
 ```
 
 
