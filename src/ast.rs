@@ -1,5 +1,10 @@
 use std::collections::HashMap;
 
+pub struct Location {
+    pub line:  usize,
+    pub file:   String,
+}
+
 pub enum Visibility {
     Shared,
     Object,
@@ -9,6 +14,7 @@ pub enum Visibility {
 pub struct Import {
     pub name:       String,
     pub namespace:  String,
+    pub loc:        Location,
 }
 
 #[derive(Default)]
@@ -38,10 +44,12 @@ pub struct Function {
     pub name:   String,
     pub body:   String,
     pub vis:    Visibility,
+    pub loc:    Location,
 }
 
 pub struct Struct {
     pub name:   String,
     pub body:   String,
     pub vis:    Visibility,
+    pub loc:    Location,
 }

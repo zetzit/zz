@@ -8,7 +8,6 @@ use std::io::{Read};
 #[grammar = "zz.pest"]
 pub struct ZZParser;
 
-
 pub fn parse(modules: &mut HashMap<String, Module>, n: &Path)
 {
     let n = Path::new("./src").join(n);
@@ -35,6 +34,7 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
     for decl in file.next().unwrap().into_inner() {
         match decl.as_rule() {
             Rule::function => {
+                let mut loc  = None;
                 let decl = decl.into_inner();
                 let mut name = String::new();
                 let mut args = Vec::new();
@@ -99,6 +99,7 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                             }
                         },
                         Rule::block => {
+                            loc = Some(Location{line: part.as_span().start_pos().line_col().0, file: n.to_string_lossy().into()});
                             body = part.as_str().to_string();
                         },
                         e => panic!("unexpected rule {:?} in function", e),
@@ -111,15 +112,18 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                     args,
                     body,
                     vis,
+                    loc: loc.unwrap(),
                 });
             },
-            Rule::EOI=> {},
+            Rule::EOI => {},
             Rule::struct_d => {
                 let decl = decl.into_inner();
 
                 let mut vis   = Visibility::Shared;
                 let mut name  = None;
                 let mut body  = None;
+
+                let mut loc   = None;
 
                 for part in decl {
                     match part.as_rule() {
@@ -133,6 +137,7 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                             name = Some(part.as_str().into());
                         }
                         Rule::struct_c => {
+                            loc  = Some(Location{line: part.as_span().start_pos().line_col().0, file: n.to_string_lossy().into()});
                             body = Some(part.as_str().into());
                         }
                         e => panic!("unexpected rule {:?} in struct ", e),
@@ -140,13 +145,16 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                 };
 
 
+
                 module.structs.push(Struct {
                     name: name.unwrap(),
                     body: body.unwrap(),
                     vis,
+                    loc: loc.unwrap(),
                 });
             }
             Rule::import => {
+                let loc  = Location{line: decl.as_span().start_pos().line_col().0, file: n.file_name().unwrap().to_string_lossy().into()};
                 let decl = decl.into_inner().next().unwrap();
 
                 let mut ns   = String::new();
@@ -167,7 +175,7 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                 if !modules.contains_key(&ns) {
                     parse(modules, &Path::new(&ns).with_extension("zz"));
                 }
-                module.imports.push(Import{name, namespace: ns});
+                module.imports.push(Import{name, namespace: ns, loc});
             },
             Rule::include => {
                 let im = decl.into_inner().as_str();

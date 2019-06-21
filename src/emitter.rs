@@ -19,7 +19,9 @@ impl Emitter {
     }
 
     pub fn struc(&mut self, ns: Option<&str>, s: &Struct) {
-        write!(self.f, "typedef struct \n{}\n",
+        write!(self.f, "typedef struct \n").unwrap();
+        write!(self.f, "#line {} \"{}\"\n", s.loc.line, s.loc.file).unwrap();
+        write!(self.f, "{}\n",
                  s.body,
                  ).unwrap();
 
@@ -31,6 +33,8 @@ impl Emitter {
     }
 
     pub fn function(&mut self, ns: Option<&str>, f: &Function, body: Option<&str>) {
+        write!(self.f, "#line {} \"{}\"\n", f.loc.line, f.loc.file).unwrap();
+
         if let Visibility::Object = f.vis {
             write!(self.f, "static ").unwrap();
         }
@@ -72,7 +76,7 @@ impl Emitter {
         }
         match body {
             None => write!(self.f, ");\n").unwrap(),
-            Some(b) => write!(self.f, ") \n{}\n\n", b).unwrap(),
+            Some(b) => write!(self.f, ") {}\n\n", b).unwrap(),
         }
     }
 
