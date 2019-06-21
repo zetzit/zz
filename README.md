@@ -1,9 +1,11 @@
+![logo](logo.png?raw=true)
+
 Drunk Octopus
 ==============
 
 
-
 ZZ (drunk octopus) is a precompiler for C that deals with some of the pain that is C.
+
 It's main use case is embedded, where we still program C out of desperation, because nothing else actually works.
 
 features:
