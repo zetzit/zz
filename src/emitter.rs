@@ -1,11 +1,12 @@
 use std::fs;
 use std::collections::HashSet;
+use std::collections::HashMap;
 use super::ast::*;
 use std::io::Write;
 
 pub struct Emitter{
     f: fs::File,
-    included: HashSet<String>,
+    emitted: HashSet<String>,
 }
 impl Emitter {
 
@@ -14,16 +15,62 @@ impl Emitter {
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
         Emitter{
             f,
-            included: HashSet::new()
+            emitted: HashSet::new()
+        }
+    }
+
+    pub fn import(&mut self, modules: &HashMap<String, Module>, m2: &Module, mp: &Import) {
+        for i in &m2.includes {
+            self.include(i);
+        }
+
+        for mp in &m2.imports {
+            match modules.get(&mp.namespace) {
+                None => panic!("{}: imports unknown module {}", mp.loc, &mp.namespace),
+                Some(m3) => {
+                    self.import(modules, m3, mp);
+                }
+            }
+        }
+
+        let mut found = false;
+        for s in &m2.structs {
+            if s.name == mp.name || mp.name == "*" {
+                if let Visibility::Object  = s.vis {
+                    panic!("{}: imports private struct {}::{}", mp.loc, &mp.namespace, &mp.name);
+                };
+                found = true;
+                self.struc(None, &s);
+                //em.struc(Some(&m2.name), &s);
+            }
+        }
+
+        for (name,fun) in &m2.functions {
+            if name == &mp.name || mp.name == "*" {
+                if let Visibility::Object  = fun.vis {
+                    panic!("{}: imports private function {}::{}", mp.loc, &mp.namespace, &mp.name);
+                };
+                found = true;
+                self.function(None, &fun, None);
+                //em.function(Some(&m2.name), &fun, None);
+            }
+        }
+
+
+        if !found {
+            panic!("{}: import '{}' not found in module '{}'", mp.loc, &mp.name, &mp.namespace);
         }
     }
 
     pub fn struc(&mut self, ns: Option<&str>, s: &Struct) {
+        if !self.emitted.insert(format!("{:?}::{}", ns, s.name)) {
+            return;
+        }
         write!(self.f, "typedef struct \n").unwrap();
         write!(self.f, "#line {} \"{}\"\n", s.loc.line, s.loc.file).unwrap();
         write!(self.f, "{}\n",
-                 s.body,
-                 ).unwrap();
+               s.body,
+               ).unwrap();
 
         if let Some(ns) = ns {
             write!(self.f, "{}_",ns).unwrap();
@@ -33,6 +80,9 @@ impl Emitter {
     }
 
     pub fn function(&mut self, ns: Option<&str>, f: &Function, body: Option<&str>) {
+        if !self.emitted.insert(format!("{:?}::{}", ns, f.name)) {
+            return;
+        }
         write!(self.f, "#line {} \"{}\"\n", f.loc.line, f.loc.file).unwrap();
 
         if let Visibility::Object = f.vis {
@@ -81,9 +131,10 @@ impl Emitter {
     }
 
     pub fn include(&mut self, i: &str) {
-        if self.included.insert(i.into()) {
-            write!(self.f, "#include {}\n", i).unwrap();
+        if !self.emitted.insert(format!("include_{}", i)) {
+            return;
         }
+        write!(self.f, "#include {}\n", i).unwrap();
     }
 
 }

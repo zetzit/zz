@@ -10,10 +10,9 @@ pub struct ZZParser;
 
 pub fn parse(modules: &mut HashMap<String, Module>, n: &Path)
 {
-    let n = Path::new("./src").join(n);
     match p(modules, &n){
         Err(e) => {
-            eprintln!("parse error in {:?} : {}", n, e);
+            eprintln!("{:?} : {}", n, e);
             std::process::exit(9);
         }
         Ok(md) => {
@@ -24,11 +23,11 @@ pub fn parse(modules: &mut HashMap<String, Module>, n: &Path)
 
 fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     let mut module = Module::default();
-    module.name = n.file_stem().unwrap().to_string_lossy().into();
+    module.name = n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into();
 
     let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
     let mut file = String::new();
-    f.read_to_string(&mut file).unwrap();
+    f.read_to_string(&mut file).expect(&format!("read {:?}", n));
     let mut file = ZZParser::parse(Rule::file, &file)?;
 
     for decl in file.next().unwrap().into_inner() {
@@ -156,13 +155,14 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
             Rule::import => {
                 let loc  = Location{line: decl.as_span().start_pos().line_col().0, file: n.file_name().unwrap().to_string_lossy().into()};
                 let decl = decl.into_inner().next().unwrap();
+                let span = decl.as_span();
 
                 let mut ns   = String::new();
                 let mut name = String::new();
 
                 for part in decl.into_inner() {
                     match part.as_rule() {
-                        Rule::ident => {
+                        Rule::ident_or_star => {
                             name  = part.as_str().into();
                         }
                         Rule::namespace => {
@@ -172,10 +172,32 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                     }
                 }
 
-                if !modules.contains_key(&ns) {
-                    parse(modules, &Path::new(&ns).with_extension("zz"));
+                if ns.is_empty() {
+                    ns   = name;
+                    name = "*".into();
                 }
-                module.imports.push(Import{name, namespace: ns, loc});
+
+                if !modules.contains_key(&ns) {
+                    let mut n2 = Path::new("./src").join(&ns).with_extension("zz");
+
+                    if n2.exists() {
+                        parse(modules, &Path::new(&n2));
+                        module.imports.push(Import{name, namespace: ns, loc});
+                    } else {
+                        n2 = Path::new("./src").join(&ns).with_extension("h");
+
+                        if n2.exists() {
+                            module.includes.push(format!("{:?}", n2))
+                        } else {
+                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                message: format!("cannot find module"),
+                            }, span);
+                            eprintln!("{} : {}", loc.file, e);
+                            std::process::exit(9);
+                        }
+                    }
+
+                }
             },
             Rule::include => {
                 let im = decl.into_inner().as_str();

@@ -1,8 +1,15 @@
 use std::collections::HashMap;
+use std::fmt;
 
 pub struct Location {
-    pub line:  usize,
+    pub line:   usize,
     pub file:   String,
+}
+
+impl std::fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.file, self.line)
+    }
 }
 
 pub enum Visibility {

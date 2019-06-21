@@ -5,7 +5,6 @@ mod ast;
 mod parser;
 
 use emitter::Emitter;
-use ast::*;
 
 use std::path::Path;
 use std::collections::HashMap;
@@ -15,7 +14,7 @@ fn main() {
     std::fs::create_dir_all("./target/c/").expect("create target dir");
 
     let mut modules = HashMap::new();
-    parser::parse(&mut modules, &Path::new("main.zz"));
+    parser::parse(&mut modules, &Path::new("./src/main.zz"));
 
     for (name, md) in &modules {
         let mut em = Emitter::new(&(name.clone() + ".c"));
@@ -26,36 +25,7 @@ fn main() {
             match modules.get(&mp.namespace) {
                 None => panic!("{}: imports unknown module {}", name, &mp.namespace),
                 Some(m2) => {
-                    for i in &m2.includes {
-                        em.include(i);
-                    }
-
-                    let mut found = false;
-                    for (name,fun) in &m2.functions {
-                        if name == &mp.name {
-                            if let Visibility::Object  = fun.vis {
-                                panic!("{}: imports private function {}::{}", name, &mp.namespace, &mp.name);
-                            };
-                            found = true;
-                            em.function(None, &fun, None);
-                            //em.function(Some(&m2.name), &fun, None);
-                        }
-                    }
-
-                    for s in &m2.structs {
-                        if s.name == mp.name {
-                            if let Visibility::Object  = s.vis {
-                                panic!("{}: imports private struct {}::{}", name, &mp.namespace, &mp.name);
-                            };
-                            found = true;
-                            em.struc(None, &s);
-                            //em.struc(Some(&m2.name), &s);
-                        }
-                    }
-
-                    if !found {
-                        panic!("{}: import '{}' not found in module '{}'", name, &mp.name, &mp.namespace);
-                    }
+                    em.import(&modules, m2, mp);
                 }
             }
         }
@@ -72,21 +42,35 @@ fn main() {
     for (name, _) in &modules {
         let inp  = format!("./target/c/{}.c", name);
         let outp = format!("./target/c/{}.o", name);
-
         let status = Command::new("clang")
-            .args(&["-c", &inp, "-o", &outp])
+            .args(&["-I", ".", "-c", &inp, "-o", &outp])
             .status()
             .expect("failed to execute cc");
 
         if !status.success() {
+            eprintln!("error compiling {}", inp);
             std::process::exit(status.code().unwrap_or(3));
         }
 
         linkargs.push(outp);
     }
 
+    for entry in std::fs::read_dir("./src").unwrap() {
+        let entry = entry.unwrap();
+        let path  = entry.path();
+        if path.is_file() {
+            if let Some("c") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
+                linkargs.push(path.to_string_lossy().into());
+            }
+        }
+    }
+
+
     linkargs.push("-o".into());
     linkargs.push("./target/exe".into());
+
+
+    println!("{:?}", linkargs);
 
     let status = Command::new("clang")
         .args(&linkargs)

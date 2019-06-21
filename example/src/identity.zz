@@ -1,11 +1,14 @@
-include <stdint.h>;
-include <stdio.h>;
+#include <stdint.h>
+#include <stdio.h>
 
-fn some_helper(uint32_t* bob) -> uint32_t {
+import errors::error;
+import math::add;
+
+fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
-        *bob = 3;
-        printf("bob\n");
+        *bob = add(1, 2);
+        printf("bob %d\n", *bob);
     }
     return 32;
 }

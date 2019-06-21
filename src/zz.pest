@@ -14,8 +14,9 @@ string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 int_literal     = @{ digit+ }
 
 ident       = @{ (alpha | digit | "_")+ }
+ident_or_star = @{ (alpha | digit | "_" | "*" )+ }
 namespace   = ${ ident ~ "::" ~ namespace? }
-name        = ${ namespace? ~ ident }
+name        = ${ namespace? ~ ident_or_star }
 
 typ = ${
     ((key_const | key_mut) ~ WHITESPACE+)? ~ namespace? ~ ident ~ key_ptr?
@@ -33,8 +34,9 @@ block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 import      = { "import" ~ name ~ ";" }
 path        = { ('a'..'z' | '0'..'9' | "/" | ".")+ }
 syspath     = @{"<" ~ path ~ ">"}
-include     = { "include" ~ syspath ~ ";" }
+localpath   = @{"\"" ~ path ~ "\""}
+include     = { "#include" ~ (syspath | localpath) }
 struct_c    = @{"{" ~ (!("}"| "/*")  ~ ANY)* ~ "}" }
-struct_d    = { (key_pub | key_private)? ~ "struct" ~ ident ~ struct_c }
+struct_d    = { (key_pub | key_private)? ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
 file        = { SOI ~ (struct_d | function | import | include )+  ~ EOI}

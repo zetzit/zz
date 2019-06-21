@@ -1,7 +1,7 @@
-include <stdint.h>;
+#include <stdint.h>
 
 struct error {
     uint8_t error;
     char    description[255];
     char    locations[255];
-}
+};
