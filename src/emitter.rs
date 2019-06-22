@@ -164,11 +164,13 @@ impl Emitter {
         write!(self.f, "#line {} \"{}\"\n", f.loc.line, f.loc.file).unwrap();
 
         write!(self.f, "static inline ").unwrap();
+        write!(self.f, " __attribute__ ((always_inline)) ").unwrap();
         match &f.ret {
             None       => write!(self.f, "void "),
             Some(a)    => write!(self.f, "{} ", &a.typ),
         }.unwrap();
         write!(self.f, "{} (", f.name).unwrap();
+
         self.function_args(&f);
         write!(self.f, ")").unwrap();
 
@@ -194,7 +196,7 @@ impl Emitter {
                     write!(self.f, " {}", arg.name).unwrap();
                 }
 
-                write!(self.f, ");}}\n").unwrap();
+                write!(self.f, ");}}; \n").unwrap();
             }
         }
 
