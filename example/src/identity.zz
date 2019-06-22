@@ -8,8 +8,13 @@ import constants::foo;
 fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
-        *bob = add(1, foo);
+        *bob = add(horst(), foo);
         printf("bob %d\n", *bob);
     }
     return 32;
+}
+
+
+export fn horst() -> uint32_t {
+    return 3;
 }

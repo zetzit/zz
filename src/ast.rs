@@ -20,7 +20,7 @@ pub enum Visibility {
 
 pub struct Import {
     pub name:       String,
-    pub namespace:  String,
+    pub namespace:  Vec<String>,
     pub loc:        Location,
 }
 
@@ -34,7 +34,7 @@ pub struct Const {
 
 #[derive(Default)]
 pub struct Module {
-    pub name:       String,
+    pub namespace:  Vec<String>,
     pub functions:  HashMap<String, Function>,
     pub imports:    Vec<Import>,
     pub structs:    Vec<Struct>,

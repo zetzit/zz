@@ -8,22 +8,24 @@ use std::io::{Read};
 #[grammar = "zz.pest"]
 pub struct ZZParser;
 
-pub fn parse(modules: &mut HashMap<String, Module>, n: &Path)
+pub fn parse(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path)
 {
-    match p(modules, &n){
+    match p(modules, namespace, &n){
         Err(e) => {
             eprintln!("{:?} : {}", n, e);
             std::process::exit(9);
         }
         Ok(md) => {
-            modules.insert(md.name.clone(), md);
+            modules.insert(md.namespace.join("::"), md);
         }
     }
 }
 
-fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
+fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     let mut module = Module::default();
-    module.name = n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into();
+
+    module.namespace = namespace.clone();
+    module.namespace.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
 
     let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
     let mut file = String::new();
@@ -181,8 +183,11 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                     let mut n2 = Path::new("./src").join(&ns).with_extension("zz");
 
                     if n2.exists() {
-                        parse(modules, &Path::new(&n2));
-                        module.imports.push(Import{name, namespace: ns, loc});
+                        parse(modules, namespace, &Path::new(&n2));
+                        let mut namespace  = namespace.clone();
+                        namespace.extend(ns.split(":").map(|s|s.to_string()));
+                        module.imports.push(Import{name, namespace, loc});
+
                     } else {
                         n2 = Path::new("./src").join(&ns).with_extension("h");
 

@@ -3,6 +3,7 @@
 mod emitter;
 mod ast;
 mod parser;
+mod project;
 
 use emitter::Emitter;
 
@@ -11,10 +12,13 @@ use std::collections::HashMap;
 use std::process::Command;
 
 fn main() {
+    let project = project::load();
     std::fs::create_dir_all("./target/c/").expect("create target dir");
 
+
+    let namespace = vec![project.name.clone()];
     let mut modules = HashMap::new();
-    parser::parse(&mut modules, &Path::new("./src/main.zz"));
+    parser::parse(&mut modules, &namespace, &Path::new("./src/main.zz"));
 
     for (name, md) in &modules {
         let mut em = Emitter::new(&(name.clone() + ".c"));
@@ -22,18 +26,22 @@ fn main() {
             em.include(i);
         }
         for mp in &md.imports {
-            match modules.get(&mp.namespace) {
-                None => panic!("{}: imports unknown module {}", name, &mp.namespace),
+            match modules.get(&mp.namespace.join("::")) {
+                None => panic!("{}: imports unknown module {}", name, &mp.namespace.join("::")),
                 Some(m2) => {
                     em.import(&modules, m2, mp);
                 }
             }
         }
+
         for s in &md.structs {
-            em.struc(None, &s);
+            em.struc(&s);
         }
         for (_,fun) in &md.functions {
-            em.function(None, &fun, Some(&fun.body));
+            em.declare(&fun, &md.namespace);
+        }
+        for (_,fun) in &md.functions {
+            em.define(&fun, &md.namespace, &fun.body);
         }
     }
 
@@ -42,8 +50,18 @@ fn main() {
     for (name, _) in &modules {
         let inp  = format!("./target/c/{}.c", name);
         let outp = format!("./target/c/{}.o", name);
+        let mut args = vec!["-c", &inp, "-o", &outp];
+        if let Some(cincs) = &project.cincludes {
+            for cinc in cincs {
+                args.push("-I");
+                args.push(&cinc );
+            }
+        }
+
+        args.push("-fvisibility=hidden");
+
         let status = Command::new("clang")
-            .args(&["-I", ".", "-c", &inp, "-o", &outp])
+            .args(args)
             .status()
             .expect("failed to execute cc");
 
@@ -65,10 +83,28 @@ fn main() {
         }
     }
 
-
     linkargs.push("-o".into());
     linkargs.push("./target/exe".into());
+    if let Some(cincs) = project.cincludes {
+        for cinc in cincs {
+            linkargs.push("-I".into());
+            linkargs.push(cinc);
+        }
+    }
 
+    if let Some(c) = project.cobjects {
+        for c in c {
+            linkargs.push(c);
+        }
+    }
+
+    if let Some(c) = project.cflags {
+        for c in c {
+            linkargs.push(c);
+        }
+    }
+
+    linkargs.push("-fvisibility=hidden".into());
 
     println!("{:?}", linkargs);
 
