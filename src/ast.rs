@@ -24,6 +24,14 @@ pub struct Import {
     pub loc:        Location,
 }
 
+pub struct Const {
+    pub typ:    String,
+    pub name:   String,
+    pub expr:   String,
+    pub vis:    Visibility,
+    pub loc:    Location,
+}
+
 #[derive(Default)]
 pub struct Module {
     pub name:       String,
@@ -31,6 +39,7 @@ pub struct Module {
     pub imports:    Vec<Import>,
     pub structs:    Vec<Struct>,
     pub includes:   Vec<String>,
+    pub constants:  HashMap<String, Const>,
 }
 
 pub struct AnonArg {

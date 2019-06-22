@@ -39,4 +39,8 @@ include     = { "#include" ~ (syspath | localpath) }
 struct_c    = @{"{" ~ (!("}"| "/*")  ~ ANY)* ~ "}" }
 struct_d    = { (key_pub | key_private)? ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
-file        = { SOI ~ (struct_d | function | import | include )+  ~ EOI}
+expression  = @{(!(";"| "/*")  ~ ANY)*}
+constant    = { ( key_pub | key_private)? ~ "const" ~ ident ~ ident ~ "=" ~ expression   ~ ";"}
+
+file        = { SOI ~ (struct_d | function | import | constant | include)+  ~ EOI}
+

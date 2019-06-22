@@ -56,12 +56,29 @@ impl Emitter {
             }
         }
 
+        for (name,v) in &m2.constants {
+            if name == &mp.name || mp.name == "*" {
+                if let Visibility::Object  = v.vis {
+                    panic!("{}: imports private function {}::{}", mp.loc, &mp.namespace, &mp.name);
+                };
+                found = true;
+                self.constant(None, &v);
+            }
+        }
+
 
         if !found {
             panic!("{}: import '{}' not found in module '{}'", mp.loc, &mp.name, &mp.namespace);
         }
     }
 
+    pub fn constant(&mut self, ns: Option<&str>, v: &Const) {
+        if !self.emitted.insert(format!("{:?}::{}", ns, v.name)) {
+            return;
+        }
+        write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
+        write!(self.f, "#define {} (({}){})\n", v.name, v.typ, v.expr).unwrap();
+    }
     pub fn struc(&mut self, ns: Option<&str>, s: &Struct) {
         if !self.emitted.insert(format!("{:?}::{}", ns, s.name)) {
             return;

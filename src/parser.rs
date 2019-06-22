@@ -203,6 +203,42 @@ fn p(modules: &mut HashMap<String, Module>, n: &Path) -> Result<Module, pest::er
                 let im = decl.into_inner().as_str();
                 module.includes.push(im.to_string());
             },
+            Rule::constant => {
+                let mut loc     = None;
+                let mut typ     = None;
+                let mut name    = None;
+                let mut expr    = None;
+                let mut vis     = Visibility::Shared;
+
+                for part in decl.into_inner() {
+                    match part.as_rule() {
+                        Rule::key_private => {
+                            vis = Visibility::Object;
+                        }
+                        Rule::key_pub => {
+                            vis = Visibility::Export;
+                        }
+                        Rule::ident if typ.is_none() => {
+                            typ = Some(part.as_str().into());
+                        },
+                        Rule::ident if name.is_none() => {
+                            name  = Some(part.as_str().into());
+                        }
+                        Rule::expression if expr.is_none() => {
+                            expr = Some(part.as_str().into());
+                            loc = Some(Location{line: part.as_span().start_pos().line_col().0, file: n.to_string_lossy().into()});
+                        }
+                        e => panic!("unexpected rule {:?} in const", e),
+                    }
+                }
+                module.constants.insert(name.clone().unwrap(), Const {
+                    typ: typ.unwrap(),
+                    name: name.unwrap(),
+                    expr: expr.unwrap(),
+                    vis,
+                    loc: loc.unwrap(),
+                });
+            },
             e => panic!("unexpected rule {:?} in file", e),
 
         }

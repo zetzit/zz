@@ -1,6 +1,6 @@
 import errors::error;
 import math::add;
-
+import constants::foo;
 
 #include <stdint.h>
 #include <stdio.h>
@@ -8,7 +8,7 @@ import math::add;
 fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
-        *bob = add(1, 2);
+        *bob = add(1, foo);
         printf("bob %d\n", *bob);
     }
     return 32;
