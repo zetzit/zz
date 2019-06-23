@@ -4,16 +4,19 @@ mod emitter;
 mod ast;
 mod parser;
 mod project;
+mod make;
 
 use emitter::Emitter;
 
 use std::path::Path;
 use std::collections::HashMap;
-use std::process::Command;
 
 fn main() {
-    let project = project::load();
+    let (root, project) = project::load();
+    std::env::set_current_dir(root).unwrap();
+
     std::fs::create_dir_all("./target/c/").expect("create target dir");
+    std::fs::create_dir_all("./target/zz/").expect("create target dir");
 
 
     let namespace = vec![project.name.clone()];
@@ -46,31 +49,11 @@ fn main() {
     }
 
 
-    let mut linkargs  = Vec::new();
-    for (name, _) in &modules {
-        let inp  = format!("./target/c/{}.c", name);
-        let outp = format!("./target/c/{}.o", name);
-        let mut args = vec!["-c", &inp, "-o", &outp];
-        if let Some(cincs) = &project.cincludes {
-            for cinc in cincs {
-                args.push("-I");
-                args.push(&cinc );
-            }
-        }
 
-        args.push("-fvisibility=hidden");
+    let mut make = make::Make::new(project);
 
-        let status = Command::new("clang")
-            .args(args)
-            .status()
-            .expect("failed to execute cc");
-
-        if !status.success() {
-            eprintln!("error compiling {}", inp);
-            std::process::exit(status.code().unwrap_or(3));
-        }
-
-        linkargs.push(outp);
+    for (_, module) in &modules {
+        make.module(&module);
     }
 
     for entry in std::fs::read_dir("./src").unwrap() {
@@ -78,43 +61,13 @@ fn main() {
         let path  = entry.path();
         if path.is_file() {
             if let Some("c") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
-                linkargs.push(path.to_string_lossy().into());
+                make.cobject(path.to_string_lossy().into());
             }
         }
     }
 
-    linkargs.push("-o".into());
-    linkargs.push("./target/exe".into());
-    if let Some(cincs) = project.cincludes {
-        for cinc in cincs {
-            linkargs.push("-I".into());
-            linkargs.push(cinc);
-        }
-    }
+    make.link();
 
-    if let Some(c) = project.cobjects {
-        for c in c {
-            linkargs.push(c);
-        }
-    }
-
-    if let Some(c) = project.cflags {
-        for c in c {
-            linkargs.push(c);
-        }
-    }
-
-    linkargs.push("-fvisibility=hidden".into());
-
-    println!("{:?}", linkargs);
-
-    let status = Command::new("clang")
-        .args(&linkargs)
-        .status()
-        .expect("failed to execute linker");
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(3));
-    }
 
 }
 

@@ -8,10 +8,10 @@ pub struct Emitter{
     f: fs::File,
     emitted: HashSet<String>,
 }
-impl Emitter {
 
+impl Emitter {
     pub fn new(mn: &str) -> Self {
-        let p = format!("target/c/{}", mn);
+        let p = format!("target/zz/{}", mn);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
         Emitter{
             f,
