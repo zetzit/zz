@@ -115,14 +115,17 @@ impl Emitter {
         for (name,v) in &m2.constants {
             if name == &mp.name || mp.name == "*" {
                 if let Visibility::Object  = v.vis {
-                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("constant {} in {} is private", mp.name, mp.namespace.join("::")),
-                    }, mp.loc.span.clone());
-                    eprintln!("{} : {}", mp.loc.file, e);
-                    std::process::exit(9);
-                };
-                found = true;
-                self.constant(&v);
+                    if mp.name != "*" {
+                        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                            message: format!("constant {} in {} is private", mp.name, mp.namespace.join("::")),
+                        }, mp.loc.span.clone());
+                        eprintln!("{} : {}", mp.loc.file, e);
+                        std::process::exit(9);
+                    }
+                } else {
+                    found = true;
+                    self.constant(&v);
+                }
             }
         }
 

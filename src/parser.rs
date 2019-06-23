@@ -176,11 +176,14 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                 let mut vis   = Visibility::Shared;
                 let mut name  = None;
                 let mut body  = None;
-
                 let mut loc   = None;
+                let mut packed = false;
 
                 for part in decl {
                     match part.as_rule() {
+                        Rule::key_packed => {
+                            packed = true;
+                        }
                         Rule::key_private => {
                             vis = Visibility::Object;
                         }
@@ -209,6 +212,7 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                     body: body.unwrap(),
                     vis,
                     loc: loc.unwrap(),
+                    packed,
                 });
             }
             Rule::import => {

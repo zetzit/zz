@@ -116,4 +116,5 @@ pub struct Struct<'a> {
     pub body:   String,
     pub vis:    Visibility,
     pub loc:    Location<'a>,
+    pub packed: bool,
 }
