@@ -28,12 +28,15 @@ impl Make {
         if let Some(pcflags) = project.cflags{
             cflags.extend(pcflags);
         }
+
         if let Some(cincs) = project.cincludes {
             for cinc in cincs {
                 cflags.push("-I".into());
                 cflags.push(cinc);
             }
         }
+        cflags.push("-I".into());
+        cflags.push("./target/zz/".into());
         cflags.push("-fvisibility=hidden".to_string());
 
 

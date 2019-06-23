@@ -29,6 +29,7 @@ fn main() {
         for i in &md.includes {
             em.include(i);
         }
+
         for mp in &md.imports {
             match modules.get(&mp.namespace.join("::")) {
                 None => panic!("{}: imports unknown module {}", name, &mp.namespace.join("::")),
@@ -48,6 +49,35 @@ fn main() {
             em.define(&fun, &md.namespace, &fun.body);
         }
     }
+
+
+
+    let mut header = Emitter::new(&format!("{}.h", project.name));
+    header.export_header = true;
+    for (name, md) in &modules {
+        for i in &md.includes {
+            if i.expr.contains("<") {
+                header.include(i);
+            }
+        }
+    }
+    for (name, md) in &modules {
+        for s in &md.structs {
+            if let ast::Visibility::Export = s.vis {
+                header.struc(&s);
+            }
+        }
+    }
+    for (name, md) in &modules {
+        for (_,fun) in &md.functions {
+            if let ast::Visibility::Export = fun.vis {
+                header.declare(&fun, &md.namespace);
+            }
+        }
+    }
+
+
+
 
     let mut make = make::Make::new(project);
 

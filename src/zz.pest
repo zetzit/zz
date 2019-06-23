@@ -1,4 +1,4 @@
-WHITESPACE  = _{ " " | "\n" }
+WHITESPACE  = _{ " "}
 COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
 alpha       = { 'a'..'z' | 'A'..'Z' }
@@ -31,8 +31,8 @@ ret_arg     = {"->" ~ anon_arg}
 function    = { ( key_pub | key_private)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 
-import      = { "import" ~ name ~ ";" }
-path        = { ('a'..'z' | '0'..'9' | "/" | ".")+ }
+import      = { "import" ~ name ~ ";" ~ NEWLINE }
+path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
 include     = { "#include" ~ (syspath | localpath) }
@@ -42,5 +42,7 @@ struct_d    = { (key_pub | key_private)? ~ "struct" ~ ident ~ struct_c ~ ";"?}
 expression  = @{(!(";"| "/*")  ~ ANY)*}
 constant    = { ( key_pub | key_private)? ~ "const" ~ ident ~ ident ~ "=" ~ expression   ~ ";"}
 
-file        = { SOI ~ (struct_d | function | import | constant | include)+  ~ EOI}
+comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
+
+file        = { SOI ~ (struct_d | function | import | constant | include | comment | NEWLINE )+  ~ EOI}
 

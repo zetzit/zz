@@ -21,7 +21,7 @@ pub fn parse(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: 
     }
 }
 
-fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
+fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Rule>> {
     let mut module = Module::default();
     module.sources.push(n.canonicalize().unwrap());
     module.namespace = namespace.clone();
@@ -30,7 +30,7 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
     let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
     let mut file = String::new();
     f.read_to_string(&mut file).expect(&format!("read {:?}", n));
-    let mut file = ZZParser::parse(Rule::file, &file)?;
+    let mut file = ZZParser::parse(Rule::file, Box::leak(Box::new(file)))?;
 
     for decl in file.next().unwrap().into_inner() {
         match decl.as_rule() {
@@ -100,7 +100,11 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
                             }
                         },
                         Rule::block => {
-                            loc = Some(Location{line: part.as_span().start_pos().line_col().0, file: n.to_string_lossy().into()});
+                            loc = Some(Location{
+                                line: part.as_span().start_pos().line_col().0,
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            });
                             body = part.as_str().to_string();
                         },
                         e => panic!("unexpected rule {:?} in function", e),
@@ -138,7 +142,11 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
                             name = Some(part.as_str().into());
                         }
                         Rule::struct_c => {
-                            loc  = Some(Location{line: part.as_span().start_pos().line_col().0, file: n.to_string_lossy().into()});
+                            loc  = Some(Location{
+                                line: part.as_span().start_pos().line_col().0,
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            });
                             body = Some(part.as_str().into());
                         }
                         e => panic!("unexpected rule {:?} in struct ", e),
@@ -155,7 +163,11 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
                 });
             }
             Rule::import => {
-                let loc  = Location{line: decl.as_span().start_pos().line_col().0, file: n.file_name().unwrap().to_string_lossy().into()};
+                let loc  = Location{
+                    line: decl.as_span().start_pos().line_col().0,
+                    file: n.file_name().unwrap().to_string_lossy().into(),
+                    span: decl.as_span(),
+                };
                 let decl = decl.into_inner().next().unwrap();
                 let span = decl.as_span();
 
@@ -197,7 +209,10 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
                         n2 = Path::new("./src").join(&ns).with_extension("h");
 
                         if n2.exists() {
-                            module.includes.push(format!("{:?}", n2));
+                            module.includes.push(Include{
+                                expr: format!("{:?}", n2.canonicalize().unwrap()),
+                                loc,
+                            });
                             module.sources.extend(vec![n2.clone()]);
                         } else {
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
@@ -211,9 +226,18 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
 
             },
             Rule::include => {
+                let loc = Location{
+                    line: decl.as_span().start_pos().line_col().0,
+                    file: n.to_string_lossy().into(),
+                    span: decl.as_span(),
+                };
                 let im = decl.into_inner().as_str();
-                module.includes.push(im.to_string());
+                module.includes.push(Include{
+                    expr: im.to_string(),
+                    loc,
+                });
             },
+            Rule::comment => {},
             Rule::constant => {
                 let mut loc     = None;
                 let mut typ     = None;
@@ -237,7 +261,11 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
                         }
                         Rule::expression if expr.is_none() => {
                             expr = Some(part.as_str().into());
-                            loc = Some(Location{line: part.as_span().start_pos().line_col().0, file: n.to_string_lossy().into()});
+                            loc = Some(Location{
+                                line: part.as_span().start_pos().line_col().0,
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            });
                         }
                         e => panic!("unexpected rule {:?} in const", e),
                     }

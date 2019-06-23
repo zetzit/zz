@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 
-pub struct Location {
+pub struct Location<'a> {
     pub line:   usize,
     pub file:   String,
+    pub span:   pest::Span<'a>,
 }
 
-impl std::fmt::Display for Location {
+impl<'a> std::fmt::Display for Location<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.file, self.line)
     }
@@ -19,28 +20,33 @@ pub enum Visibility {
     Export,
 }
 
-pub struct Import {
+pub struct Import<'a> {
     pub name:       String,
     pub namespace:  Vec<String>,
-    pub loc:        Location,
+    pub loc:        Location<'a>,
 }
 
-pub struct Const {
+pub struct Const<'a> {
     pub typ:    String,
     pub name:   String,
     pub expr:   String,
     pub vis:    Visibility,
-    pub loc:    Location,
+    pub loc:    Location<'a>,
+}
+
+pub struct Include<'a> {
+    pub expr:   String,
+    pub loc:        Location<'a>,
 }
 
 #[derive(Default)]
-pub struct Module {
+pub struct Module<'a> {
     pub namespace:  Vec<String>,
-    pub functions:  HashMap<String, Function>,
-    pub imports:    Vec<Import>,
-    pub structs:    Vec<Struct>,
-    pub includes:   Vec<String>,
-    pub constants:  HashMap<String, Const>,
+    pub functions:  HashMap<String, Function<'a>>,
+    pub imports:    Vec<Import<'a>>,
+    pub structs:    Vec<Struct<'a>>,
+    pub includes:   Vec<Include<'a>>,
+    pub constants:  HashMap<String, Const<'a>>,
     pub sources:    Vec<PathBuf>,
 }
 
@@ -56,18 +62,18 @@ pub struct NamedArg {
     pub namespace: Option<String>,
 }
 
-pub struct Function {
+pub struct Function<'a> {
     pub ret:    Option<AnonArg>,
     pub args:   Vec<NamedArg>,
     pub name:   String,
     pub body:   String,
     pub vis:    Visibility,
-    pub loc:    Location,
+    pub loc:    Location<'a>,
 }
 
-pub struct Struct {
+pub struct Struct<'a> {
     pub name:   String,
     pub body:   String,
     pub vis:    Visibility,
-    pub loc:    Location,
+    pub loc:    Location<'a>,
 }
