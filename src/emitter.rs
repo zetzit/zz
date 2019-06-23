@@ -162,24 +162,20 @@ impl Emitter {
             write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
 
-        match v.storage {
-            Storage::Atomic => {
-                write!(self.f, "atomic ").unwrap();
-            },
-            _ => {
-                if v.muta {
-                    write!(self.f, "static ").unwrap();
-                } else {
-                    write!(self.f, "const ").unwrap();
-                }
-            }
+        if v.muta {
+            write!(self.f, "static ").unwrap();
+        } else {
+            write!(self.f, "const ").unwrap();
         }
 
         match v.storage {
+            Storage::Atomic => {
+                write!(self.f, "_Atomic ").unwrap();
+            },
             Storage::ThreadLocal => {
                 write!(self.f, "_Thread_local ").unwrap();
             },
-            _ => (),
+            Storage::Static  => (),
         }
 
         write!(self.f, "{} {} __attribute__ ((visibility (\"hidden\"))) = {};\n", v.typ, v.name, v.expr).unwrap();
