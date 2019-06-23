@@ -36,7 +36,7 @@ impl Make {
             }
         }
         cflags.push("-I".into());
-        cflags.push("./target/zz/".into());
+        cflags.push("./target/include/".into());
         cflags.push("-fvisibility=hidden".to_string());
 
 

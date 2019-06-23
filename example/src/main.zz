@@ -1,8 +1,17 @@
 import identity::some_helper;
 import errors;
 
+thread_local mutable float wee = 0.1;
+
+fn gimme_wee() -> float {
+    return wee;
+}
+
 export fn main() -> int {
     error err = {0};
     uint32_t bob;
+
+    wee += 0.1;
+
     return some_helper(&err, &bob);
 }

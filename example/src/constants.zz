@@ -1,1 +1,7 @@
 const int foo = 3 * 3;
+
+
+macro ADD_IMPL(a,b) {
+    a +
+        b
+}

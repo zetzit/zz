@@ -18,6 +18,7 @@ fn main() {
 
     std::fs::create_dir_all("./target/c/").expect("create target dir");
     std::fs::create_dir_all("./target/zz/").expect("create target dir");
+    std::fs::create_dir_all("./target/include/").expect("create target dir");
 
 
     let namespace = vec![project.name.clone()];
@@ -39,6 +40,15 @@ fn main() {
             }
         }
 
+        for (_,v) in &md.macros {
+            em.imacro(&v);
+        }
+        for (_,v) in &md.statics {
+            em.istatic(&v);
+        }
+        for (_,v) in &md.constants {
+            em.constant(&v);
+        }
         for s in &md.structs {
             em.struc(&s);
         }
@@ -52,8 +62,7 @@ fn main() {
 
 
 
-    let mut header = Emitter::new(&format!("{}.h", project.name));
-    header.export_header = true;
+    let mut header = Emitter::new_export_header(&project.name);
     for (name, md) in &modules {
         for i in &md.includes {
             if let ast::Visibility::Export = i.vis {
@@ -83,6 +92,7 @@ fn main() {
             }
         }
     }
+    drop(header);
 
 
 
@@ -104,7 +114,5 @@ fn main() {
     }
 
     make.link();
-
-
 }
 

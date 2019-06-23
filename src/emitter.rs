@@ -11,6 +11,14 @@ pub struct Emitter{
     pub export_header:   bool,
 }
 
+impl Drop for Emitter {
+    fn drop(&mut self) {
+        if self.export_header {
+            write!(self.f, "\n#endif\n").unwrap();
+        }
+    }
+}
+
 impl Emitter {
     pub fn new(mn: &str) -> Self {
         let p = format!("target/zz/{}", mn);
@@ -22,24 +30,39 @@ impl Emitter {
         }
     }
 
-    pub fn import(&mut self, modules: &HashMap<String, Module>, m2: &Module, mp: &Import) {
-        for i in &m2.includes {
-            if let Visibility::Export = i.vis {
-                self.include(i);
-            }
-        }
+    pub fn new_export_header(mn: &str) -> Self {
+        let p = format!("target/include/{}.h", mn);
+        let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
-        for mp in &m2.imports {
-            match modules.get(&mp.namespace.join("::")) {
-                None => {
-                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("not found"),
-                    }, mp.loc.span.clone());
-                    eprintln!("{} : {}", mp.loc.file, e);
-                    std::process::exit(9);
+        write!(f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", mn, mn).unwrap();
+        Emitter{
+            f,
+            emitted: HashSet::new(),
+            export_header: true,
+        }
+    }
+
+    pub fn import(&mut self, modules: &HashMap<String, Module>, m2: &Module, mp: &Import) {
+
+        if self.emitted.insert(format!("import_{}", m2.namespace.join("::"))) {
+            for i in &m2.includes {
+                if let Visibility::Export = i.vis {
+                    self.include(i);
                 }
-                Some(m3) => {
-                    self.import(modules, m3, mp);
+            }
+
+            for mp in &m2.imports {
+                match modules.get(&mp.namespace.join("::")) {
+                    None => {
+                        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                            message: format!("not found"),
+                        }, mp.loc.span.clone());
+                        eprintln!("{} : {}", mp.loc.file, e);
+                        std::process::exit(9);
+                    }
+                    Some(m3) => {
+                        self.import(modules, m3, mp);
+                    }
                 }
             }
         }
@@ -79,24 +102,88 @@ impl Emitter {
             }
         }
 
+        for (name,v) in &m2.statics {
+            if name == &mp.name {
+                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                    message: format!("static {} in {} is always private", mp.name, mp.namespace.join("::")),
+                }, mp.loc.span.clone());
+                eprintln!("{} : {}", mp.loc.file, e);
+                std::process::exit(9);
+            }
+        }
+
         for (name,v) in &m2.constants {
             if name == &mp.name || mp.name == "*" {
                 if let Visibility::Object  = v.vis {
-                    panic!("{}: imports private function {}::{}", mp.loc, &mp.namespace.join("::"), &mp.name);
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("constant {} in {} is private", mp.name, mp.namespace.join("::")),
+                    }, mp.loc.span.clone());
+                    eprintln!("{} : {}", mp.loc.file, e);
+                    std::process::exit(9);
                 };
                 found = true;
-                self.constant(None, &v);
+                self.constant(&v);
+            }
+        }
+
+        for (name,v) in &m2.macros {
+            if name == &mp.name || mp.name == "*" {
+                if let Visibility::Object  = v.vis {
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("macro {} in {} is private", mp.name, mp.namespace.join("::")),
+                    }, mp.loc.span.clone());
+                    eprintln!("{} : {}", mp.loc.file, e);
+                    std::process::exit(9);
+                };
+                found = true;
+                self.imacro(&v);
             }
         }
 
 
         if !found {
-            panic!("{}: import '{}' not found in module '{}'", mp.loc, &mp.name, &mp.namespace.join("::"));
+            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                message: format!("cannot find {} in {}", mp.name, mp.namespace.join("::")),
+            }, mp.loc.span.clone());
+            eprintln!("{} : {}", mp.loc.file, e);
+            std::process::exit(9);
         }
     }
 
-    pub fn constant(&mut self, ns: Option<&str>, v: &Const) {
-        if !self.emitted.insert(format!("{:?}::{}", ns, v.name)) {
+    pub fn istatic(&mut self, v: &Static) {
+        if !self.emitted.insert(format!("{}", v.name)) {
+            return;
+        }
+
+        if !self.export_header {
+            write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
+        }
+
+        match v.storage {
+            Storage::Atomic => {
+                write!(self.f, "atomic ").unwrap();
+            },
+            _ => {
+                if v.muta {
+                    write!(self.f, "static ").unwrap();
+                } else {
+                    write!(self.f, "const ").unwrap();
+                }
+            }
+        }
+
+        match v.storage {
+            Storage::ThreadLocal => {
+                write!(self.f, "_Thread_local ").unwrap();
+            },
+            _ => (),
+        }
+
+        write!(self.f, "{} {} __attribute__ ((visibility (\"hidden\"))) = {};\n", v.typ, v.name, v.expr).unwrap();
+
+    }
+    pub fn constant(&mut self, v: &Const) {
+        if !self.emitted.insert(format!("{}", v.name)) {
             return;
         }
 
@@ -104,6 +191,21 @@ impl Emitter {
             write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
         write!(self.f, "#define {} (({}){})\n", v.name, v.typ, v.expr).unwrap();
+    }
+
+    pub fn imacro(&mut self, v: &Macro) {
+        if !self.emitted.insert(format!("{}", v.name)) {
+            return;
+        }
+        if !self.export_header {
+            write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
+        }
+
+        write!(self.f, "#define {}", v.name).unwrap();
+        if v.args.len() > 0  {
+            write!(self.f, "({})", v.args.join(",")).unwrap();
+        }
+        write!(self.f, " {}\n", v.body[1..v.body.len()-1].replace("\n", "\\\n")).unwrap();
     }
 
     pub fn struc(&mut self, s: &Struct) {

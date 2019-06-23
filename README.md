@@ -74,6 +74,74 @@ By default, arguments are const, unless declared mutable. You can declare them c
 
 note how horst() has been declared later than its use. Declaration order does no longer matter.
 
+### language reference
+
+#### top level declarations: fn, struct
+
+fn delares a function.
+the body is passed verbatim to the C compiler.
+
+struct does the same for structs.
+
+#### macro
+
+macro definitions are almost like C's #define but slightly more stable
+
+```C
+macro check_noise_error(e) {
+    if ((e) != 0) {
+        printf("oh noes!\n");
+    }
+}
+```
+
+the macro can be multiple lines but is resctricted within the body {  }.
+this intentionally disables some insane use cases.
+
+#### storage: const, static, atomic and thread_local
+
+const and static work exactly like in rust, but with C syntax.
+
+```
+export const uint32_t foo = 3;
+static mutable float blarg = 2.0/0.3;
+thread_local mutable bool bob = true;
+atomic mutable int marvin = 0;
+```
+
+const is inlined in each module and therefor points to different memory in each module.
+static has a global storage location, but is private to the current module.
+
+in effect, there is no way to have declare a shared global writable variable.
+ZZ has no borrowchecker, and the restriction has nothing to do with preventing multithread races.
+Instead the declarations are selected so that the resulting exported binary interface can be mapped to any other language.
+
+if you need to export a global writeable memory location (which is still a bad idea, because threads),
+you can define a function that returns a pointer to the local static.
+
+thread_local and atomic are mapped directly to the C11 keywords.
+ZZ can use nicer keywords because there are no user defined names at the top level.
+
+#### visibility: private, export
+
+by default all declarations are visible to the entire module, but not exported in the final binary.
+
+"export" can be used to make sure the declaration ends in the final result. that is in the binary and the export header.
+
+"private" markes a declaration as local to the current module/file. It cannot be used inside other modules and
+as such the compiler may optimize it.
+In most cases this is equivalent to the C 'static' keyword, but can be added to any declaration.
+
+
+#### mutability: const, mutable
+
+by default, everything is const. this is the opposite of C. the mutable keyword is used to make a global variable, or function argument mutable.
+
+
+
+
+
+
 
 
 

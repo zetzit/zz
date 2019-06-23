@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct Location<'a> {
     pub line:   usize,
     pub file:   String,
@@ -14,12 +15,22 @@ impl<'a> std::fmt::Display for Location<'a> {
     }
 }
 
+
+#[derive(Clone)]
+pub enum Storage {
+    Static,
+    ThreadLocal,
+    Atomic,
+}
+
+#[derive(Clone)]
 pub enum Visibility {
     Shared,
     Object,
     Export,
 }
 
+#[derive(Clone)]
 pub struct Import<'a> {
     pub name:       String,
     pub namespace:  Vec<String>,
@@ -27,6 +38,17 @@ pub struct Import<'a> {
     pub loc:        Location<'a>,
 }
 
+#[derive(Clone)]
+pub struct Static<'a> {
+    pub typ:    String,
+    pub name:   String,
+    pub expr:   String,
+    pub muta:   bool,
+    pub storage: Storage,
+    pub loc:    Location<'a>,
+}
+
+#[derive(Clone)]
 pub struct Const<'a> {
     pub typ:    String,
     pub name:   String,
@@ -35,27 +57,32 @@ pub struct Const<'a> {
     pub loc:    Location<'a>,
 }
 
+#[derive(Clone)]
 pub struct Include<'a> {
     pub expr:   String,
     pub loc:    Location<'a>,
     pub vis:    Visibility,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Module<'a> {
     pub namespace:  Vec<String>,
     pub functions:  HashMap<String, Function<'a>>,
-    pub imports:    Vec<Import<'a>>,
-    pub structs:    Vec<Struct<'a>>,
-    pub includes:   Vec<Include<'a>>,
+    pub macros:     HashMap<String, Macro<'a>>,
     pub constants:  HashMap<String, Const<'a>>,
+    pub statics:    HashMap<String, Static<'a>>,
+    pub structs:    Vec<Struct<'a>>,
+    pub imports:    Vec<Import<'a>>,
+    pub includes:   Vec<Include<'a>>,
     pub sources:    Vec<PathBuf>,
 }
 
+#[derive(Clone)]
 pub struct AnonArg {
     pub typ:    String
 }
 
+#[derive(Clone)]
 pub struct NamedArg {
     pub typ:    String,
     pub name:   String,
@@ -64,6 +91,7 @@ pub struct NamedArg {
     pub namespace: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct Function<'a> {
     pub ret:    Option<AnonArg>,
     pub args:   Vec<NamedArg>,
@@ -73,6 +101,16 @@ pub struct Function<'a> {
     pub loc:    Location<'a>,
 }
 
+#[derive(Clone)]
+pub struct Macro<'a> {
+    pub args:   Vec<String>,
+    pub name:   String,
+    pub body:   String,
+    pub vis:    Visibility,
+    pub loc:    Location<'a>,
+}
+
+#[derive(Clone)]
 pub struct Struct<'a> {
     pub name:   String,
     pub body:   String,

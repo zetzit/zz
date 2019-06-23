@@ -22,18 +22,67 @@ pub fn parse(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: 
 }
 
 fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Rule>> {
+
     let mut module = Module::default();
     module.sources.push(n.canonicalize().unwrap());
     module.namespace = namespace.clone();
     module.namespace.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
+
+    //push in a half finished copy to avoid recursion
+    modules.insert(module.namespace.join("::"), module.clone());
 
     let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
     let mut file = String::new();
     f.read_to_string(&mut file).expect(&format!("read {:?}", n));
     let mut file = ZZParser::parse(Rule::file, Box::leak(Box::new(file)))?;
 
+
     for decl in file.next().unwrap().into_inner() {
         match decl.as_rule() {
+            Rule::imacro => {
+                let decl = decl.into_inner();
+                let mut loc  = None;
+                let mut name = None;
+                let mut args = Vec::new();
+                let mut body = String::new();
+                let mut vis = Visibility::Shared;
+                for part in decl {
+                    match part.as_rule() {
+                        Rule::key_private => {
+                            vis = Visibility::Object;
+                        }
+                        Rule::key_pub => {
+                            vis = Visibility::Export;
+                        }
+                        Rule::ident if name.is_none() => {
+                            name = part.as_str().into();
+                        }
+                        Rule::call_args => {
+                            for arg in part.into_inner() {
+                                args.push(arg.as_str().into());
+                            }
+                        }
+                        Rule::block => {
+                            loc = Some(Location{
+                                line: part.as_span().start_pos().line_col().0,
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            });
+                            body = part.as_str().to_string();
+                        },
+                        e => panic!("unexpected rule {:?} in macro ", e),
+                    }
+                }
+
+                module.macros.insert(name.unwrap().to_string(), Macro{
+                    name: name.unwrap().to_string(),
+                    args,
+                    body,
+                    vis,
+                    loc: loc.unwrap(),
+                });
+
+            }
             Rule::function => {
                 let mut loc  = None;
                 let decl = decl.into_inner();
@@ -257,7 +306,6 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                         }
                     }
                 };
-
             },
             Rule::include => {
                 let loc = Location{
@@ -273,6 +321,61 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                 });
             },
             Rule::comment => {},
+            Rule::istatic => {
+                let mut loc     = None;
+                let mut typ     = None;
+                let mut name    = None;
+                let mut expr    = None;
+                let mut muta    = false;
+                let mut storage = Storage::Static;
+
+                for part in decl.into_inner() {
+                    match part.as_rule() {
+                        Rule::key_thread_local => {
+                            storage = Storage::ThreadLocal;
+                        }
+                        Rule::key_static => {
+                            storage = Storage::Static;
+                        }
+                        Rule::key_atomic => {
+                            storage = Storage::Atomic;
+                        }
+                        Rule::key_mut => {
+                            muta = true;
+                        }
+                        Rule::key_private | Rule::key_pub => {
+                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                message: format!("cannot change visibility static variable"),
+                            }, part.as_span());
+                            eprintln!("{} : {}", n.to_string_lossy(), e);
+                            std::process::exit(9);
+                        }
+                        Rule::typ if typ.is_none() => {
+                            typ = Some(part.as_str().into());
+                        },
+                        Rule::ident if name.is_none() => {
+                            name  = Some(part.as_str().into());
+                        }
+                        Rule::expression if expr.is_none() => {
+                            expr = Some(part.as_str().into());
+                            loc = Some(Location{
+                                line: part.as_span().start_pos().line_col().0,
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            });
+                        }
+                        e => panic!("unexpected rule {:?} in static", e),
+                    }
+                }
+                module.statics.insert(name.clone().unwrap(), Static {
+                    storage,
+                    muta,
+                    typ: typ.unwrap(),
+                    name: name.unwrap(),
+                    expr: expr.unwrap(),
+                    loc: loc.unwrap(),
+                });
+            },
             Rule::constant => {
                 let mut loc     = None;
                 let mut typ     = None;
@@ -288,7 +391,7 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                         Rule::key_pub => {
                             vis = Visibility::Export;
                         }
-                        Rule::ident if typ.is_none() => {
+                        Rule::typ if typ.is_none() => {
                             typ = Some(part.as_str().into());
                         },
                         Rule::ident if name.is_none() => {

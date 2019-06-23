@@ -1,4 +1,4 @@
-WHITESPACE  = _{ " "}
+WHITESPACE  = _{ " " | NEWLINE}
 COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
 alpha       = { 'a'..'z' | 'A'..'Z' }
@@ -7,6 +7,7 @@ digit       = { '0'..'9' }
 key_pub     = { "export" }
 key_private = { "private" }
 key_const   = { "const"   }
+key_packed  = { "packed"   }
 key_mut     = { "mutable" }
 key_ptr     = { "*" }
 
@@ -26,23 +27,46 @@ var         = @{ident}
 named_arg   = {typ ~ var}
 anon_arg    = {typ}
 
-fn_args     = {named_arg ~ ( "," ~ named_arg)* }
+fn_args     = {named_arg ~ ( "," ~ named_arg)* ~ ","? }
 ret_arg     = {"->" ~ anon_arg}
 function    = { ( key_pub | key_private)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 
-import      = { key_pub? ~  "import" ~ name ~ ";" ~ NEWLINE }
+import      = { key_pub? ~  "import" ~ name ~ ";" }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
 include     = { "#include" ~ (syspath | localpath) }
 struct_c    = @{"{" ~ (!("}"| "/*")  ~ ANY)* ~ "}" }
-struct_d    = { (key_pub | key_private)? ~ "struct" ~ ident ~ struct_c ~ ";"?}
+struct_d    = { (key_pub | key_private | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
 expression  = @{(!(";"| "/*")  ~ ANY)*}
-constant    = { ( key_pub | key_private)? ~ "const" ~ ident ~ ident ~ "=" ~ expression   ~ ";"}
+constant    = { ( key_pub | key_private)? ~ "const"  ~ typ ~ ident ~ "=" ~ expression   ~ ";"}
+
+key_static  = {"static"}
+key_atomic  = {"atomic"}
+key_thread_local = {"thread_local"}
+
+istatic     = {
+    ( key_pub | key_private)? ~
+    (key_static | key_atomic | key_thread_local) ~
+    (key_mut | key_const)? ~
+    typ ~ ident ~ "=" ~ expression ~ ";"
+}
 
 comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
 
-file        = { SOI ~ (struct_d | function | import | constant | include | comment | NEWLINE )+  ~ EOI}
+vararg      = @{"..."}
+call_args   = {ident ~ ( "," ~ ( ident | vararg) )* }
+imacro      = { ( key_pub | key_private)? ~ "macro" ~ ident ~ "(" ~ call_args? ~")" ~ block }
+
+file        = { SOI ~ (struct_d
+                        | function
+                        | import
+                        | constant
+                        | include
+                        | comment
+                        | imacro
+                        | istatic
+                        | NEWLINE )+  ~ EOI}
 
