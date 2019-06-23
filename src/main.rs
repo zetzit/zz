@@ -1,4 +1,5 @@
 #[macro_use] extern crate pest_derive;
+extern crate fasthash;
 
 mod emitter;
 mod ast;
@@ -48,8 +49,6 @@ fn main() {
         }
     }
 
-
-
     let mut make = make::Make::new(project);
 
     for (_, module) in &modules {
@@ -61,7 +60,7 @@ fn main() {
         let path  = entry.path();
         if path.is_file() {
             if let Some("c") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
-                make.cobject(path.to_string_lossy().into());
+                make.cobject(&path);
             }
         }
     }

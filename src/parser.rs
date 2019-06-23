@@ -23,7 +23,7 @@ pub fn parse(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: 
 
 fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     let mut module = Module::default();
-
+    module.sources.push(n.canonicalize().unwrap());
     module.namespace = namespace.clone();
     module.namespace.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
 
@@ -179,20 +179,26 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
                     name = "*".into();
                 }
 
-                if !modules.contains_key(&ns) {
+                let mut fqn = namespace.clone();
+                fqn.extend(ns.split("::").map(|s|s.to_string()));
+                let fqn = fqn.join("::");
+
+                if modules.contains_key(&fqn) {
+                    module.imports.push(Import{name, namespace: fqn.split("::").map(|s|s.to_string()).collect(), loc});
+                    module.sources.extend(modules[&fqn].sources.clone());
+                } else {
                     let mut n2 = Path::new("./src").join(&ns).with_extension("zz");
 
                     if n2.exists() {
                         parse(modules, namespace, &Path::new(&n2));
-                        let mut namespace  = namespace.clone();
-                        namespace.extend(ns.split(":").map(|s|s.to_string()));
-                        module.imports.push(Import{name, namespace, loc});
-
+                        module.imports.push(Import{name, namespace: fqn.split("::").map(|s|s.to_string()).collect(), loc});
+                        module.sources.extend(modules[&fqn].sources.clone());
                     } else {
                         n2 = Path::new("./src").join(&ns).with_extension("h");
 
                         if n2.exists() {
-                            module.includes.push(format!("{:?}", n2))
+                            module.includes.push(format!("{:?}", n2));
+                            module.sources.extend(vec![n2.clone()]);
                         } else {
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                 message: format!("cannot find module"),
@@ -201,8 +207,8 @@ fn p(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -
                             std::process::exit(9);
                         }
                     }
+                };
 
-                }
             },
             Rule::include => {
                 let im = decl.into_inner().as_str();

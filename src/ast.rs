@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
 
 pub struct Location {
     pub line:   usize,
@@ -40,6 +41,7 @@ pub struct Module {
     pub structs:    Vec<Struct>,
     pub includes:   Vec<String>,
     pub constants:  HashMap<String, Const>,
+    pub sources:    Vec<PathBuf>,
 }
 
 pub struct AnonArg {
