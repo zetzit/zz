@@ -31,7 +31,7 @@ ret_arg     = {"->" ~ anon_arg}
 function    = { ( key_pub | key_private)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 
-import      = { "import" ~ name ~ ";" ~ NEWLINE }
+import      = { key_pub? ~  "import" ~ name ~ ";" ~ NEWLINE }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}

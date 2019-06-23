@@ -24,7 +24,9 @@ impl Emitter {
 
     pub fn import(&mut self, modules: &HashMap<String, Module>, m2: &Module, mp: &Import) {
         for i in &m2.includes {
-            self.include(i);
+            if let Visibility::Export = i.vis {
+                self.include(i);
+            }
         }
 
         for mp in &m2.imports {

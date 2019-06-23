@@ -1,9 +1,9 @@
-import errors::error;
+export import c::stdint;
+export import c::stdio;
 import math::add;
-import constants::foo;
 
-#include <stdint.h>
-#include <stdio.h>
+import constants::foo;
+import errors::error;
 
 fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     printf("lol\n");
@@ -13,7 +13,6 @@ fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     }
     return 32;
 }
-
 
 export fn horst() -> uint32_t {
     return 3;

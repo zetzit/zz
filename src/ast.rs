@@ -23,6 +23,7 @@ pub enum Visibility {
 pub struct Import<'a> {
     pub name:       String,
     pub namespace:  Vec<String>,
+    pub vis:        Visibility,
     pub loc:        Location<'a>,
 }
 
@@ -36,7 +37,8 @@ pub struct Const<'a> {
 
 pub struct Include<'a> {
     pub expr:   String,
-    pub loc:        Location<'a>,
+    pub loc:    Location<'a>,
+    pub vis:    Visibility,
 }
 
 #[derive(Default)]

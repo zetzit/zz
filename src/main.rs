@@ -56,8 +56,16 @@ fn main() {
     header.export_header = true;
     for (name, md) in &modules {
         for i in &md.includes {
-            if i.expr.contains("<") {
-                header.include(i);
+            if let ast::Visibility::Export = i.vis {
+                if i.expr.contains("<") {
+                    header.include(i);
+                } else {
+                    let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("cannot re-export local c header"),
+                    }, i.loc.span.clone());
+                    eprintln!("{} : {}", i.loc.file, e);
+                    std::process::exit(9);
+                }
             }
         }
     }

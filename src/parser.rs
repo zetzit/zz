@@ -168,7 +168,22 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                     file: n.file_name().unwrap().to_string_lossy().into(),
                     span: decl.as_span(),
                 };
-                let decl = decl.into_inner().next().unwrap();
+                let mut vis = Visibility::Object;
+                let mut decli = None;
+                for part in decl.into_inner() {
+                    match part.as_rule() {
+                        Rule::name => {
+                            decli = Some(part);
+                            break;
+                        },
+                        Rule::key_pub => {
+                            vis = Visibility::Export;
+                        }
+                        e => panic!("unexpected rule {:?} in import ", e),
+                    }
+                };
+                let decl = decli.unwrap();
+
                 let span = decl.as_span();
 
                 let mut ns   = String::new();
@@ -196,14 +211,32 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                 let fqn = fqn.join("::");
 
                 if modules.contains_key(&fqn) {
-                    module.imports.push(Import{name, namespace: fqn.split("::").map(|s|s.to_string()).collect(), loc});
+                    module.imports.push(Import{
+                        name, namespace: fqn.split("::").map(|s|s.to_string()).collect(),
+                        vis,
+                        loc
+                    });
                     module.sources.extend(modules[&fqn].sources.clone());
+                } else if ns.split("::").next().unwrap() == "c" {
+                    let mut ns = ns.split("::");
+                    ns.next();
+                    let mut ns : Vec<&str> = ns.collect();
+                    ns.push(&name);
+                    module.includes.push(Include{
+                        expr: format!("<{}.h>", ns.join("/")),
+                        vis,
+                        loc,
+                    });
                 } else {
                     let mut n2 = Path::new("./src").join(&ns).with_extension("zz");
 
                     if n2.exists() {
                         parse(modules, namespace, &Path::new(&n2));
-                        module.imports.push(Import{name, namespace: fqn.split("::").map(|s|s.to_string()).collect(), loc});
+                        module.imports.push(Import{
+                            name, namespace: fqn.split("::").map(|s|s.to_string()).collect(),
+                            vis,
+                            loc
+                        });
                         module.sources.extend(modules[&fqn].sources.clone());
                     } else {
                         n2 = Path::new("./src").join(&ns).with_extension("h");
@@ -211,6 +244,7 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                         if n2.exists() {
                             module.includes.push(Include{
                                 expr: format!("{:?}", n2.canonicalize().unwrap()),
+                                vis,
                                 loc,
                             });
                             module.sources.extend(vec![n2.clone()]);
@@ -235,6 +269,7 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                 module.includes.push(Include{
                     expr: im.to_string(),
                     loc,
+                    vis: Visibility::Object,
                 });
             },
             Rule::comment => {},
