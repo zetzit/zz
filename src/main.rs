@@ -6,6 +6,7 @@ mod ast;
 mod parser;
 mod project;
 mod make;
+mod resolver;
 
 use emitter::Emitter;
 
@@ -20,37 +21,31 @@ fn main() {
     std::fs::create_dir_all("./target/zz/").expect("create target dir");
     std::fs::create_dir_all("./target/include/").expect("create target dir");
 
-
     let namespace = vec![project.name.clone()];
-    let mut modules = HashMap::new();
-    parser::parse(&mut modules, &namespace, &Path::new("./src/main.zz"));
+    let modules   = resolver::resolve(&namespace);
 
     for (name, md) in &modules {
-        let mut em = Emitter::new(&(name.clone() + ".c"));
+        let mut em = Emitter::new(md.namespace.clone());
+
+        println!("emitting {}", name);
+
+        for mp in &md.imports {
+            em.import(&modules, mp);
+        }
         for i in &md.includes {
             em.include(i);
         }
-
-        for mp in &md.imports {
-            match modules.get(&mp.namespace.join("::")) {
-                None => panic!("{}: imports unknown module {}", name, &mp.namespace.join("::")),
-                Some(m2) => {
-                    em.import(&modules, m2, mp);
-                }
-            }
-        }
-
         for (_,v) in &md.macros {
             em.imacro(&v);
+        }
+        for s in &md.structs {
+            em.struc(&s);
         }
         for (_,v) in &md.statics {
             em.istatic(&v);
         }
         for (_,v) in &md.constants {
             em.constant(&v);
-        }
-        for s in &md.structs {
-            em.struc(&s);
         }
         for (_,fun) in &md.functions {
             em.declare(&fun, &md.namespace);
@@ -62,8 +57,8 @@ fn main() {
 
 
 
-    let mut header = Emitter::new_export_header(&project.name);
-    for (name, md) in &modules {
+    let mut header = Emitter::new_export_header(vec![project.name.clone()]);
+    for (_name, md) in &modules {
         for i in &md.includes {
             if let ast::Visibility::Export = i.vis {
                 if i.expr.contains("<") {
@@ -75,6 +70,13 @@ fn main() {
                     eprintln!("{} : {}", i.loc.file, e);
                     std::process::exit(9);
                 }
+            }
+        }
+    }
+    for (_name, md) in &modules {
+        for i in &md.imports {
+            if let ast::Visibility::Export = i.vis {
+                header.import(&modules, i);
             }
         }
     }

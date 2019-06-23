@@ -1,6 +1,5 @@
 use pest::Parser;
 use super::ast::*;
-use std::collections::HashMap;
 use std::path::Path;
 use std::io::{Read};
 
@@ -8,28 +7,25 @@ use std::io::{Read};
 #[grammar = "zz.pest"]
 pub struct ZZParser;
 
-pub fn parse(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path)
+pub fn parse<'a>(ns: Vec<String>, n: &Path) -> Module<'a>
 {
-    match p(modules, namespace, &n){
+    match p(ns, &n){
         Err(e) => {
             eprintln!("{:?} : {}", n, e);
             std::process::exit(9);
         }
         Ok(md) => {
-            modules.insert(md.namespace.join("::"), md);
+            md
         }
     }
 }
 
-fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Rule>> {
+fn p<'a>(nsi: Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Rule>> {
 
     let mut module = Module::default();
     module.sources.push(n.canonicalize().unwrap());
-    module.namespace = namespace.clone();
+    module.namespace = nsi;
     module.namespace.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
-
-    //push in a half finished copy to avoid recursion
-    modules.insert(module.namespace.join("::"), module.clone());
 
     let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
     let mut file = String::new();
@@ -44,7 +40,8 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                 let mut loc  = None;
                 let mut name = None;
                 let mut args = Vec::new();
-                let mut body = String::new();
+                let mut imports = Vec::new();
+                let mut body = None;
                 let mut vis = Visibility::Shared;
                 for part in decl {
                     match part.as_rule() {
@@ -57,18 +54,35 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                         Rule::ident if name.is_none() => {
                             name = part.as_str().into();
                         }
+                        Rule::macroimports => {
+                            for arg in part.into_inner() {
+                                let loc = Location{
+                                    line: arg.as_span().start_pos().line_col().0,
+                                    file: n.to_string_lossy().into(),
+                                    span: arg.as_span(),
+                                };
+                                let namespace : Vec<String> = arg.as_str().split("::").map(|s|s.to_string()).collect();
+                                let import = Import{
+                                    loc,
+                                    namespace,
+                                    vis: Visibility::Object,
+                                };
+                                module.imports.push(import.clone());
+                                imports.push(import);
+                            }
+                        }
                         Rule::call_args => {
                             for arg in part.into_inner() {
                                 args.push(arg.as_str().into());
                             }
                         }
-                        Rule::block => {
+                        Rule::block if body.is_none() => {
                             loc = Some(Location{
                                 line: part.as_span().start_pos().line_col().0,
                                 file: n.to_string_lossy().into(),
                                 span: part.as_span(),
                             });
-                            body = part.as_str().to_string();
+                            body = Some(part.as_str().to_string());
                         },
                         e => panic!("unexpected rule {:?} in macro ", e),
                     }
@@ -77,7 +91,8 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                 module.macros.insert(name.unwrap().to_string(), Macro{
                     name: name.unwrap().to_string(),
                     args,
-                    body,
+                    body: body.unwrap(),
+                    imports,
                     vis,
                     loc: loc.unwrap(),
                 });
@@ -237,79 +252,15 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
                 };
                 let decl = decli.unwrap();
 
-                let span = decl.as_span();
+                let namespace  = collect_ns(decl);
 
-                let mut ns   = String::new();
-                let mut name = String::new();
+                module.imports.push(Import{
+                    namespace,
+                    vis,
+                    loc
+                });
 
-                for part in decl.into_inner() {
-                    match part.as_rule() {
-                        Rule::ident_or_star => {
-                            name  = part.as_str().into();
-                        }
-                        Rule::namespace => {
-                            ns = part.into_inner().next().unwrap().as_str().into();
-                        }
-                        e => panic!("unexpected rule {:?} in import ", e),
-                    }
-                }
 
-                if ns.is_empty() {
-                    ns   = name;
-                    name = "*".into();
-                }
-
-                let mut fqn = namespace.clone();
-                fqn.extend(ns.split("::").map(|s|s.to_string()));
-                let fqn = fqn.join("::");
-
-                if modules.contains_key(&fqn) {
-                    module.imports.push(Import{
-                        name, namespace: fqn.split("::").map(|s|s.to_string()).collect(),
-                        vis,
-                        loc
-                    });
-                    module.sources.extend(modules[&fqn].sources.clone());
-                } else if ns.split("::").next().unwrap() == "c" {
-                    let mut ns = ns.split("::");
-                    ns.next();
-                    let mut ns : Vec<&str> = ns.collect();
-                    ns.push(&name);
-                    module.includes.push(Include{
-                        expr: format!("<{}.h>", ns.join("/")),
-                        vis,
-                        loc,
-                    });
-                } else {
-                    let mut n2 = Path::new("./src").join(&ns).with_extension("zz");
-
-                    if n2.exists() {
-                        parse(modules, namespace, &Path::new(&n2));
-                        module.imports.push(Import{
-                            name, namespace: fqn.split("::").map(|s|s.to_string()).collect(),
-                            vis,
-                            loc
-                        });
-                        module.sources.extend(modules[&fqn].sources.clone());
-                    } else {
-                        n2 = Path::new("./src").join(&ns).with_extension("h");
-
-                        if n2.exists() {
-                            module.includes.push(Include{
-                                expr: format!("{:?}", n2.canonicalize().unwrap()),
-                                vis,
-                                loc,
-                            });
-                            module.sources.extend(vec![n2.clone()]);
-                        } else {
-                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                                message: format!("cannot find module"),
-                            }, span);
-                            eprintln!("{} : {}", loc.file, e);
-                            std::process::exit(9);
-                        }
-                    }
-                };
             },
             Rule::include => {
                 let loc = Location{
@@ -427,4 +378,22 @@ fn p<'a>(modules: &mut HashMap<String, Module>, namespace: &Vec<String>, n: &Pat
     }
 
     Ok(module)
+}
+
+
+
+fn collect_ns(decl: pest::iterators::Pair<Rule>) -> Vec<String> {
+    let mut v = Vec::new();
+    for part in decl.into_inner() {
+        match part.as_rule() {
+            Rule::ident_or_star | Rule::ident => {
+                v.push(part.as_str().into());
+            }
+            Rule::namespace => {
+                v.extend(collect_ns(part));
+            }
+            e => panic!("unexpected rule {:?} in import ", e),
+        }
+    }
+    v
 }

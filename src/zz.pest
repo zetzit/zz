@@ -17,7 +17,7 @@ int_literal     = @{ digit+ }
 ident       = @{ (alpha | digit | "_")+ }
 ident_or_star = @{ (alpha | digit | "_" | "*" )+ }
 namespace   = ${ ident ~ "::" ~ namespace? }
-name        = ${ namespace? ~ ident_or_star }
+name        = ${ namespace+ ~ ident_or_star }
 
 typ = ${
     ((key_const | key_mut) ~ WHITESPACE+)? ~ namespace? ~ ident ~ key_ptr?
@@ -58,7 +58,8 @@ comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
 
 vararg      = @{"..."}
 call_args   = {ident ~ ( "," ~ ( ident | vararg) )* }
-imacro      = { ( key_pub | key_private)? ~ "macro" ~ ident ~ "(" ~ call_args? ~")" ~ block }
+macroimports = { "[" ~ name ~ ( "," ~ name )* ~ ","? ~ "]" }
+imacro      = { ( key_pub | key_private)? ~ "macro" ~ ident ~ "(" ~ call_args? ~")" ~ macroimports? ~ block }
 
 file        = { SOI ~ (struct_d
                         | function

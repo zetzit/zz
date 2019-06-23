@@ -32,7 +32,6 @@ pub enum Visibility {
 
 #[derive(Clone)]
 pub struct Import<'a> {
-    pub name:       String,
     pub namespace:  Vec<String>,
     pub vis:        Visibility,
     pub loc:        Location<'a>,
@@ -103,11 +102,12 @@ pub struct Function<'a> {
 
 #[derive(Clone)]
 pub struct Macro<'a> {
-    pub args:   Vec<String>,
-    pub name:   String,
-    pub body:   String,
-    pub vis:    Visibility,
-    pub loc:    Location<'a>,
+    pub args:       Vec<String>,
+    pub name:       String,
+    pub body:       String,
+    pub imports:    Vec<Import<'a>>,
+    pub vis:        Visibility,
+    pub loc:        Location<'a>,
 }
 
 #[derive(Clone)]

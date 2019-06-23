@@ -1,5 +1,5 @@
 import identity::some_helper;
-import errors;
+import errors::error;
 
 thread_local mutable float wee = 0.1;
 
