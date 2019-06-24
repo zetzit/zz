@@ -23,7 +23,8 @@ pub fn parse<'a>(ns: Vec<String>, n: &Path) -> Module<'a>
 fn p<'a>(nsi: Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Rule>> {
 
     let mut module = Module::default();
-    module.sources.push(n.canonicalize().unwrap());
+    module.source = n.to_path_buf();
+    module.sources.insert(n.canonicalize().unwrap());
     module.namespace = nsi;
     module.namespace.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
 
@@ -233,7 +234,7 @@ fn p<'a>(nsi: Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Ru
             Rule::import => {
                 let loc  = Location{
                     line: decl.as_span().start_pos().line_col().0,
-                    file: n.file_name().unwrap().to_string_lossy().into(),
+                    file: n.to_string_lossy().into(),
                     span: decl.as_span(),
                 };
                 let mut vis = Visibility::Object;

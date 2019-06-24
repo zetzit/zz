@@ -1,3 +1,6 @@
+import example::aye::yoo;
+
 export fn main() -> int {
+    yoo();
     return 0;
 }

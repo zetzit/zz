@@ -4,6 +4,7 @@ use std::process::Command;
 use fasthash::metro;
 use std::path::Path;
 use std::path::PathBuf;
+use std::collections::HashSet;
 
 
 pub struct Step {
@@ -61,7 +62,7 @@ impl Make {
     }
 
 
-    fn is_dirty(&self, sources: &Vec<PathBuf>, target: &str) -> bool {
+    fn is_dirty(&self, sources: &HashSet<PathBuf>, target: &str) -> bool {
         let itarget = match std::fs::metadata(target) {
             Ok(v)  => v,
             Err(_) => return true,
@@ -95,7 +96,9 @@ impl Make {
 
         args.push(outp.clone());
 
-        if self.is_dirty(&vec![inp.into()], &outp) {
+        let mut sources = HashSet::new();
+        sources.insert(inp.into());
+        if self.is_dirty(&sources, &outp) {
             self.steps.push(Step{
                 source: inp.into(),
                 args,
@@ -155,6 +158,9 @@ impl Make {
             super::project::ArtifactType::Test  => {
                 self.lflags.push("-o".into());
                 self.lflags.push(format!("./target/{}", self.artifact.name));
+            }
+            super::project::ArtifactType::Header  => {
+                panic!("cannot link header yet");
             }
         }
         self.lflags.push("-fvisibility=hidden".into());

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -66,6 +67,7 @@ pub struct Include<'a> {
 #[derive(Default, Clone)]
 pub struct Module<'a> {
     pub namespace:  Vec<String>,
+    pub source:     PathBuf,
     pub functions:  HashMap<String, Function<'a>>,
     pub macros:     HashMap<String, Macro<'a>>,
     pub constants:  HashMap<String, Const<'a>>,
@@ -73,7 +75,7 @@ pub struct Module<'a> {
     pub structs:    Vec<Struct<'a>>,
     pub imports:    Vec<Import<'a>>,
     pub includes:   Vec<Include<'a>>,
-    pub sources:    Vec<PathBuf>,
+    pub sources:    HashSet<PathBuf>,
 }
 
 #[derive(Clone)]

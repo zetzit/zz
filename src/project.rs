@@ -4,11 +4,12 @@ use std::io::Read;
 use std::path::PathBuf;
 
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub enum ArtifactType {
     Lib,
     Exe,
     Test,
+    Header,
 }
 
 #[derive(Deserialize)]

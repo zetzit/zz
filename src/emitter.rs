@@ -2,6 +2,7 @@ use std::fs;
 use std::collections::HashSet;
 use std::collections::HashMap;
 use super::ast::*;
+use super::project::ArtifactType;
 use std::io::Write;
 use super::parser::Rule;
 
@@ -18,15 +19,20 @@ struct Buffers {
 }
 
 pub struct Emitter{
+    artifact:           ArtifactType,
     myns:               Vec<String>,
     f:                  fs::File,
     b:                  Buffers,
     emitted:            HashSet<String>,
-    pub export_header:  bool,
 }
 
 impl Drop for Emitter {
     fn drop(&mut self) {
+
+        if let ArtifactType::Header = self.artifact {
+            let ns = self.myns.join("::");
+            write!(self.f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", ns, ns).unwrap();
+        }
 
         self.f.write_all(&self.b.includes).unwrap();
         self.f.write_all(&self.b.macros).unwrap();
@@ -36,44 +42,30 @@ impl Drop for Emitter {
         self.f.write_all(&self.b.decls).unwrap();
         self.f.write_all(&self.b.defs).unwrap();
 
-        if self.export_header {
+        if let ArtifactType::Header = self.artifact {
             write!(self.f, "\n#endif\n").unwrap();
         }
     }
 }
 
 impl Emitter {
-    pub fn new(myns: Vec<String>) -> Self {
+    pub fn new(myns: Vec<String>, artifact: ArtifactType) -> Self {
         let ns = myns.join("::");
-        let p = format!("target/zz/{}.c", ns);
+        let p = if let ArtifactType::Header = artifact {
+            format!("target/include/{}.h", ns)
+        } else {
+            format!("target/zz/{}.c", ns)
+        };
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
         let mut emitted = HashSet::new();
         emitted.insert(String::from("module_") + &ns);
         Emitter{
+            artifact,
             myns,
             f,
             b: Buffers::default(),
             emitted,
-            export_header: false,
-        }
-    }
-
-    pub fn new_export_header(myns: Vec<String>) -> Self {
-        let ns = myns.join("::");
-        let p = format!("target/include/{}.h", ns);
-        let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
-
-        write!(f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", ns, ns).unwrap();
-
-        let mut emitted = HashSet::new();
-        emitted.insert(String::from("module_") + &ns);
-        Emitter{
-            myns,
-            f,
-            b: Buffers::default(),
-            emitted,
-            export_header: true,
         }
     }
 
@@ -108,15 +100,13 @@ impl Emitter {
 
 
         let mp : Vec<(&Module, Vec<String>, String, Import)> = mp.into_iter().map(|mp|{
-            let mut search = self.myns.clone();
-            search.pop();
-            search.extend(mp.namespace.iter().cloned());
+            let mut search = mp.namespace.clone();
             let mpname = search.pop().unwrap();
 
             let module = match modules.get(&search.join("::")) {
                 None => {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("module not found"),
+                        message: format!("internal compiler error: module was not resolved"),
                     }, mp.loc.span.clone());
                     error!("{} : {}", mp.loc.file, e);
                     std::process::exit(9);
@@ -176,7 +166,7 @@ impl Emitter {
             }
         }
 
-        for (n, (module, search, mpname, mp)) in mp.iter().enumerate() {
+        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
             for (name,fun) in &module.functions {
                 if name == mpname || mpname == "*" {
                     if let Visibility::Object  = fun.vis {
@@ -190,7 +180,7 @@ impl Emitter {
                     } else {
                         found[n] = true;
 
-                        self.declare(&fun, &search);
+                        self.declare(&fun, &module.namespace);
                     }
                 }
             }
@@ -200,7 +190,7 @@ impl Emitter {
             for (name,_) in &module.statics {
                 if name == mpname {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("static {} in {} is always private", mpname, mp.namespace.join("::")),
+                        message: format!("{} is static", mp.namespace.join("::")),
                     }, mp.loc.span.clone());
                     eprintln!("{} : {}", mp.loc.file, e);
                     std::process::exit(9);
@@ -245,7 +235,8 @@ impl Emitter {
         }
         let f = &mut self.b.statics;
 
-        if !self.export_header {
+        if let ArtifactType::Header = self.artifact {
+        } else {
             write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
 
@@ -274,7 +265,8 @@ impl Emitter {
         }
         let f = &mut self.b.constants;
 
-        if !self.export_header {
+        if let ArtifactType::Header = self.artifact {
+        } else {
             write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
         write!(f, "#define {} (({}){})\n", v.name, v.typ, v.expr.replace("\n", "\\\n")).unwrap();
@@ -286,7 +278,8 @@ impl Emitter {
         }
         let f = &mut self.b.macros;
 
-        if !self.export_header {
+        if let ArtifactType::Header = self.artifact {
+        } else {
             write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
 
@@ -304,7 +297,8 @@ impl Emitter {
         let f = &mut self.b.structs;
 
         write!(f, "typedef struct \n").unwrap();
-        if !self.export_header {
+        if let ArtifactType::Header = self.artifact {
+        } else {
             write!(f, "#line {} \"{}\"\n", s.loc.line, s.loc.file).unwrap();
         }
         write!(f, "{}\n",
@@ -353,19 +347,20 @@ impl Emitter {
         ns.push(v.name.clone());
         let mut fqn = ns.join("_");
 
-        if !self.export_header {
+        if let ArtifactType::Header = self.artifact {
+        } else {
             write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
-        match v.vis {
-            Visibility::Object => {
+
+        if v.name == "main" {
+            fqn = "main".into();
+        }
+        match &v.vis {
+            Visibility::Object  => {
                 fqn = v.name.clone();
                 write!(f, "static ").unwrap();
             },
-            _ => {
-                if v.name == "main" {
-                    fqn = "main".into();
-                }
-            },
+            _ => (),
         };
         match &v.ret {
             None       => write!(f, "void "),
@@ -375,15 +370,13 @@ impl Emitter {
         Self::function_args(f, &v);
         write!(f, ");\n").unwrap();
 
-        if self.export_header {
+        if let ArtifactType::Header = self.artifact {
             return;
         }
-
-        if fqn == "main" {
-            return;
-        }
-
         if let Visibility::Object = v.vis {
+            return;
+        }
+        if fqn == "main" {
             return;
         }
 
@@ -475,7 +468,8 @@ impl Emitter {
         if !self.emitted.insert(format!("include_{}", i.expr)) {
             return;
         }
-        if !self.export_header {
+        if let ArtifactType::Header = self.artifact {
+        } else {
             write!(f, "#line {} \"{}\"\n", i.loc.line, i.loc.file).unwrap();
         }
         write!(f, "#include {}\n", i.expr).unwrap();

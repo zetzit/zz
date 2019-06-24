@@ -1,0 +1,3 @@
+fn yoo() -> int {
+    return 2;
+}

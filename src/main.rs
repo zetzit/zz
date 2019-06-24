@@ -109,7 +109,7 @@ fn build(tests: bool) {
     std::fs::create_dir_all("./target/include/").expect("create target dir");
 
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
-        let namespace = artifact.name.split("::").map(|s|s.to_string()).collect();
+        let root_namespace = artifact.name.split("::").map(|s|s.to_string()).collect();
 
         match (tests, &artifact.typ) {
             (false, project::ArtifactType::Test) => continue,
@@ -119,9 +119,9 @@ fn build(tests: bool) {
             (true,  _) => continue,
         }
 
-        let modules   = resolver::resolve(&namespace, &Path::new(&artifact.file));
+        let modules   = resolver::resolve(&project, &root_namespace, &Path::new(&artifact.file));
         for (name, md) in &modules {
-            let mut em = Emitter::new(md.namespace.clone());
+            let mut em = Emitter::new(md.namespace.clone(), artifact.typ.clone());
 
             debug!("emitting {}", name);
 
@@ -151,7 +151,7 @@ fn build(tests: bool) {
         }
 
         if let project::ArtifactType::Lib = artifact.typ {
-            let mut header = Emitter::new_export_header(vec![project.project.name.clone()]);
+            let mut header = Emitter::new(vec![project.project.name.clone()], project::ArtifactType::Header);
             for (_name, md) in &modules {
                 for (_, v) in &md.macros{
                     if let ast::Visibility::Export = v.vis {
