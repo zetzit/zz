@@ -1,4 +1,4 @@
-use super::project::Project;
+use super::project::{Project, Artifact};
 use super::ast;
 use std::process::Command;
 use fasthash::metro;
@@ -12,27 +12,28 @@ pub struct Step {
 }
 
 pub struct Make {
+    artifact:   Artifact,
     steps:      Vec<Step>,
     cflags:     Vec<String>,
     lflags:     Vec<String>,
 }
 
 impl Make {
-    pub fn new(project: Project) -> Self {
+    pub fn new(mut project: Project, artifact: Artifact) -> Self {
         let mut lflags = Vec::new();
-        if let Some(plflags) = project.lflags{
-            lflags.extend(plflags);
+        if let Some(plflags) = &project.lflags{
+            lflags.extend(plflags.clone());
         }
 
         let mut cflags = Vec::new();
-        if let Some(pcflags) = project.cflags{
-            cflags.extend(pcflags);
+        if let Some(pcflags) = &project.cflags{
+            cflags.extend(pcflags.clone());
         }
 
-        if let Some(cincs) = project.cincludes {
+        if let Some(cincs) = &project.cincludes {
             for cinc in cincs {
                 cflags.push("-I".into());
-                cflags.push(cinc);
+                cflags.push(cinc.clone());
             }
         }
         cflags.push("-I".into());
@@ -40,13 +41,17 @@ impl Make {
         cflags.push("-fvisibility=hidden".to_string());
 
 
+        let cobjects = std::mem::replace(&mut project.cobjects, None);
+
         let mut m = Make {
+            artifact,
+            //project,
             lflags,
             cflags,
             steps: Vec::new(),
         };
 
-        if let Some(c) = project.cobjects {
+        if let Some(c) = cobjects {
             for c in c {
                 m.cobject(Path::new(&c));
             }
@@ -126,22 +131,31 @@ impl Make {
 
     pub fn link(mut self) {
         for step in self.steps {
-            println!("clang {:?}", step.source);
+            info!("clang {:?}", step.source);
             let status = Command::new("clang")
                 .args(step.args)
                 .status()
                 .expect("failed to execute cc");
             if !status.success() {
-                eprintln!("error compiling {:?}", step.source);
+                error!("error compiling {:?}", step.source);
                 std::process::exit(status.code().unwrap_or(3));
             }
         }
 
-        self.lflags.push("-o".into());
-        self.lflags.push("./target/exe".into());
+        match self.artifact.typ {
+            super::project::ArtifactType::Lib => {
+                self.lflags.push("-shared".into());
+                self.lflags.push("-o".into());
+                self.lflags.push(format!("./target/{}.so", self.artifact.name));
+            },
+            super::project::ArtifactType::Exe => {
+                self.lflags.push("-o".into());
+                self.lflags.push(format!("./target/{}", self.artifact.name));
+            }
+        }
         self.lflags.push("-fvisibility=hidden".into());
 
-        println!("ld {:?}", self.lflags);
+        info!("ld {:?}", self.lflags);
 
         let status = Command::new("clang")
             .args(&self.lflags)

@@ -3,7 +3,22 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
+
 #[derive(Deserialize)]
+pub enum ArtifactType {
+    Lib,
+    Exe,
+}
+
+#[derive(Deserialize)]
+pub struct Artifact {
+    #[serde(rename = "type")]
+    pub name:   String,
+    pub typ:    ArtifactType,
+    pub file:   String,
+}
+
+#[derive(Clone, Deserialize)]
 pub struct Project {
     pub name:       String,
     pub cincludes:  Option<Vec<String>>,
@@ -13,10 +28,11 @@ pub struct Project {
 }
 #[derive(Deserialize)]
 pub struct Config {
-    pub project:   Project,
+    pub project:    Project,
+    pub artifacts:  Option<Vec<Artifact>>,
 }
 
-pub fn load() -> (PathBuf, Project) {
+pub fn load() -> (PathBuf, Config) {
     let mut search = std::env::current_dir().unwrap();
     loop {
         if !search.join("zz.toml").exists() {
@@ -36,7 +52,27 @@ pub fn load() -> (PathBuf, Project) {
     let mut f = File::open(&search.join("zz.toml")).expect(&format!("cannot open {:?}", search));
     let mut s = String::new();
     f.read_to_string(&mut s).expect(&format!("cannot read {:?}", search));
-    let c : Config = toml::from_str(&mut s).expect(&format!("cannot read {:?}", search));
+    let mut c : Config = toml::from_str(&mut s).expect(&format!("cannot read {:?}", search));
 
-    (search.clone(), c.project)
+    if c.artifacts.is_none() {
+        let mut a = Vec::new();
+        if search.join("./src/main.zz").exists() {
+            a.push(Artifact{
+                name: c.project.name.clone(),
+                file: "./src/main.zz".to_string(),
+                typ:  ArtifactType::Exe,
+            });
+        }
+
+        if search.join("./src/lib.zz").exists() {
+            a.push(Artifact{
+                name: c.project.name.clone(),
+                file: "./src/lib.zz".to_string(),
+                typ:  ArtifactType::Lib,
+            });
+        }
+        c.artifacts = Some(a);
+    }
+
+    (search.clone(), c)
 }

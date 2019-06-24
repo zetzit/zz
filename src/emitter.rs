@@ -92,7 +92,7 @@ impl Emitter {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                         message: format!("imports nothing")
                     }, mp.loc.span.clone());
-                    eprintln!("{} : {}", mp.loc.file, e);
+                    error!("{} : {}", mp.loc.file, e);
                     std::process::exit(9);
                 }
                 self.include(&Include{
@@ -118,7 +118,7 @@ impl Emitter {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                         message: format!("module not found"),
                     }, mp.loc.span.clone());
-                    eprintln!("{} : {}", mp.loc.file, e);
+                    error!("{} : {}", mp.loc.file, e);
                     std::process::exit(9);
                 }
                 Some(m3) => m3,
@@ -145,7 +145,7 @@ impl Emitter {
                         let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                             message: format!("macro {} in {} is private", mpname, mp.namespace.join("::")),
                         }, mp.loc.span.clone());
-                        eprintln!("{} : {}", mp.loc.file, e);
+                        error!("{} : {}", mp.loc.file, e);
                         std::process::exit(9);
                     };
                     found[n] = true;
@@ -165,7 +165,7 @@ impl Emitter {
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                 message: format!("struct {} in {} is private", mpname, mp.namespace.join("::")),
                             }, mp.loc.span.clone());
-                            eprintln!("{} : {}", mp.loc.file, e);
+                            error!("{} : {}", mp.loc.file, e);
                             std::process::exit(9);
                         }
                     } else {
@@ -184,7 +184,7 @@ impl Emitter {
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                 message: format!("function {} in {} is private", mpname, mp.namespace.join("::")),
                             }, mp.loc.span.clone());
-                            eprintln!("{} : {}", mp.loc.file, e);
+                            error!("{} : {}", mp.loc.file, e);
                             std::process::exit(9);
                         }
                     } else {
@@ -216,7 +216,7 @@ impl Emitter {
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                 message: format!("constant {} in {} is private", mpname, mp.namespace.join("::")),
                             }, mp.loc.span.clone());
-                            eprintln!("{} : {}", mp.loc.file, e);
+                            error!("{} : {}", mp.loc.file, e);
                             std::process::exit(9);
                         }
                     } else {
@@ -233,7 +233,7 @@ impl Emitter {
                 let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                     message: format!("cannot find {} in {}", mpname, mp.namespace.join("::")),
                 }, mp.loc.span.clone());
-                eprintln!("{} : {}", mp.loc.file, e);
+                error!("{} : {}", mp.loc.file, e);
                 std::process::exit(9);
             }
         }

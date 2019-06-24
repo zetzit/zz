@@ -11,7 +11,7 @@ pub fn parse<'a>(ns: Vec<String>, n: &Path) -> Module<'a>
 {
     match p(ns, &n){
         Err(e) => {
-            eprintln!("{:?} : {}", n, e);
+            error!("{:?} : {}", n, e);
             std::process::exit(9);
         }
         Ok(md) => {
@@ -302,7 +302,7 @@ fn p<'a>(nsi: Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Ru
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                 message: format!("cannot change visibility static variable"),
                             }, part.as_span());
-                            eprintln!("{} : {}", n.to_string_lossy(), e);
+                            error!("{} : {}", n.to_string_lossy(), e);
                             std::process::exit(9);
                         }
                         Rule::typ if typ.is_none() => {

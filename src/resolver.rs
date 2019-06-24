@@ -28,16 +28,16 @@ pub fn resolve<'a>(namespace: &Vec<String>, main: &Path) -> HashMap<String, ast:
                     let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                         message: format!("cannot import self"),
                     }, mp.loc.span.clone());
-                    eprintln!("{} : {}", mp.loc.file, e);
+                    error!("{} : {}", mp.loc.file, e);
                     std::process::exit(9);
                 }
 
                 if let Some(m3) = &r.modules.get(&search.join("::")) {
-                    eprintln!("resolved import {} as module {}", mp.namespace.join("::"), m3.namespace.join("::"));
+                    debug!("resolved import {} as module {}", mp.namespace.join("::"), m3.namespace.join("::"));
                     return Some(mp);
                 }
                 if let Some("c") = mp.namespace.first().map(|s|s.as_str()) {
-                    eprintln!("resolved import {} as c system include", mp.namespace.join("::"));
+                    debug!("resolved import {} as c system include", mp.namespace.join("::"));
                     return Some(mp);
                 }
 
@@ -51,18 +51,18 @@ pub fn resolve<'a>(namespace: &Vec<String>, main: &Path) -> HashMap<String, ast:
                     parent.pop();
                     let m = parser::parse(parent.clone(), &n2);
                     assert!(m.namespace == search , "{:?} != {:?}", m.namespace, search);
-                    eprintln!("resolved import {} as new module {}", mp.namespace.join("::"), m.namespace.join("::"));
+                    debug!("resolved import {} as new module {}", mp.namespace.join("::"), m.namespace.join("::"));
                     is_dirty = true;
                     let ns = m.namespace.join("::");
                     if r.modules.insert(ns.clone(), m).is_some() {
-                        eprintln!("bug : loaded module {} was already inserted",ns);
+                        error!("bug : loaded module {} was already inserted",ns);
                         std::process::exit(9);
                     }
                     Some(mp)
                 } else {
                     n2 = Path::new("./src").join(&path).with_extension("h");
                     if n2.exists() {
-                        eprintln!("resolved import {} as c file {:?}", mp.namespace.join("::"), n2);
+                        debug!("resolved import {} as c file {:?}", mp.namespace.join("::"), n2);
                         module.includes.push(ast::Include{
                             expr: format!("{:?}", n2.canonicalize().unwrap()),
                             vis: mp.vis.clone(),
@@ -73,7 +73,7 @@ pub fn resolve<'a>(namespace: &Vec<String>, main: &Path) -> HashMap<String, ast:
                         let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                             message: format!("cannot find module"),
                         }, mp.loc.span.clone());
-                        eprintln!("{} : {}", mp.loc.file, e);
+                        error!("{} : {}", mp.loc.file, e);
                         std::process::exit(9);
                     }
                     None
