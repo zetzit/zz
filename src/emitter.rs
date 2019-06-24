@@ -7,6 +7,18 @@ use std::io::Write;
 use super::parser::Rule;
 
 
+macro_rules! compile_error {
+    ($loc:expr, $m:expr) => {
+        {
+            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                message: $m,
+            }, $loc.span.clone());
+            error!("compile error\n{}{}", $loc.file, e);
+            std::process::exit(9);
+        }
+    };
+}
+
 #[derive(Default)]
 struct Buffers {
     includes:   Vec<u8>,
@@ -19,11 +31,13 @@ struct Buffers {
 }
 
 pub struct Emitter{
-    artifact:           ArtifactType,
-    myns:               Vec<String>,
-    f:                  fs::File,
-    b:                  Buffers,
-    emitted:            HashSet<String>,
+    artifact:       ArtifactType,
+    myns:           Vec<String>,
+    f:              fs::File,
+    b:              Buffers,
+    locals:         HashMap<String, (Location, Vec<Location>)>,
+    included:       HashSet<String>,
+    importstack:    Vec<Location>,
 }
 
 impl Drop for Emitter {
@@ -58,22 +72,70 @@ impl Emitter {
         };
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
-        let mut emitted = HashSet::new();
-        emitted.insert(String::from("module_") + &ns);
         Emitter{
             artifact,
             myns,
             f,
             b: Buffers::default(),
-            emitted,
+            locals: HashMap::new(),
+            included: HashSet::new(),
+            importstack: Vec::new(),
         }
     }
 
-    pub fn import(&mut self, modules: &HashMap<String, Module>, mut mp: Vec<Import>) {
+    pub fn nameguard(&mut self, name: String, source_loc: Location) -> bool {
 
-        mp.retain(|mp|{
-            if mp.namespace.first().map(|s|s.as_str()) == Some("c") {
-                let mut ns = mp.namespace.clone();
+        if let Some(previous) = self.locals.insert(name.clone(), (source_loc.clone(), self.importstack.clone())) {
+            if previous.0 != source_loc {
+
+
+                let mut errs = format!("conflict in module {}\n", self.myns.join("::"));
+
+
+                if self.importstack.len() == 0 {
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("conflicting declaration of '{}'\n", name),
+                    }, source_loc.span.clone());
+                    errs += &format!("{}{}\n", source_loc.file, e);
+                }
+                for loc in self.importstack.clone() {
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("conflicting import of '{}'\n", name),
+                    }, loc.span.clone());
+                    errs += &format!("{}{}\n", loc.file, e);
+                }
+
+                if previous.1.len() == 0 {
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: "was already defined here".to_string(),
+                    }, previous.0.span.clone());
+                    errs += &format!("{}{}\n", previous.0.file, e);
+                }
+
+                for loc in previous.1 {
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: "was already imported here".to_string(),
+                    }, loc.span.clone());
+                    errs += &format!("{}{}\n", loc.file, e);
+                }
+
+                error!("{}", errs);
+
+                std::process::exit(9);
+            }
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn import(&mut self, modules: &HashMap<String, Module>, mut imps: Vec<Import>) {
+
+
+        // import any c file as include
+        imps.retain(|imp|{
+            if imp.namespace.first().map(|s|s.as_str()) == Some("c") {
+                let mut ns = imp.namespace.clone();
                 ns.remove(0);
 
                 if ns.last().map(|s|s.as_str()) == Some("*") {
@@ -81,16 +143,12 @@ impl Emitter {
                 }
 
                 if ns.len() < 1 {
-                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("imports nothing")
-                    }, mp.loc.span.clone());
-                    error!("{} : {}", mp.loc.file, e);
-                    std::process::exit(9);
+                    compile_error!(imp.loc, format!("imports nothing"));
                 }
                 self.include(&Include{
                     expr: format!("<{}.h>", ns.join("/")),
-                    vis: mp.vis.clone(),
-                    loc: mp.loc.clone(),
+                    vis: imp.vis.clone(),
+                    loc: imp.loc.clone(),
                 });
                 false
             } else {
@@ -98,65 +156,67 @@ impl Emitter {
             }
         });
 
+        // resolve imports to modules
+        let imps : Vec<(&Module, Vec<String>, String, Import)> = imps.into_iter().map(|imp|{
 
-        let mp : Vec<(&Module, Vec<String>, String, Import)> = mp.into_iter().map(|mp|{
-            let mut search = mp.namespace.clone();
+            let mut search = imp.namespace.clone();
             let mpname = search.pop().unwrap();
 
             let module = match modules.get(&search.join("::")) {
                 None => {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                         message: format!("internal compiler error: module was not resolved"),
-                    }, mp.loc.span.clone());
-                    error!("{} : {}", mp.loc.file, e);
+                    }, imp.loc.span.clone());
+                    error!("{} : {}", imp.loc.file, e);
                     std::process::exit(9);
                 }
                 Some(m3) => m3,
             };
 
-            if self.emitted.insert(format!("module_{}", module.namespace.join("::"))) {
+            /* TODO importing recursively is shitty
+            if (self.nameguard(module.namespace.join("::"), format!("imported as {}", module.namespace.join("::")))) {
                 for i in &module.includes {
                     if let Visibility::Export = i.vis {
                         self.include(i);
                     }
                 }
-
                 self.import(modules, module.imports.clone());
             }
-            (module, search, mpname, mp)
+            */
+
+            (module, search, mpname, imp)
         }).collect();
 
-        let mut found = vec![false; mp.len()];
+        let mut found = vec![false; imps.len()];
 
-        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+        // macros
+        for (n, (module, _search, mpname, imp)) in imps.iter().enumerate() {
+            self.importstack.push(imp.loc.clone());
             for (name,v) in &module.macros {
                 if name == mpname || mpname == "*" {
                     if let Visibility::Object  = v.vis {
-                        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                            message: format!("macro {} in {} is private", mpname, mp.namespace.join("::")),
-                        }, mp.loc.span.clone());
-                        error!("{} : {}", mp.loc.file, e);
-                        std::process::exit(9);
+                        compile_error!(imp.loc, format!("macro {} in {} is private", mpname, imp.namespace.join("::")));
                     };
                     found[n] = true;
                     for mp in &v.imports {
+                        self.importstack.push(mp.loc.clone());
                         self.import(modules, vec![mp.clone()]);
+                        self.importstack.pop();
                     }
                     self.imacro(&v);
                 }
             }
+            self.importstack.pop();
         }
 
-        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+        // structs
+        for (n, (module, _search, mpname, imp)) in imps.iter().enumerate() {
+            self.importstack.push(imp.loc.clone());
             for s in &module.structs {
                 if &s.name == mpname || mpname == "*" {
                     if let Visibility::Object  = s.vis {
                         if mpname != "*" {
-                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                                message: format!("struct {} in {} is private", mpname, mp.namespace.join("::")),
-                            }, mp.loc.span.clone());
-                            error!("{} : {}", mp.loc.file, e);
-                            std::process::exit(9);
+                            compile_error!(imp.loc, format!("struct {} in {} is private", mpname, imp.namespace.join("::")));
                         }
                     } else {
                         found[n] = true;
@@ -164,18 +224,17 @@ impl Emitter {
                     }
                 }
             }
+            self.importstack.pop();
         }
 
-        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+        // function declarations
+        for (n, (module, _search, mpname, imp)) in imps.iter().enumerate() {
+            self.importstack.push(imp.loc.clone());
             for (name,fun) in &module.functions {
                 if name == mpname || mpname == "*" {
                     if let Visibility::Object  = fun.vis {
                         if mpname != "*" {
-                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                                message: format!("function {} in {} is private", mpname, mp.namespace.join("::")),
-                            }, mp.loc.span.clone());
-                            error!("{} : {}", mp.loc.file, e);
-                            std::process::exit(9);
+                            compile_error!(imp.loc, format!("function {} in {} is private", mpname, imp.namespace.join("::")));
                         }
                     } else {
                         found[n] = true;
@@ -184,30 +243,28 @@ impl Emitter {
                     }
                 }
             }
+            self.importstack.pop();
         }
 
-        for (_n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+        // statics
+        for (_n, (module, _search, mpname, imp)) in imps.iter().enumerate() {
+            self.importstack.push(imp.loc.clone());
             for (name,_) in &module.statics {
                 if name == mpname {
-                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("{} is static", mp.namespace.join("::")),
-                    }, mp.loc.span.clone());
-                    eprintln!("{} : {}", mp.loc.file, e);
-                    std::process::exit(9);
+                    compile_error!(imp.loc, format!("{} is static", imp.namespace.join("::")));
                 }
             }
+            self.importstack.pop();
         }
 
-        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+        // constants
+        for (n, (module, _search, mpname, imp)) in imps.iter().enumerate() {
+            self.importstack.push(imp.loc.clone());
             for (name,v) in &module.constants {
                 if name == mpname || mpname == "*" {
                     if let Visibility::Object  = v.vis {
                         if mpname != "*" {
-                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                                message: format!("constant {} in {} is private", mpname, mp.namespace.join("::")),
-                            }, mp.loc.span.clone());
-                            error!("{} : {}", mp.loc.file, e);
-                            std::process::exit(9);
+                            compile_error!(imp.loc, format!("constant {} in {} is private", mpname, imp.namespace.join("::")));
                         }
                     } else {
                         found[n] = true;
@@ -215,22 +272,19 @@ impl Emitter {
                     }
                 }
             }
+            self.importstack.pop();
         }
 
-
-        for (n, (_module, _search, mpname, mp)) in mp.iter().enumerate() {
+        // check if we found all imports
+        for (n, (_module, _search, mpname, imp)) in imps.iter().enumerate() {
             if !found[n] {
-                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                    message: format!("cannot find {} in {}", mpname, mp.namespace.join("::")),
-                }, mp.loc.span.clone());
-                error!("{} : {}", mp.loc.file, e);
-                std::process::exit(9);
+                compile_error!(imp.loc, format!("cannot find {} in {}", mpname, imp.namespace.join("::")));
             }
         }
     }
 
     pub fn istatic(&mut self, v: &Static) {
-        if !self.emitted.insert(format!("{}", v.name)) {
+        if !self.nameguard(v.name.clone(), v.loc.clone()) {
             return;
         }
         let f = &mut self.b.statics;
@@ -260,9 +314,10 @@ impl Emitter {
     }
 
     pub fn constant(&mut self, v: &Const) {
-        if !self.emitted.insert(format!("{}", v.name)) {
+        if !self.nameguard(v.name.clone(), v.loc.clone()) {
             return;
         }
+
         let f = &mut self.b.constants;
 
         if let ArtifactType::Header = self.artifact {
@@ -273,7 +328,7 @@ impl Emitter {
     }
 
     pub fn imacro(&mut self, v: &Macro) {
-        if !self.emitted.insert(format!("{}", v.name)) {
+        if !self.nameguard(v.name.clone(), v.loc.clone()) {
             return;
         }
         let f = &mut self.b.macros;
@@ -291,7 +346,7 @@ impl Emitter {
     }
 
     pub fn struc(&mut self, s: &Struct) {
-        if !self.emitted.insert(format!("struct::{}", s.name)) {
+        if !self.nameguard(s.name.clone(), s.loc.clone()) {
             return;
         }
         let f = &mut self.b.structs;
@@ -338,9 +393,10 @@ impl Emitter {
     }
 
     pub fn declare(&mut self, v: &Function, ns: &Vec<String>) {
-        if !self.emitted.insert(format!("{:?}::{}", ns, v.name)) {
+        if !self.nameguard(v.name.clone(), v.loc.clone()) {
             return;
         }
+
         let f = &mut self.b.decls;
 
         let mut ns = ns.clone();
@@ -417,7 +473,7 @@ impl Emitter {
                     write!(f, " {}", arg.name).unwrap();
                 }
 
-                write!(f, ");}}; \n").unwrap();
+                write!(f, ");}} \n").unwrap();
             }
         }
 
@@ -465,7 +521,7 @@ impl Emitter {
 
     pub fn include(&mut self, i: &Include) {
         let f = &mut self.b.includes;
-        if !self.emitted.insert(format!("include_{}", i.expr)) {
+        if !self.included.insert(i.expr.clone()) {
             return;
         }
         if let ArtifactType::Header = self.artifact {

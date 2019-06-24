@@ -25,3 +25,8 @@ export fn horst() -> uint32_t {
     printf("wee? %f\n", gimme_wee());
     return ADD_IMPL(3, 3);
 }
+
+
+
+
+const int conflict = 1;

@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use super::project::Config;
 
 #[derive(Default)]
-struct Resolver<'a> {
-    modules: HashMap<String, ast::Module<'a>>,
+struct Resolver {
+    modules: HashMap<String, ast::Module>,
 }
 
 
@@ -47,11 +47,11 @@ pub fn to_absolute_namespace(
     None
 }
 
-pub fn resolve<'a>(
+pub fn resolve(
     project: &Config,
     artifact_namespace: &Vec<String>,
     main: &Path
-) -> HashMap<String, ast::Module<'a>> {
+) -> HashMap<String, ast::Module> {
 
     let mut r = Resolver::default();
     let md = parser::parse(artifact_namespace.clone(), &main);
@@ -117,6 +117,10 @@ pub fn resolve<'a>(
                 // already cached
                 if let Some(m3) = &r.modules.get(&search.join("::")) {
                     debug!("resolved import {} as module {}", imp.namespace.join("::"), m3.namespace.join("::"));
+
+                    for source in &m3.sources {
+                        module.sources.insert(source.clone());
+                    }
                     return Some(imp);
                 }
 
@@ -135,6 +139,10 @@ pub fn resolve<'a>(
                 let m = parser::parse(parent, &path);
                 assert!(m.namespace == search , "{:?} != {:?}", m.namespace, search);
 
+                for source in &m.sources {
+                    module.sources.insert(source.clone());
+                }
+
                 debug!("resolved import {} as new module {}", imp.namespace.join("::"), m.namespace.join("::"));
                 is_dirty = true;
                 let ns = m.namespace.join("::");
@@ -144,68 +152,6 @@ pub fn resolve<'a>(
                 }
                 Some(imp)
 
-
-                /*
-
-
-
-
-
-                let mut path = imp.namespace.clone();
-                path.pop();
-                let path = path.join("/");
-
-                let mut parent = search.clone();
-                parent.pop();
-
-                let mut n2 = module.source.parent().unwrap().join(&path).with_extension("zz");
-                if !n2.exists() && imp.namespace[0] == project.project.name  {
-
-                    let mut path = imp.namespace.clone();
-                    path.remove(0);
-                    path.pop();
-                    let path = path.join("/");
-
-                    let nn2 = Path::new("./src").join(&path).with_extension("zz");
-                    if nn2.exists() {
-                        search = imp.namespace.clone();
-                        search.pop();
-                        parent = vec![project.project.name.clone()];
-                        n2 = nn2;
-                    }
-                }
-                if n2.exists() {
-                    let m = parser::parse(parent.clone(), &n2);
-                    assert!(m.namespace == search , "{:?} != {:?}", m.namespace, search);
-                    debug!("resolved import {} as new module {}", imp.namespace.join("::"), m.namespace.join("::"));
-                    is_dirty = true;
-                    let ns = m.namespace.join("::");
-                    if r.modules.insert(ns.clone(), m).is_some() {
-                        error!("bug : loaded module {} was already inserted",ns);
-                        std::process::exit(9);
-                    }
-                    Some(imp)
-                } else {
-                    n2 = Path::new("./src").join(&path).with_extension("h");
-                    if n2.exists() {
-                        debug!("resolved import {} as c file {:?}", imp.namespace.join("::"), n2);
-                        module.includes.push(ast::Include{
-                            expr: format!("{:?}", n2.canonicalize().unwrap()),
-                            vis: imp.vis.clone(),
-                            loc: imp.loc.clone(),
-                        });
-                        module.sources.extend(vec![n2.clone()]);
-                    } else {
-                        let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                            message: format!("cannot find module"),
-                        }, imp.loc.span.clone());
-                        error!("{} : {}", imp.loc.file, e);
-                        std::process::exit(9);
-                    }
-                    None
-                }
-
-                */
             });
             module.imports = imports.collect();
             r.modules.insert(name, module);
@@ -214,25 +160,5 @@ pub fn resolve<'a>(
             break;
         }
     }
-
-
-    /*
-    for name in r.modules.keys().cloned().collect::<Vec<String>>().into_iter() {
-        let mut module = r.modules.remove(&name).unwrap();
-        for mp in &module.imports {
-            if let Some("c") = mp.namespace.first().map(|s|s.as_str()) {
-                continue;
-            }
-            let mut search = namespace.clone();
-            search.extend(mp.namespace.iter().cloned());
-            search.pop();
-
-            let m2 = &r.modules[&search.join("::")];
-            module.sources.extend(m2.sources.clone());
-        }
-        r.modules.insert(name, module);
-    }
-    */
-
     r.modules
 }

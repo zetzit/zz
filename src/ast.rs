@@ -3,14 +3,14 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 
-#[derive(Clone)]
-pub struct Location<'a> {
+#[derive(PartialEq, Clone)]
+pub struct Location {
     pub line:   usize,
     pub file:   String,
-    pub span:   pest::Span<'a>,
+    pub span:   pest::Span<'static>,
 }
 
-impl<'a> std::fmt::Display for Location<'a> {
+impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.file, self.line)
     }
@@ -32,49 +32,49 @@ pub enum Visibility {
 }
 
 #[derive(Clone)]
-pub struct Import<'a> {
+pub struct Import {
     pub namespace:  Vec<String>,
     pub vis:        Visibility,
-    pub loc:        Location<'a>,
+    pub loc:        Location,
 }
 
 #[derive(Clone)]
-pub struct Static<'a> {
+pub struct Static {
     pub typ:    String,
     pub name:   String,
     pub expr:   String,
     pub muta:   bool,
     pub storage: Storage,
-    pub loc:    Location<'a>,
+    pub loc:    Location,
 }
 
 #[derive(Clone)]
-pub struct Const<'a> {
+pub struct Const {
     pub typ:    String,
     pub name:   String,
     pub expr:   String,
     pub vis:    Visibility,
-    pub loc:    Location<'a>,
+    pub loc:    Location,
 }
 
 #[derive(Clone)]
-pub struct Include<'a> {
+pub struct Include {
     pub expr:   String,
-    pub loc:    Location<'a>,
+    pub loc:    Location,
     pub vis:    Visibility,
 }
 
 #[derive(Default, Clone)]
-pub struct Module<'a> {
+pub struct Module {
     pub namespace:  Vec<String>,
     pub source:     PathBuf,
-    pub functions:  HashMap<String, Function<'a>>,
-    pub macros:     HashMap<String, Macro<'a>>,
-    pub constants:  HashMap<String, Const<'a>>,
-    pub statics:    HashMap<String, Static<'a>>,
-    pub structs:    Vec<Struct<'a>>,
-    pub imports:    Vec<Import<'a>>,
-    pub includes:   Vec<Include<'a>>,
+    pub functions:  HashMap<String, Function>,
+    pub macros:     HashMap<String, Macro>,
+    pub constants:  HashMap<String, Const>,
+    pub statics:    HashMap<String, Static>,
+    pub structs:    Vec<Struct>,
+    pub imports:    Vec<Import>,
+    pub includes:   Vec<Include>,
     pub sources:    HashSet<PathBuf>,
 }
 
@@ -93,30 +93,30 @@ pub struct NamedArg {
 }
 
 #[derive(Clone)]
-pub struct Function<'a> {
+pub struct Function {
     pub ret:    Option<AnonArg>,
     pub args:   Vec<NamedArg>,
     pub name:   String,
     pub body:   String,
     pub vis:    Visibility,
-    pub loc:    Location<'a>,
+    pub loc:    Location,
 }
 
 #[derive(Clone)]
-pub struct Macro<'a> {
+pub struct Macro {
     pub args:       Vec<String>,
     pub name:       String,
     pub body:       String,
-    pub imports:    Vec<Import<'a>>,
+    pub imports:    Vec<Import>,
     pub vis:        Visibility,
-    pub loc:        Location<'a>,
+    pub loc:        Location,
 }
 
 #[derive(Clone)]
-pub struct Struct<'a> {
+pub struct Struct {
     pub name:   String,
     pub body:   String,
     pub vis:    Visibility,
-    pub loc:    Location<'a>,
+    pub loc:    Location,
     pub packed: bool,
 }

@@ -5,3 +5,8 @@ macro using(c::math) ADD_IMPL (a,b) {
     floor(a +
         b)
 }
+
+
+export fn conflict() -> int {
+    return 3;
+}

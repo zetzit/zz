@@ -27,7 +27,6 @@ fn main() {
 
     let matches = App::new("Drunk Octopus")
         .version(clap::crate_version!())
-        .setting(clap::AppSettings::ArgRequiredElseHelp)
         .setting(clap::AppSettings::UnifiedHelpMessage)
         .subcommand(SubCommand::with_name("build").about("build the current project"))
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
@@ -90,7 +89,7 @@ fn main() {
                 .expect("failed to execute process");
             std::process::exit(status.code().expect("failed to execute process"));
         },
-        ("build", Some(_submatches)) => {
+        ("build", _) | ("", None) => {
             build(false)
         },
         _ => unreachable!(),

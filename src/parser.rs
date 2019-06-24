@@ -7,7 +7,7 @@ use std::io::{Read};
 #[grammar = "zz.pest"]
 pub struct ZZParser;
 
-pub fn parse<'a>(ns: Vec<String>, n: &Path) -> Module<'a>
+pub fn parse(ns: Vec<String>, n: &Path) -> Module
 {
     match p(ns, &n){
         Err(e) => {
@@ -20,7 +20,7 @@ pub fn parse<'a>(ns: Vec<String>, n: &Path) -> Module<'a>
     }
 }
 
-fn p<'a>(nsi: Vec<String>, n: &Path) -> Result<Module<'a>, pest::error::Error<Rule>> {
+fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
     let mut module = Module::default();
     module.source = n.to_path_buf();
