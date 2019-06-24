@@ -152,10 +152,14 @@ impl Make {
                 self.lflags.push("-o".into());
                 self.lflags.push(format!("./target/{}", self.artifact.name));
             }
+            super::project::ArtifactType::Test  => {
+                self.lflags.push("-o".into());
+                self.lflags.push(format!("./target/{}", self.artifact.name));
+            }
         }
         self.lflags.push("-fvisibility=hidden".into());
 
-        info!("ld {:?}", self.lflags);
+        info!("ld {}", self.artifact.name);
 
         let status = Command::new("clang")
             .args(&self.lflags)

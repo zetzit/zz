@@ -8,6 +8,7 @@ use std::path::PathBuf;
 pub enum ArtifactType {
     Lib,
     Exe,
+    Test,
 }
 
 #[derive(Deserialize)]
@@ -72,6 +73,22 @@ pub fn load() -> (PathBuf, Config) {
             });
         }
         c.artifacts = Some(a);
+    }
+
+    if let Ok(dd) = std::fs::read_dir("./tests/") {
+        for entry in dd {
+            let entry = entry.unwrap();
+            let path  = entry.path();
+            if path.is_file() {
+                if let Some("zz") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
+                    c.artifacts.as_mut().unwrap().push(Artifact{
+                        name: format!("tests::{}::{}", c.project.name, path.file_stem().unwrap().to_string_lossy()),
+                        file: path.to_string_lossy().into(),
+                        typ:  ArtifactType::Test,
+                    });
+                }
+            }
+        }
     }
 
     (search.clone(), c)

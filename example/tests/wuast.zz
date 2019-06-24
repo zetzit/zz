@@ -1,0 +1,11 @@
+import c::assert;
+
+fn bob_is_a_failure() {
+    assert(1 == 0);
+}
+
+
+export fn main() -> int {
+    bob_is_a_failure();
+    return 0;
+}

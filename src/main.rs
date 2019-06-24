@@ -31,6 +31,7 @@ fn main() {
         .setting(clap::AppSettings::UnifiedHelpMessage)
         .subcommand(SubCommand::with_name("build").about("build the current project"))
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
+        .subcommand(SubCommand::with_name("test").about("execute all in tests/*.zz"))
         .subcommand(SubCommand::with_name("run").about("build and run"))
         .get_matches();
 
@@ -43,9 +44,28 @@ fn main() {
             }
         },
         ("test", Some(_submatches)) => {
+            build(true);
+            let (root, mut project) = project::load();
+            std::env::set_current_dir(root).unwrap();
+
+            for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
+                if let project::ArtifactType::Test = artifact.typ {
+                    info!("running \"./target/{}\"\n", artifact.name);
+                    let status = Command::new(format!("./target/{}", artifact.name))
+                        .status()
+                        .expect("failed to execute process");
+                    if let Some(0) = status.code()  {
+                        info!("PASS {}", artifact.name);
+                    } else {
+                        error!("FAIL {} {:?}", artifact.name, status);
+                        std::process::exit(10);
+                    }
+                }
+            }
+
         }
         ("run", Some(_submatches)) => {
-            build();
+            build(false);
             let (root, mut project) = project::load();
             std::env::set_current_dir(root).unwrap();
 
@@ -71,7 +91,7 @@ fn main() {
             std::process::exit(status.code().expect("failed to execute process"));
         },
         ("build", Some(_submatches)) => {
-            build()
+            build(false)
         },
         _ => unreachable!(),
     }
@@ -79,7 +99,7 @@ fn main() {
 
 
 
-fn build() {
+fn build(tests: bool) {
 
     let (root, mut project) = project::load();
     std::env::set_current_dir(root).unwrap();
@@ -91,6 +111,14 @@ fn build() {
     let namespace = vec![project.project.name.clone()];
 
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
+
+        match (tests, &artifact.typ) {
+            (false, project::ArtifactType::Test) => continue,
+            (false, _) => (),
+            (true,  project::ArtifactType::Test) => (),
+            (true,  _) => continue,
+        }
+
         let modules   = resolver::resolve(&namespace, &Path::new(&artifact.file));
         for (name, md) in &modules {
             let mut em = Emitter::new(md.namespace.clone());
