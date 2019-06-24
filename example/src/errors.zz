@@ -1,8 +1,5 @@
-import c::stdint;
-
-import constants::*;
-
-export struct error {
+import c::stdint::uint8_t;
+struct error {
     uint8_t error;
     char    description[255];
     char    locations[255];

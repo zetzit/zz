@@ -37,7 +37,12 @@ path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
 include     = { "#include" ~ (syspath | localpath) }
-struct_c    = @{"{" ~ (!("}"| "/*")  ~ ANY)* ~ "}" }
+
+
+struct_f    = @{ (!(";"| "/*")  ~ ANY)* ~ ";" }
+struct_t    = ${ namespace? ~ ident}
+field       = { struct_t ~ struct_f }
+struct_c    = _{"{" ~ field* ~ "}" }
 struct_d    = { (key_pub | key_private | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
 expression  = @{(!(";"| "/*")  ~ ANY)*}

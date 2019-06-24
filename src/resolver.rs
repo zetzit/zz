@@ -78,7 +78,7 @@ pub fn resolve(
                     &module.source,
                     &module.namespace,
                     artifact_namespace,
-                    search,
+                    search.clone(),
                 ) {
                     Some(v) => v,
                     None => {
@@ -101,9 +101,9 @@ pub fn resolve(
 
                         // really not found
                         let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                            message: format!("cannot find module"),
-                        }, imp.loc.span.clone());
-                        error!("{} : {}", imp.loc.file, e);
+                            message: format!("when imported here"),
+                        }, imp.loc.span.clone()).with_path(&imp.loc.file);
+                        error!("cannot find module '{}'\n{}\n", search.join("::"), e);
                         std::process::exit(9);
                     }
                 };

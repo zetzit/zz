@@ -1,4 +1,4 @@
-import c::assert;
+import c::assert::assert;
 
 fn bob_is_a_failure() {
     assert(1 == 0);

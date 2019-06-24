@@ -7,13 +7,30 @@ use std::io::Write;
 use super::parser::Rule;
 
 
+
 macro_rules! compile_error {
-    ($loc:expr, $m:expr) => {
+    ($self:ident, $e:expr, $loc:expr, $m:expr) => {
         {
+            let mut errs = format!("{}\n", $e);
+
+            let m : Option<&str> = $m;
+            let message : String = match m {
+                Some(v) => v.to_string(),
+                None    => "".into(),
+            };
             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                message: $m,
+                message,
             }, $loc.span.clone());
-            error!("compile error\n{}{}", $loc.file, e);
+            errs += &format!("{}{}\n", $loc.file, e);
+
+            for loc in $self.importstack.clone() {
+                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                    message: format!("when importing here\n"),
+                }, loc.span.clone());
+                errs += &format!("\n{}{}", loc.file, e);
+            }
+
+            error!("{}", errs);
             std::process::exit(9);
         }
     };
@@ -84,23 +101,22 @@ impl Emitter {
     }
 
     pub fn nameguard(&mut self, name: String, source_loc: Location) -> bool {
-
         if let Some(previous) = self.locals.insert(name.clone(), (source_loc.clone(), self.importstack.clone())) {
             if previous.0 != source_loc {
 
 
-                let mut errs = format!("conflict in module {}\n", self.myns.join("::"));
+                let mut errs = format!("conflicting declaration of '{}'\n", name);
 
 
                 if self.importstack.len() == 0 {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("conflicting declaration of '{}'\n", name),
+                        message: format!("redeclaration of '{}'\n", name),
                     }, source_loc.span.clone());
                     errs += &format!("{}{}\n", source_loc.file, e);
                 }
                 for loc in self.importstack.clone() {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("conflicting import of '{}'\n", name),
+                        message: format!("imported here"),
                     }, loc.span.clone());
                     errs += &format!("{}{}\n", loc.file, e);
                 }
@@ -129,21 +145,41 @@ impl Emitter {
         }
     }
 
+    pub fn type_in_scope(&self, typ: &str, use_loc: &Location) {
+        match typ {
+            "char" => return,
+            "int"  => return,
+            _ =>()
+        }
+        if let None = self.locals.get(typ) {
+            debug!("types in scope: {:#?}", self.locals.keys());
+            compile_error!(self,
+                           format!("undefined type '{}'", typ),
+                           use_loc, Some("type not available in this scope"));
+        }
+    }
+
     pub fn import(&mut self, modules: &HashMap<String, Module>, mut imps: Vec<Import>) {
 
 
         // import any c file as include
         imps.retain(|imp|{
             if imp.namespace.first().map(|s|s.as_str()) == Some("c") {
+
                 let mut ns = imp.namespace.clone();
                 ns.remove(0);
+                let typ = ns.pop().unwrap();
 
-                if ns.last().map(|s|s.as_str()) == Some("*") {
-                    ns.pop();
+                if typ == "*" {
+                    compile_error!(self, format!("cannot import * from a c header"), imp.loc, None);
+                }
+
+                if !self.nameguard(typ.clone(), imp.loc.clone()) {
+                    return false;
                 }
 
                 if ns.len() < 1 {
-                    compile_error!(imp.loc, format!("imports nothing"));
+                    compile_error!(self, format!("imports nothing"), imp.loc, None);
                 }
                 self.include(&Include{
                     expr: format!("<{}.h>", ns.join("/")),
@@ -195,7 +231,11 @@ impl Emitter {
             for (name,v) in &module.macros {
                 if name == mpname || mpname == "*" {
                     if let Visibility::Object  = v.vis {
-                        compile_error!(imp.loc, format!("macro {} in {} is private", mpname, imp.namespace.join("::")));
+                        self.importstack.clear();
+                        compile_error!(self,
+                            format!("macro '{}' is private", imp.namespace.join("::")),
+                            imp.loc, None
+                        );
                     };
                     found[n] = true;
                     for mp in &v.imports {
@@ -216,7 +256,11 @@ impl Emitter {
                 if &s.name == mpname || mpname == "*" {
                     if let Visibility::Object  = s.vis {
                         if mpname != "*" {
-                            compile_error!(imp.loc, format!("struct {} in {} is private", mpname, imp.namespace.join("::")));
+                            self.importstack.clear();
+                            compile_error!(self,
+                                format!("struct '{}' is private", imp.namespace.join("::")),
+                                imp.loc, None
+                                );
                         }
                     } else {
                         found[n] = true;
@@ -234,7 +278,11 @@ impl Emitter {
                 if name == mpname || mpname == "*" {
                     if let Visibility::Object  = fun.vis {
                         if mpname != "*" {
-                            compile_error!(imp.loc, format!("function {} in {} is private", mpname, imp.namespace.join("::")));
+                            self.importstack.clear();
+                            compile_error!(self,
+                                format!("function '{}' is private", imp.namespace.join("::")),
+                                imp.loc, None
+                                );
                         }
                     } else {
                         found[n] = true;
@@ -249,9 +297,13 @@ impl Emitter {
         // statics
         for (_n, (module, _search, mpname, imp)) in imps.iter().enumerate() {
             self.importstack.push(imp.loc.clone());
-            for (name,_) in &module.statics {
+            for (name,v) in &module.statics {
                 if name == mpname {
-                    compile_error!(imp.loc, format!("{} is static", imp.namespace.join("::")));
+                    self.importstack.clear();
+                    compile_error!(self,
+                        format!("'{}' is static", imp.namespace.join("::")),
+                        imp.loc, Some("statics cannot be used across module boundaries. maybe you want a const?")
+                        );
                 }
             }
             self.importstack.pop();
@@ -264,7 +316,11 @@ impl Emitter {
                 if name == mpname || mpname == "*" {
                     if let Visibility::Object  = v.vis {
                         if mpname != "*" {
-                            compile_error!(imp.loc, format!("constant {} in {} is private", mpname, imp.namespace.join("::")));
+                            self.importstack.clear();
+                            compile_error!(self,
+                                format!("constant '{}' is private", imp.namespace.join("::")),
+                                imp.loc, None
+                                );
                         }
                     } else {
                         found[n] = true;
@@ -276,9 +332,12 @@ impl Emitter {
         }
 
         // check if we found all imports
-        for (n, (_module, _search, mpname, imp)) in imps.iter().enumerate() {
+        for (n, (_module, search, mpname, imp)) in imps.iter().enumerate() {
             if !found[n] {
-                compile_error!(imp.loc, format!("cannot find {} in {}", mpname, imp.namespace.join("::")));
+                compile_error!(self,
+                    format!("cannot find '{}' in '{}'", mpname, search.join("::")),
+                    imp.loc, None
+                    );
             }
         }
     }
@@ -349,18 +408,25 @@ impl Emitter {
         if !self.nameguard(s.name.clone(), s.loc.clone()) {
             return;
         }
-        let f = &mut self.b.structs;
+        let mut f = Vec::new();
 
-        write!(f, "typedef struct \n").unwrap();
         if let ArtifactType::Header = self.artifact {
         } else {
             write!(f, "#line {} \"{}\"\n", s.loc.line, s.loc.file).unwrap();
         }
-        write!(f, "{}\n",
-               s.body,
-               ).unwrap();
+        write!(f, "typedef struct \n").unwrap();
 
-        write!(f, "{} ;\n", s.name).unwrap();
+        write!(f, "{{\n").unwrap();
+        for field in &s.fields {
+            self.type_in_scope(&field.typ, &field.loc);
+            write!(f, "#line {} \"{}\"\n", field.loc.line, field.loc.file).unwrap();
+            write!(f, "{} {}\n",
+                   field.typ, field.expr,
+                   ).unwrap();
+        }
+
+        write!(f, "}} {} ;\n", s.name).unwrap();
+        self.b.structs.extend(f);
     }
 
 
@@ -532,4 +598,5 @@ impl Emitter {
     }
 
 }
+
 

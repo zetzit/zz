@@ -113,9 +113,16 @@ pub struct Macro {
 }
 
 #[derive(Clone)]
+pub struct Field {
+    pub typ:    String,
+    pub expr:   String,
+    pub loc:    Location,
+}
+
+#[derive(Clone)]
 pub struct Struct {
     pub name:   String,
-    pub body:   String,
+    pub fields: Vec<Field>,
     pub vis:    Visibility,
     pub loc:    Location,
     pub packed: bool,

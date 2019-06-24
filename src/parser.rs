@@ -11,7 +11,8 @@ pub fn parse(ns: Vec<String>, n: &Path) -> Module
 {
     match p(ns, &n){
         Err(e) => {
-            error!("{:?} : {}", n, e);
+            let e = e.with_path(&n.to_string_lossy());
+            error!("syntax error\n{}", e);
             std::process::exit(9);
         }
         Ok(md) => {
@@ -189,10 +190,10 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
             Rule::struct_d => {
                 let decl = decl.into_inner();
 
-                let mut vis   = Visibility::Shared;
-                let mut name  = None;
-                let mut body  = None;
-                let mut loc   = None;
+                let mut vis    = Visibility::Shared;
+                let mut name   = None;
+                let mut fields = Vec::new();
+                let mut loc    = None;
                 let mut packed = false;
 
                 for part in decl {
@@ -207,15 +208,32 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             vis = Visibility::Export;
                         }
                         Rule::ident => {
-                            name = Some(part.as_str().into());
-                        }
-                        Rule::struct_c => {
                             loc  = Some(Location{
                                 line: part.as_span().start_pos().line_col().0,
                                 file: n.to_string_lossy().into(),
                                 span: part.as_span(),
                             });
-                            body = Some(part.as_str().into());
+                            name= Some(part.as_str().into());
+                        }
+                        Rule::field => {
+                            let loc  = Location{
+                                line: part.as_span().start_pos().line_col().0,
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            };
+
+                            let mut field = part.into_inner();
+                            let typ   = field.next().unwrap().as_str().into();
+                            let expr  = field.next().unwrap().as_str().into();
+
+                            fields.push(Field{
+                                typ,
+                                expr,
+                                loc,
+                            });
+
+                            //});
+                            //body = Some(part.as_str().into());
                         }
                         e => panic!("unexpected rule {:?} in struct ", e),
                     }
@@ -225,7 +243,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                 module.structs.push(Struct {
                     name: name.unwrap(),
-                    body: body.unwrap(),
+                    fields,
                     vis,
                     loc: loc.unwrap(),
                     packed,

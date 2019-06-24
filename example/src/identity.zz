@@ -1,5 +1,5 @@
-export import c::stdint::*;
-export import c::stdio::*;
+export import c::stdint::uint32_t;
+export import c::stdio::printf;
 import math::add;
 
 import constants::foo;

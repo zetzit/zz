@@ -22,6 +22,7 @@ fn main() {
         std::env::set_var("RUST_LOG", "info");
     }
     env_logger::builder()
+        //.default_format_module_path(false)
         .default_format_timestamp(false)
         .init();
 
