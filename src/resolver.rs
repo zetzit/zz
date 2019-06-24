@@ -9,13 +9,13 @@ struct Resolver<'a> {
     modules: HashMap<String, ast::Module<'a>>,
 }
 
-pub fn resolve(namespace: &Vec<String>) -> HashMap<String, ast::Module> {
+pub fn resolve<'a>(namespace: &Vec<String>, main: &Path) -> HashMap<String, ast::Module<'a>> {
     let mut r = Resolver::default();
-    let md = parser::parse(namespace.clone(), &Path::new("./src/main.zz"));
+    let md = parser::parse(namespace.clone(), &main);
     r.modules.insert(md.namespace.join("::"), md);
 
     loop {
-        let mut nu = Vec::new();
+        let mut is_dirty = false;
         for name in r.modules.keys().cloned().collect::<Vec<String>>().into_iter() {
             let mut module = r.modules.remove(&name).unwrap();
             let imports = std::mem::replace(&mut module.imports, Vec::new());
@@ -23,6 +23,14 @@ pub fn resolve(namespace: &Vec<String>) -> HashMap<String, ast::Module> {
                 let mut search = namespace.clone();
                 search.extend(mp.namespace.iter().cloned());
                 search.pop();
+
+                if search.join("::") == name {
+                    let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("cannot import self"),
+                    }, mp.loc.span.clone());
+                    eprintln!("{} : {}", mp.loc.file, e);
+                    std::process::exit(9);
+                }
 
                 if let Some(m3) = &r.modules.get(&search.join("::")) {
                     eprintln!("resolved import {} as module {}", mp.namespace.join("::"), m3.namespace.join("::"));
@@ -43,8 +51,13 @@ pub fn resolve(namespace: &Vec<String>) -> HashMap<String, ast::Module> {
                     parent.pop();
                     let m = parser::parse(parent.clone(), &n2);
                     assert!(m.namespace == search , "{:?} != {:?}", m.namespace, search);
-                    eprintln!("resolved import {} as module {}", mp.namespace.join("::"), m.namespace.join("::"));
-                    nu.push(m);
+                    eprintln!("resolved import {} as new module {}", mp.namespace.join("::"), m.namespace.join("::"));
+                    is_dirty = true;
+                    let ns = m.namespace.join("::");
+                    if r.modules.insert(ns.clone(), m).is_some() {
+                        eprintln!("bug : loaded module {} was already inserted",ns);
+                        std::process::exit(9);
+                    }
                     Some(mp)
                 } else {
                     n2 = Path::new("./src").join(&path).with_extension("h");
@@ -69,11 +82,7 @@ pub fn resolve(namespace: &Vec<String>) -> HashMap<String, ast::Module> {
             module.imports = imports.collect();
             r.modules.insert(name, module);
         }
-        if nu.len() > 0 {
-            for md in nu {
-                r.modules.insert(md.namespace.join("::"), md);
-            }
-        } else {
+        if !is_dirty {
             break;
         }
     }

@@ -11,7 +11,6 @@ mod resolver;
 use emitter::Emitter;
 
 use std::path::Path;
-use std::collections::HashMap;
 
 fn main() {
     let (root, project) = project::load();
@@ -22,16 +21,28 @@ fn main() {
     std::fs::create_dir_all("./target/include/").expect("create target dir");
 
     let namespace = vec![project.name.clone()];
-    let modules   = resolver::resolve(&namespace);
+    let main_exists = Path::new("./src/main.zz").exists();
+    let lib_exists = Path::new("./src/lib.zz").exists();
+
+    if main_exists && lib_exists {
+        eprintln!("main zz file needs to be either src/main.zz or src/lib.zz not both");
+        std::process::exit(2);
+    }
+
+    if !main_exists && !lib_exists {
+        eprintln!("missing either src/main.zz or src/lib.zz");
+        std::process::exit(2);
+    }
+
+    let modules   = resolver::resolve(&namespace, if lib_exists {&Path::new("./src/lib.zz")} else {&Path::new("./src/main.zz")});
 
     for (name, md) in &modules {
         let mut em = Emitter::new(md.namespace.clone());
 
         println!("emitting {}", name);
 
-        for mp in &md.imports {
-            em.import(&modules, mp);
-        }
+        em.import(&modules, md.imports.clone());
+
         for i in &md.includes {
             em.include(i);
         }
@@ -76,18 +87,18 @@ fn main() {
     for (_name, md) in &modules {
         for i in &md.imports {
             if let ast::Visibility::Export = i.vis {
-                header.import(&modules, i);
+                header.import(&modules, vec![i.clone()]);
             }
         }
     }
-    for (name, md) in &modules {
+    for (_name, md) in &modules {
         for s in &md.structs {
             if let ast::Visibility::Export = s.vis {
                 header.struc(&s);
             }
         }
     }
-    for (name, md) in &modules {
+    for (_name, md) in &modules {
         for (_,fun) in &md.functions {
             if let ast::Visibility::Export = fun.vis {
                 header.declare(&fun, &md.namespace);

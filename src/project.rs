@@ -11,6 +11,10 @@ pub struct Project {
     pub cflags:     Option<Vec<String>>,
     pub lflags:     Option<Vec<String>>,
 }
+#[derive(Deserialize)]
+pub struct Config {
+    pub project:   Project,
+}
 
 pub fn load() -> (PathBuf, Project) {
     let mut search = std::env::current_dir().unwrap();
@@ -32,5 +36,7 @@ pub fn load() -> (PathBuf, Project) {
     let mut f = File::open(&search.join("zz.toml")).expect(&format!("cannot open {:?}", search));
     let mut s = String::new();
     f.read_to_string(&mut s).expect(&format!("cannot read {:?}", search));
-    (search.clone(), toml::from_str(&mut s).expect(&format!("cannot read {:?}", search)))
+    let c : Config = toml::from_str(&mut s).expect(&format!("cannot read {:?}", search));
+
+    (search.clone(), c.project)
 }

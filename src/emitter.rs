@@ -5,15 +5,37 @@ use super::ast::*;
 use std::io::Write;
 use super::parser::Rule;
 
+
+#[derive(Default)]
+struct Buffers {
+    includes:   Vec<u8>,
+    macros:     Vec<u8>,
+    constants:  Vec<u8>,
+    statics:    Vec<u8>,
+    structs:    Vec<u8>,
+    decls:      Vec<u8>,
+    defs:       Vec<u8>,
+}
+
 pub struct Emitter{
-    myns:       Vec<String>,
-    f:          fs::File,
-    emitted:    HashSet<String>,
-    pub export_header:   bool,
+    myns:               Vec<String>,
+    f:                  fs::File,
+    b:                  Buffers,
+    emitted:            HashSet<String>,
+    pub export_header:  bool,
 }
 
 impl Drop for Emitter {
     fn drop(&mut self) {
+
+        self.f.write_all(&self.b.includes).unwrap();
+        self.f.write_all(&self.b.macros).unwrap();
+        self.f.write_all(&self.b.statics).unwrap();
+        self.f.write_all(&self.b.constants).unwrap();
+        self.f.write_all(&self.b.structs).unwrap();
+        self.f.write_all(&self.b.decls).unwrap();
+        self.f.write_all(&self.b.defs).unwrap();
+
         if self.export_header {
             write!(self.f, "\n#endif\n").unwrap();
         }
@@ -31,6 +53,7 @@ impl Emitter {
         Emitter{
             myns,
             f,
+            b: Buffers::default(),
             emitted,
             export_header: false,
         }
@@ -48,152 +71,171 @@ impl Emitter {
         Emitter{
             myns,
             f,
+            b: Buffers::default(),
             emitted,
             export_header: true,
         }
     }
 
-    pub fn import(&mut self, modules: &HashMap<String, Module>, mp: &Import) {
+    pub fn import(&mut self, modules: &HashMap<String, Module>, mut mp: Vec<Import>) {
 
-        if mp.namespace.first().map(|s|s.as_str()) == Some("c") {
-            let mut ns = mp.namespace.clone();
-            ns.remove(0);
+        mp.retain(|mp|{
+            if mp.namespace.first().map(|s|s.as_str()) == Some("c") {
+                let mut ns = mp.namespace.clone();
+                ns.remove(0);
 
-            if ns.last().map(|s|s.as_str()) == Some("*") {
-                ns.pop();
-            }
-
-            if ns.len() < 1 {
-                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                    message: format!("imports nothing")
-                }, mp.loc.span.clone());
-                eprintln!("{} : {}", mp.loc.file, e);
-                std::process::exit(9);
-            }
-            self.include(&Include{
-                expr: format!("<{}.h>", ns.join("/")),
-                vis: mp.vis.clone(),
-                loc: mp.loc.clone(),
-            });
-            return;
-        }
-
-        let mut search = self.myns.clone();
-        search.pop();
-        search.extend(mp.namespace.iter().cloned());
-        let mpname = search.pop().unwrap();
-
-        let module = match modules.get(&search.join("::")) {
-            None => {
-                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                    message: format!("module not found"),
-                }, mp.loc.span.clone());
-                eprintln!("{} : {}", mp.loc.file, e);
-                std::process::exit(9);
-            }
-            Some(m3) => m3,
-        };
-
-        if self.emitted.insert(format!("module_{}", module.namespace.join("::"))) {
-            for i in &module.includes {
-                if let Visibility::Export = i.vis {
-                    self.include(i);
+                if ns.last().map(|s|s.as_str()) == Some("*") {
+                    ns.pop();
                 }
-            }
 
-            for mp in &module.imports {
-                self.import(modules, mp);
-            }
-        }
-        let mut found = false;
-
-        for (name,v) in &module.macros {
-            if name == &mpname || mpname == "*" {
-                if let Visibility::Object  = v.vis {
+                if ns.len() < 1 {
                     let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                        message: format!("macro {} in {} is private", mpname, mp.namespace.join("::")),
+                        message: format!("imports nothing")
                     }, mp.loc.span.clone());
                     eprintln!("{} : {}", mp.loc.file, e);
                     std::process::exit(9);
-                };
-                found = true;
-                for mp in &v.imports {
-                    self.import(modules,mp);
                 }
-                self.imacro(&v);
+                self.include(&Include{
+                    expr: format!("<{}.h>", ns.join("/")),
+                    vis: mp.vis.clone(),
+                    loc: mp.loc.clone(),
+                });
+                false
+            } else {
+                true
             }
-        }
+        });
 
 
-        for s in &module.structs {
-            if s.name == mpname || mpname == "*" {
-                if let Visibility::Object  = s.vis {
-                    if mpname != "*" {
+        let mp : Vec<(&Module, Vec<String>, String, Import)> = mp.into_iter().map(|mp|{
+            let mut search = self.myns.clone();
+            search.pop();
+            search.extend(mp.namespace.iter().cloned());
+            let mpname = search.pop().unwrap();
+
+            let module = match modules.get(&search.join("::")) {
+                None => {
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("module not found"),
+                    }, mp.loc.span.clone());
+                    eprintln!("{} : {}", mp.loc.file, e);
+                    std::process::exit(9);
+                }
+                Some(m3) => m3,
+            };
+
+            if self.emitted.insert(format!("module_{}", module.namespace.join("::"))) {
+                for i in &module.includes {
+                    if let Visibility::Export = i.vis {
+                        self.include(i);
+                    }
+                }
+
+                self.import(modules, module.imports.clone());
+            }
+            (module, search, mpname, mp)
+        }).collect();
+
+        let mut found = vec![false; mp.len()];
+
+        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+            for (name,v) in &module.macros {
+                if name == mpname || mpname == "*" {
+                    if let Visibility::Object  = v.vis {
                         let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                            message: format!("struct {} in {} is private", mpname, mp.namespace.join("::")),
+                            message: format!("macro {} in {} is private", mpname, mp.namespace.join("::")),
                         }, mp.loc.span.clone());
                         eprintln!("{} : {}", mp.loc.file, e);
                         std::process::exit(9);
+                    };
+                    found[n] = true;
+                    for mp in &v.imports {
+                        self.import(modules, vec![mp.clone()]);
                     }
-                } else {
-                    found = true;
-                    self.struc(&s);
+                    self.imacro(&v);
                 }
             }
         }
 
-        for (name,fun) in &module.functions {
-            if name == &mpname || mpname == "*" {
-                if let Visibility::Object  = fun.vis {
-                    if mpname != "*" {
-                        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                            message: format!("function {} in {} is private", mpname, mp.namespace.join("::")),
-                        }, mp.loc.span.clone());
-                        eprintln!("{} : {}", mp.loc.file, e);
-                        std::process::exit(9);
+        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+            for s in &module.structs {
+                if &s.name == mpname || mpname == "*" {
+                    if let Visibility::Object  = s.vis {
+                        if mpname != "*" {
+                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                message: format!("struct {} in {} is private", mpname, mp.namespace.join("::")),
+                            }, mp.loc.span.clone());
+                            eprintln!("{} : {}", mp.loc.file, e);
+                            std::process::exit(9);
+                        }
+                    } else {
+                        found[n] = true;
+                        self.struc(&s);
                     }
-                } else {
-                    found = true;
-
-                    self.declare(&fun, &search);
                 }
             }
         }
 
-        for (name,v) in &module.statics {
-            if name == &mpname {
+        for (n, (module, search, mpname, mp)) in mp.iter().enumerate() {
+            for (name,fun) in &module.functions {
+                if name == mpname || mpname == "*" {
+                    if let Visibility::Object  = fun.vis {
+                        if mpname != "*" {
+                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                message: format!("function {} in {} is private", mpname, mp.namespace.join("::")),
+                            }, mp.loc.span.clone());
+                            eprintln!("{} : {}", mp.loc.file, e);
+                            std::process::exit(9);
+                        }
+                    } else {
+                        found[n] = true;
+
+                        self.declare(&fun, &search);
+                    }
+                }
+            }
+        }
+
+        for (_n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+            for (name,_) in &module.statics {
+                if name == mpname {
+                    let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                        message: format!("static {} in {} is always private", mpname, mp.namespace.join("::")),
+                    }, mp.loc.span.clone());
+                    eprintln!("{} : {}", mp.loc.file, e);
+                    std::process::exit(9);
+                }
+            }
+        }
+
+        for (n, (module, _search, mpname, mp)) in mp.iter().enumerate() {
+            for (name,v) in &module.constants {
+                if name == mpname || mpname == "*" {
+                    if let Visibility::Object  = v.vis {
+                        if mpname != "*" {
+                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                message: format!("constant {} in {} is private", mpname, mp.namespace.join("::")),
+                            }, mp.loc.span.clone());
+                            eprintln!("{} : {}", mp.loc.file, e);
+                            std::process::exit(9);
+                        }
+                    } else {
+                        found[n] = true;
+                        self.constant(&v);
+                    }
+                }
+            }
+        }
+
+
+        for (n, (_module, _search, mpname, mp)) in mp.iter().enumerate() {
+            if !found[n] {
                 let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                    message: format!("static {} in {} is always private", mpname, mp.namespace.join("::")),
+                    message: format!("cannot find {} in {}", mpname, mp.namespace.join("::")),
                 }, mp.loc.span.clone());
                 eprintln!("{} : {}", mp.loc.file, e);
                 std::process::exit(9);
             }
-        }
-
-        for (name,v) in &module.constants {
-            if name == &mpname || mpname == "*" {
-                if let Visibility::Object  = v.vis {
-                    if mpname != "*" {
-                        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                            message: format!("constant {} in {} is private", mpname, mp.namespace.join("::")),
-                        }, mp.loc.span.clone());
-                        eprintln!("{} : {}", mp.loc.file, e);
-                        std::process::exit(9);
-                    }
-                } else {
-                    found = true;
-                    self.constant(&v);
-                }
-            }
-        }
-
-
-        if !found {
-            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                message: format!("cannot find {} in {}", mpname, mp.namespace.join("::")),
-            }, mp.loc.span.clone());
-            eprintln!("{} : {}", mp.loc.file, e);
-            std::process::exit(9);
         }
     }
 
@@ -201,131 +243,137 @@ impl Emitter {
         if !self.emitted.insert(format!("{}", v.name)) {
             return;
         }
+        let f = &mut self.b.statics;
 
         if !self.export_header {
-            write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
+            write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
 
         if v.muta {
-            write!(self.f, "static ").unwrap();
+            write!(f, "static ").unwrap();
         } else {
-            write!(self.f, "const ").unwrap();
+            write!(f, "const ").unwrap();
         }
 
         match v.storage {
             Storage::Atomic => {
-                write!(self.f, "_Atomic ").unwrap();
+                write!(f, "_Atomic ").unwrap();
             },
             Storage::ThreadLocal => {
-                write!(self.f, "_Thread_local ").unwrap();
+                write!(f, "_Thread_local ").unwrap();
             },
             Storage::Static  => (),
         }
 
-        write!(self.f, "{} {} __attribute__ ((visibility (\"hidden\"))) = {};\n", v.typ, v.name, v.expr).unwrap();
-
+        write!(f, "{} {} __attribute__ ((visibility (\"hidden\"))) = {};\n", v.typ, v.name, v.expr).unwrap();
     }
+
     pub fn constant(&mut self, v: &Const) {
         if !self.emitted.insert(format!("{}", v.name)) {
             return;
         }
+        let f = &mut self.b.constants;
 
         if !self.export_header {
-            write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
+            write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
-        write!(self.f, "#define {} (({}){})\n", v.name, v.typ, v.expr.replace("\n", "\\\n")).unwrap();
+        write!(f, "#define {} (({}){})\n", v.name, v.typ, v.expr.replace("\n", "\\\n")).unwrap();
     }
 
     pub fn imacro(&mut self, v: &Macro) {
         if !self.emitted.insert(format!("{}", v.name)) {
             return;
         }
+        let f = &mut self.b.macros;
+
         if !self.export_header {
-            write!(self.f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
+            write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
 
-        write!(self.f, "#define {}", v.name).unwrap();
+        write!(f, "#define {}", v.name).unwrap();
         if v.args.len() > 0  {
-            write!(self.f, "({})", v.args.join(",")).unwrap();
+            write!(f, "({})", v.args.join(",")).unwrap();
         }
-        write!(self.f, " {}\n", v.body[1..v.body.len()-1].replace("\n", "\\\n")).unwrap();
+        write!(f, " {}\n", v.body[1..v.body.len()-1].replace("\n", "\\\n")).unwrap();
     }
 
     pub fn struc(&mut self, s: &Struct) {
         if !self.emitted.insert(format!("struct::{}", s.name)) {
             return;
         }
-        write!(self.f, "typedef struct \n").unwrap();
+        let f = &mut self.b.structs;
+
+        write!(f, "typedef struct \n").unwrap();
         if !self.export_header {
-            write!(self.f, "#line {} \"{}\"\n", s.loc.line, s.loc.file).unwrap();
+            write!(f, "#line {} \"{}\"\n", s.loc.line, s.loc.file).unwrap();
         }
-        write!(self.f, "{}\n",
+        write!(f, "{}\n",
                s.body,
                ).unwrap();
 
-        write!(self.f, "{} ;\n", s.name).unwrap();
+        write!(f, "{} ;\n", s.name).unwrap();
     }
 
 
 
-    fn function_args(&mut self, f: &Function) {
+    fn function_args<F:Write>(f:&mut F, v: &Function) {
         let mut first = true ;
-        for arg in &f.args {
+        for arg in &v.args {
             if first {
                 first = false;
             } else {
-                write!(self.f, ", ").unwrap();
+                write!(f, ", ").unwrap();
             }
 
             if !arg.muta {
-                write!(self.f, "const ").unwrap();
+                write!(f, "const ").unwrap();
             }
 
             if let Some(ns) = &arg.namespace {
-                write!(self.f, "{}", ns.replace("::", "_")).unwrap();
+                write!(f, "{}", ns.replace("::", "_")).unwrap();
             }
 
-            write!(self.f, "{}", arg.typ).unwrap();
+            write!(f, "{}", arg.typ).unwrap();
 
             if arg.ptr {
-                write!(self.f, " *").unwrap();
+                write!(f, " *").unwrap();
             }
 
-            write!(self.f, " {}", arg.name).unwrap();
+            write!(f, " {}", arg.name).unwrap();
         }
     }
 
-    pub fn declare(&mut self, f: &Function, ns: &Vec<String>) {
-
-        if !self.emitted.insert(format!("{:?}::{}", ns, f.name)) {
+    pub fn declare(&mut self, v: &Function, ns: &Vec<String>) {
+        if !self.emitted.insert(format!("{:?}::{}", ns, v.name)) {
             return;
         }
+        let f = &mut self.b.decls;
 
         let mut ns = ns.clone();
-        ns.push(f.name.clone());
+        ns.push(v.name.clone());
         let mut fqn = ns.join("_");
 
         if !self.export_header {
-            write!(self.f, "#line {} \"{}\"\n", f.loc.line, f.loc.file).unwrap();
+            write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
         }
-        match f.vis {
+        match v.vis {
             Visibility::Object => {
-                fqn = f.name.clone();
-                write!(self.f, "static ").unwrap();
+                fqn = v.name.clone();
+                write!(f, "static ").unwrap();
             },
             _ => {
-                if f.name == "main" {
+                if v.name == "main" {
                     fqn = "main".into();
                 }
             },
         };
-        match &f.ret {
-            None       => write!(self.f, "void "),
-            Some(a)    => write!(self.f, "{} ", &a.typ),
+        match &v.ret {
+            None       => write!(f, "void "),
+            Some(a)    => write!(f, "{} ", &a.typ),
         }.unwrap();
-        write!(self.f, "{} (", fqn).unwrap();
-        self.function_args(&f);
-        write!(self.f, ");\n").unwrap();
+        write!(f, "{} (", fqn).unwrap();
+        Self::function_args(f, &v);
+        write!(f, ");\n").unwrap();
 
         if self.export_header {
             return;
@@ -335,50 +383,48 @@ impl Emitter {
             return;
         }
 
-        if let Visibility::Object = f.vis {
+        if let Visibility::Object = v.vis {
             return;
         }
 
         //aliases are broken in clang, so we need to create an inline redirect
-        
 
+        write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
 
-        write!(self.f, "#line {} \"{}\"\n", f.loc.line, f.loc.file).unwrap();
-
-        write!(self.f, "static inline ").unwrap();
-        write!(self.f, " __attribute__ ((always_inline, unused)) ").unwrap();
-        match &f.ret {
-            None       => write!(self.f, "void "),
-            Some(a)    => write!(self.f, "{} ", &a.typ),
+        write!(f, "static inline ").unwrap();
+        write!(f, " __attribute__ ((always_inline, unused)) ").unwrap();
+        match &v.ret {
+            None       => write!(f, "void "),
+            Some(a)    => write!(f, "{} ", &a.typ),
         }.unwrap();
-        write!(self.f, "{} (", f.name).unwrap();
+        write!(f, "{} (", v.name).unwrap();
 
-        self.function_args(&f);
-        write!(self.f, ")").unwrap();
+        Self::function_args(f, &v);
+        write!(f, ")").unwrap();
 
-        match f.vis {
+        match v.vis {
             Visibility::Object => {
-                write!(self.f, ";\n").unwrap();
+                write!(f, ";\n").unwrap();
             }
             _ => {
-                write!(self.f, "{{").unwrap();
-                if f.ret.is_some() {
-                    write!(self.f, "return ").unwrap();
+                write!(f, "{{").unwrap();
+                if v.ret.is_some() {
+                    write!(f, "return ").unwrap();
                 }
 
-                write!(self.f, "{}(", fqn).unwrap();
+                write!(f, "{}(", fqn).unwrap();
 
                 let mut first = true;
-                for arg in &f.args {
+                for arg in &v.args {
                     if first {
                         first = false;
                     } else {
-                        write!(self.f, ", ").unwrap();
+                        write!(f, ", ").unwrap();
                     }
-                    write!(self.f, " {}", arg.name).unwrap();
+                    write!(f, " {}", arg.name).unwrap();
                 }
 
-                write!(self.f, ");}}; \n").unwrap();
+                write!(f, ");}}; \n").unwrap();
             }
         }
 
@@ -386,50 +432,53 @@ impl Emitter {
 
     }
 
-    pub fn define(&mut self, f: &Function, ns: &Vec<String>, body: &str) {
-        write!(self.f, "#line {} \"{}\"\n", f.loc.line, f.loc.file).unwrap();
+    pub fn define(&mut self, v: &Function, ns: &Vec<String>, body: &str) {
+        let f = &mut self.b.defs;
 
-        let name = match f.vis {
+        write!(f, "#line {} \"{}\"\n", v.loc.line, v.loc.file).unwrap();
+
+        let name = match v.vis {
             Visibility::Object => {
-                write!(self.f, "static ").unwrap();
-                f.name.clone()
+                write!(f, "static ").unwrap();
+                v.name.clone()
             }
             _ => {
-                if f.name == "main" {
-                    f.name.clone()
+                if v.name == "main" {
+                    v.name.clone()
                 } else {
                     let mut ns = ns.clone();
-                    ns.push(f.name.clone());
+                    ns.push(v.name.clone());
                     ns.join("_")
                 }
             }
         };
 
-        match &f.ret {
-            None       => write!(self.f, "void "),
-            Some(a)    => write!(self.f, "{} ", &a.typ),
+        match &v.ret {
+            None       => write!(f, "void "),
+            Some(a)    => write!(f, "{} ", &a.typ),
         }.unwrap();
 
-        match f.vis {
+        match v.vis {
             Visibility::Object => (),
-            Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
-            Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
+            Visibility::Shared => write!(f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
+            Visibility::Export => write!(f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
         }
 
-        write!(self.f, "{} (", name).unwrap();
-        self.function_args(&f);
-        write!(self.f, ") {}\n\n", body).unwrap();
+        write!(f, "{} (", name).unwrap();
+        Self::function_args(f, &v);
+        write!(f, ") {}\n\n", body).unwrap();
     }
 
 
     pub fn include(&mut self, i: &Include) {
+        let f = &mut self.b.includes;
         if !self.emitted.insert(format!("include_{}", i.expr)) {
             return;
         }
         if !self.export_header {
-            write!(self.f, "#line {} \"{}\"\n", i.loc.line, i.loc.file).unwrap();
+            write!(f, "#line {} \"{}\"\n", i.loc.line, i.loc.file).unwrap();
         }
-        write!(self.f, "#include {}\n", i.expr).unwrap();
+        write!(f, "#include {}\n", i.expr).unwrap();
     }
 
 }
