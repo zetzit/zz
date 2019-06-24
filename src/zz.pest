@@ -58,8 +58,8 @@ comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
 
 vararg      = @{"..."}
 call_args   = {ident ~ ( "," ~ ( ident | vararg) )* }
-macroimports = { "[" ~ name ~ ( "," ~ name )* ~ ","? ~ "]" }
-imacro      = { ( key_pub | key_private)? ~ "macro" ~ ident ~ "(" ~ call_args? ~")" ~ macroimports? ~ block }
+macroimports = { "using" ~ "(" ~ name ~ ( "," ~ name )* ~ ","? ~ ")" }
+imacro      = { ( key_pub | key_private)? ~ "macro" ~ macroimports* ~ ident ~ "(" ~ call_args? ~")" ~ block }
 
 file        = { SOI ~ (struct_d
                         | function

@@ -30,9 +30,9 @@ impl Drop for Emitter {
 
         self.f.write_all(&self.b.includes).unwrap();
         self.f.write_all(&self.b.macros).unwrap();
+        self.f.write_all(&self.b.structs).unwrap();
         self.f.write_all(&self.b.statics).unwrap();
         self.f.write_all(&self.b.constants).unwrap();
-        self.f.write_all(&self.b.structs).unwrap();
         self.f.write_all(&self.b.decls).unwrap();
         self.f.write_all(&self.b.defs).unwrap();
 

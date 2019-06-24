@@ -82,7 +82,7 @@ pub fn load() -> (PathBuf, Config) {
             if path.is_file() {
                 if let Some("zz") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
                     c.artifacts.as_mut().unwrap().push(Artifact{
-                        name: format!("tests::{}::{}", c.project.name, path.file_stem().unwrap().to_string_lossy()),
+                        name: format!("tests::{}", path.file_stem().unwrap().to_string_lossy()),
                         file: path.to_string_lossy().into(),
                         typ:  ArtifactType::Test,
                     });

@@ -108,14 +108,14 @@ fn build(tests: bool) {
     std::fs::create_dir_all("./target/zz/").expect("create target dir");
     std::fs::create_dir_all("./target/include/").expect("create target dir");
 
-    let namespace = vec![project.project.name.clone()];
-
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
+        let namespace = artifact.name.split("::").map(|s|s.to_string()).collect();
 
         match (tests, &artifact.typ) {
             (false, project::ArtifactType::Test) => continue,
             (false, _) => (),
             (true,  project::ArtifactType::Test) => (),
+            (true,  project::ArtifactType::Lib) => (),
             (true,  _) => continue,
         }
 
@@ -150,44 +150,56 @@ fn build(tests: bool) {
             }
         }
 
-        let mut header = Emitter::new_export_header(vec![project.project.name.clone()]);
-        for (_name, md) in &modules {
-            for i in &md.includes {
-                if let ast::Visibility::Export = i.vis {
-                    if i.expr.contains("<") {
-                        header.include(i);
-                    } else {
-                        let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                            message: format!("cannot re-export local c header"),
-                        }, i.loc.span.clone());
-                        error!("{} : {}", i.loc.file, e);
-                        std::process::exit(9);
+        if let project::ArtifactType::Lib = artifact.typ {
+            let mut header = Emitter::new_export_header(vec![project.project.name.clone()]);
+            for (_name, md) in &modules {
+                for (_, v) in &md.macros{
+                    if let ast::Visibility::Export = v.vis {
+                        for mp in &v.imports {
+                            header.import(&modules, vec![mp.clone()]);
+                        }
+                        header.imacro(&v);
                     }
                 }
             }
-        }
-        for (_name, md) in &modules {
-            for i in &md.imports {
-                if let ast::Visibility::Export = i.vis {
-                    header.import(&modules, vec![i.clone()]);
+            for (_name, md) in &modules {
+                for i in &md.includes {
+                    if let ast::Visibility::Export = i.vis {
+                        if i.expr.contains("<") {
+                            header.include(i);
+                        } else {
+                            let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                message: format!("cannot re-export local c header"),
+                            }, i.loc.span.clone());
+                            error!("{} : {}", i.loc.file, e);
+                            std::process::exit(9);
+                        }
+                    }
                 }
             }
-        }
-        for (_name, md) in &modules {
-            for s in &md.structs {
-                if let ast::Visibility::Export = s.vis {
-                    header.struc(&s);
+            for (_name, md) in &modules {
+                for i in &md.imports {
+                    if let ast::Visibility::Export = i.vis {
+                        header.import(&modules, vec![i.clone()]);
+                    }
                 }
             }
-        }
-        for (_name, md) in &modules {
-            for (_,fun) in &md.functions {
-                if let ast::Visibility::Export = fun.vis {
-                    header.declare(&fun, &md.namespace);
+            for (_name, md) in &modules {
+                for s in &md.structs {
+                    if let ast::Visibility::Export = s.vis {
+                        header.struc(&s);
+                    }
                 }
             }
+            for (_name, md) in &modules {
+                for (_,fun) in &md.functions {
+                    if let ast::Visibility::Export = fun.vis {
+                        header.declare(&fun, &md.namespace);
+                    }
+                }
+            }
+            drop(header);
         }
-        drop(header);
 
         let mut make = make::Make::new(project.project.clone(), artifact);
 

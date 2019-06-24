@@ -88,7 +88,7 @@ struct does the same for structs.
 macro definitions are almost like C's #define but slightly more stable
 
 ```C
-macro check_noise_error(e) {
+macro CHECK(e) {
     if ((e) != 0) {
         printf("oh noes!\n");
     }
@@ -97,6 +97,19 @@ macro check_noise_error(e) {
 
 the macro can be multiple lines but is resctricted within the body {  }.
 this intentionally disables some insane use cases.
+
+
+because the macro body is not parsed, zz does not know what a macro depends on.
+you can specify additional modules that are imported when the macro is imported with a using attribute, like so:
+
+
+```C
+export macro using(c::stdio::printf) CHECK(e) {
+    if ((e) != 0) {
+        printf("oh noes!\n");
+    }
+}
+```
 
 #### storage: const, static, atomic and thread_local
 
