@@ -1,5 +1,5 @@
-export import c::stdint::uint32_t;
-export import c::stdio::printf;
+import libc::stdint::uint32_t;
+import libc::stdio::printf;
 import math::add;
 
 import constants::foo;
@@ -10,6 +10,7 @@ import main::gimme_wee;
 
 static uint32_t wuast  = 9;
 static mutable uint32_t counter = 1;
+
 
 fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     counter++;

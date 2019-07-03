@@ -5,14 +5,19 @@ use std::path::PathBuf;
 
 #[derive(PartialEq, Clone)]
 pub struct Location {
-    pub line:   usize,
     pub file:   String,
     pub span:   pest::Span<'static>,
 }
 
+impl Location {
+    pub fn line(&self) -> usize {
+        self.span.start_pos().line_col().0
+    }
+}
+
 impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.file, self.line)
+        write!(f, "{}:{}", self.file, self.line())
     }
 }
 
@@ -24,106 +29,107 @@ pub enum Storage {
     Atomic,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Visibility {
     Shared,
     Object,
     Export,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Import {
     pub namespace:  Vec<String>,
     pub vis:        Visibility,
     pub loc:        Location,
 }
 
-#[derive(Clone)]
-pub struct Static {
-    pub typ:    String,
-    pub name:   String,
-    pub expr:   String,
-    pub muta:   bool,
-    pub storage: Storage,
-    pub loc:    Location,
-}
+
 
 #[derive(Clone)]
-pub struct Const {
-    pub typ:    String,
+pub enum Def {
+    Static {
+        typeref:    TypeUse,
+        expr:       CExpr,
+        muta:       bool,
+        storage:    Storage,
+    },
+    Const {
+        typeref:    TypeUse,
+        expr:       CExpr,
+    },
+    Function {
+        ret:        Option<AnonArg>,
+        args:       Vec<NamedArg>,
+        body:       CExpr,
+    },
+    Struct {
+        fields:     Vec<Field>,
+        packed:     bool,
+    },
+    Macro {
+        args:       Vec<String>,
+        body:       CExpr,
+        imports:    Vec<Import>,
+    }
+}
+
+
+#[derive(Clone)]
+pub struct Local {
     pub name:   String,
-    pub expr:   String,
     pub vis:    Visibility,
     pub loc:    Location,
+    pub def:    Def,
 }
+
 
 #[derive(Clone)]
 pub struct Include {
     pub expr:   String,
     pub loc:    Location,
-    pub vis:    Visibility,
+}
+
+#[derive(Clone)]
+pub struct TypeUse {
+    pub name:   String,
+    pub loc:    Location,
 }
 
 #[derive(Default, Clone)]
 pub struct Module {
     pub namespace:  Vec<String>,
     pub source:     PathBuf,
-    pub functions:  HashMap<String, Function>,
-    pub macros:     HashMap<String, Macro>,
-    pub constants:  HashMap<String, Const>,
-    pub statics:    HashMap<String, Static>,
-    pub structs:    Vec<Struct>,
-    pub imports:    Vec<Import>,
+    pub locals:     Vec<Local>,
     pub includes:   Vec<Include>,
+    pub imports:    Vec<Import>,
     pub sources:    HashSet<PathBuf>,
 }
 
 #[derive(Clone)]
 pub struct AnonArg {
-    pub typ:    String
+    pub typeref:    TypeUse
 }
 
 #[derive(Clone)]
 pub struct NamedArg {
-    pub typ:    String,
-    pub name:   String,
-    pub muta:   bool,
-    pub ptr:    bool,
-    pub namespace: Option<String>,
-}
-
-#[derive(Clone)]
-pub struct Function {
-    pub ret:    Option<AnonArg>,
-    pub args:   Vec<NamedArg>,
-    pub name:   String,
-    pub body:   String,
-    pub vis:    Visibility,
-    pub loc:    Location,
-}
-
-#[derive(Clone)]
-pub struct Macro {
-    pub args:       Vec<String>,
+    pub typeref:    TypeUse,
     pub name:       String,
-    pub body:       String,
-    pub imports:    Vec<Import>,
-    pub vis:        Visibility,
-    pub loc:        Location,
+    pub muta:       bool,
+    pub ptr:        bool,
+    pub namespace:  Option<String>,
 }
 
 #[derive(Clone)]
-pub struct Field {
-    pub typ:    String,
+pub struct CExpr {
     pub expr:   String,
     pub loc:    Location,
 }
 
+
+
 #[derive(Clone)]
-pub struct Struct {
-    pub name:   String,
-    pub fields: Vec<Field>,
-    pub vis:    Visibility,
-    pub loc:    Location,
-    pub packed: bool,
+pub struct Field {
+    pub typeref: TypeUse,
+    pub expr:    CExpr,
+    pub loc:     Location,
 }

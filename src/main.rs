@@ -4,14 +4,13 @@ extern crate clap;
 #[macro_use] extern crate log;
 extern crate env_logger;
 
-mod emitter;
 mod ast;
 mod parser;
 mod project;
 mod make;
 mod resolver;
-
-use emitter::Emitter;
+mod flatten;
+mod emitter;
 
 use std::path::Path;
 use clap::{App, SubCommand};
@@ -119,13 +118,21 @@ fn build(tests: bool) {
             (true,  _) => continue,
         }
 
-        let modules   = resolver::resolve(&project, &root_namespace, &Path::new(&artifact.file));
-        for (name, md) in &modules {
+        let modules = resolver::resolve(&project, &root_namespace, &Path::new(&artifact.file));
+        let modules = flatten::Flatten::new(modules).run();
+
+        for (name, md) in modules {
+            let mut em = emitter::Emitter::new(name.join("::"), md, artifact.typ.clone());
+            em.emit();
+        };
+
+        return;
+        /*
+
+        let mut ems : Vec<(String, Emitter)> = modules.iter().map(|(name,md)|{
             let mut em = Emitter::new(md.namespace.clone(), artifact.typ.clone());
 
             debug!("emitting {}", name);
-
-            em.import(&modules, md.imports.clone());
 
             for i in &md.includes {
                 em.include(i);
@@ -148,6 +155,22 @@ fn build(tests: bool) {
             for (_,fun) in &md.functions {
                 em.define(&fun, &md.namespace, &fun.body);
             }
+
+            (name.clone(), em)
+        }).collect();
+
+        for (name, em) in &mut ems {
+            modules.get_mut(name).as_mut().unwrap().resolved_locals = em.locals.clone();
+        }
+
+        for (name, em) in &mut ems {
+            em.import(&modules, modules[name].imports.clone());
+            modules.get_mut(name).as_mut().unwrap().resolved_locals = em.locals.clone();
+        }
+
+        for (name, mut em) in ems {
+            debug!("type checking {}", name);
+            em.types();
         }
 
         if let project::ArtifactType::Lib = artifact.typ {
@@ -218,6 +241,9 @@ fn build(tests: bool) {
         }
 
         make.link();
+
+
+        */
     }
 }
 

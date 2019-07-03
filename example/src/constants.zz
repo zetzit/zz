@@ -1,7 +1,7 @@
 const int foo = 3 * 3;
 
 
-macro using(c::math::floor) ADD_IMPL (a,b) {
+macro using(libc::math::floor) ADD_IMPL (a,b) {
     floor(a +
         b)
 }

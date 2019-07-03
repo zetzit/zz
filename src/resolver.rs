@@ -65,7 +65,7 @@ pub fn resolve(
             let imports = imports.into_iter().filter_map(|mut imp|{
 
                 // is a c system include
-                if let Some("c") = imp.namespace.first().map(|s|s.as_str()) {
+                if let Some("libc") = imp.namespace.first().map(|s|s.as_str()) {
                     debug!("resolved import {} as c system include", imp.namespace.join("::"));
                     return Some(imp);
                 }
@@ -92,7 +92,6 @@ pub fn resolve(
                             debug!("resolved import {} as c file {:?}", imp.namespace.join("::"), path);
                             module.includes.push(ast::Include{
                                 expr: format!("{:?}", path.canonicalize().unwrap()),
-                                vis: imp.vis.clone(),
                                 loc: imp.loc.clone(),
                             });
                             module.sources.extend(vec![path.canonicalize().unwrap()]);

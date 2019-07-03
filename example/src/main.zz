@@ -1,5 +1,4 @@
 import identity::some_helper;
-import errors::error;
 
 thread_local mutable float wee = 0.1;
 
@@ -18,3 +17,7 @@ export fn main() -> int {
 
     return some_helper(&err, &bob);
 }
+
+
+static int error =21;
+
