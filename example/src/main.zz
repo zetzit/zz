@@ -4,7 +4,7 @@ thread_local mutable float wee = 0.1;
 
 atomic mutable int bob = 932;
 
-fn gimme_wee() -> float {
+pub fn gimme_wee() -> float {
     bob++;
     return wee;
 }
@@ -17,3 +17,7 @@ export fn main() -> int {
 
     return some_helper(&err, &bob);
 }
+
+
+import libc::stdbool::bool;
+static bool horst = false;

@@ -12,7 +12,7 @@ static uint32_t wuast  = 9;
 static mutable uint32_t counter = 1;
 
 
-fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
+pub fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     counter++;
     printf("lol\n");
     if (bob) {
@@ -22,7 +22,7 @@ fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
     return ADD_IMPL(32, wuast);
 }
 
-export fn horst() -> uint32_t {
+fn horst() -> uint32_t {
     printf("wee? %f\n", gimme_wee());
     return ADD_IMPL(3, 3);
 }

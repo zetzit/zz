@@ -55,11 +55,11 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut args = Vec::new();
                 let mut imports = Vec::new();
                 let mut body = None;
-                let mut vis = Visibility::Shared;
+                let mut vis = Visibility::Object;
                 for part in decl {
                     match part.as_rule() {
-                        Rule::key_private => {
-                            vis = Visibility::Object;
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
                         }
                         Rule::key_pub => {
                             vis = Visibility::Export;
@@ -125,12 +125,12 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut args = Vec::new();
                 let mut ret  = None;
                 let mut body = None;
-                let mut vis = Visibility::Shared;
+                let mut vis = Visibility::Object;
 
                 for part in decl {
                     match part.as_rule() {
-                        Rule::key_private => {
-                            vis = Visibility::Object;
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
                         }
                         Rule::key_pub => {
                             vis = Visibility::Export;
@@ -230,7 +230,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
             Rule::struct_d => {
                 let decl = decl.into_inner();
 
-                let mut vis    = Visibility::Shared;
+                let mut vis    = Visibility::Object;
                 let mut name   = None;
                 let mut fields = Vec::new();
                 let mut loc    = None;
@@ -241,8 +241,8 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_packed => {
                             packed = true;
                         }
-                        Rule::key_private => {
-                            vis = Visibility::Object;
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
                         }
                         Rule::key_pub => {
                             vis = Visibility::Export;
@@ -373,7 +373,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_mut => {
                             muta = true;
                         }
-                        Rule::key_private | Rule::key_pub => {
+                        Rule::key_shared | Rule::key_pub => {
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                 message: format!("cannot change visibility static variable"),
                             }, part.as_span());
@@ -424,12 +424,12 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut typeref = None;
                 let mut name    = None;
                 let mut expr    = None;
-                let mut vis     = Visibility::Shared;
+                let mut vis     = Visibility::Object;
 
                 for part in decl.into_inner() {
                     match part.as_rule() {
-                        Rule::key_private => {
-                            vis = Visibility::Object;
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
                         }
                         Rule::key_pub => {
                             vis = Visibility::Export;

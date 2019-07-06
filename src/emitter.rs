@@ -251,6 +251,8 @@ impl Emitter {
             _ => unreachable!(),
         };
 
+
+        // declare the fqn
         if let ArtifactType::Header = self.artifact {
         } else {
             write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
@@ -276,9 +278,59 @@ impl Emitter {
             ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
         }
 
-        write!(self.f, "{} (", v.ast.name).unwrap();
+        if v.ast.name == "main" {
+            write!(self.f, "{} (", v.ast.name).unwrap();
+        } else  {
+            write!(self.f, "{} (", v.fqn.join("_")).unwrap();
+        }
         self.function_args(args);
         write!(self.f, ");\n").unwrap();
+
+        if v.ast.name == "main" {
+            return;
+        };
+
+        // declare the short local name
+        // aliases are broken in clang, so we need to create an inline redirect
+
+        if let ArtifactType::Header = self.artifact {
+        } else {
+            write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
+        }
+
+        match &ret {
+            None       => write!(self.f, "void ").unwrap(),
+            Some(a)    => {
+                write!(self.f, "{} ", &a.typeref.name).unwrap();
+            }
+        };
+
+        write!(self.f, "static inline ").unwrap();
+        write!(self.f, " __attribute__ ((always_inline, unused)) ").unwrap();
+
+
+        write!(self.f, "{} (", v.ast.name).unwrap();
+        self.function_args(args);
+        write!(self.f, ")").unwrap();
+
+        write!(self.f, "{{").unwrap();
+        if ret.is_some() {
+            write!(self.f, "return ").unwrap();
+        }
+
+        write!(self.f, "{}(", v.fqn.join("_")).unwrap();
+
+        let mut first = true;
+        for arg in args {
+            if first {
+                first = false;
+            } else {
+                write!(self.f, ", ").unwrap();
+            }
+            write!(self.f, " {}", arg.name).unwrap();
+        }
+
+        write!(self.f, ");}} \n").unwrap();
     }
 
     pub fn emit_def(&mut self, v: &flatten::FlatLocal) {
@@ -312,7 +364,11 @@ impl Emitter {
             ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
         }
 
-        write!(self.f, "{} (", v.ast.name).unwrap();
+        if v.ast.name == "main" {
+            write!(self.f, "{} (", v.ast.name).unwrap();
+        } else  {
+            write!(self.f, "{} (", v.fqn.join("_")).unwrap();
+        }
         self.function_args(args);
         write!(self.f, ")\n").unwrap();
 

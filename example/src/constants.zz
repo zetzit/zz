@@ -1,7 +1,7 @@
-const int foo = 3 * 6;
+pub const int foo = 3 * 6;
 
 
-macro using(libc::math::floor) ADD_IMPL (a,b) {
+pub macro using(libc::math::floor) ADD_IMPL (a,b) {
     floor(a +
         b)
 }

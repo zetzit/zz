@@ -60,6 +60,7 @@ pub struct Flatten{
 }
 
 pub struct Scoped{
+    vis:            ast::Visibility,
     in_scope_here:  ast::Location,
     fqn:            Vec<String>,
 }
@@ -69,13 +70,14 @@ pub struct InterModule {
     includes:    HashMap<String, ast::Include>,
     sources:     HashSet<PathBuf>,
 
-    locals:      HashMap<String, ast::Location>,
+    locals:      HashMap<String, (ast::Location, ast::Visibility)>,
     imports:     Vec<ast::Import>,
     scope:       HashMap<String, Scoped>,
 }
 
 
 pub struct FlatLocal {
+    pub fqn:        Vec<String>,
     pub foreign:    bool,
     pub ast:        ast::Local,
 }
@@ -89,13 +91,13 @@ pub struct FlatModule {
 
 
 impl InterModule {
-    pub fn emit_local(&mut self, name: &str, source_loc: &ast::Location) {
-        if let Some(previous) = self.locals.insert(name.to_string(), source_loc.clone()) {
-            if &previous != source_loc {
+    pub fn emit_local(&mut self, name: &str, source_loc: &ast::Location, vis: &ast::Visibility) {
+        if let Some(previous) = self.locals.insert(name.to_string(), (source_loc.clone(), vis.clone())) {
+            if &previous.0 != source_loc {
                 error!("conflicting definition of '{}'\n{}\n{}",
                        name,
                        parser::make_error(source_loc, "redefined here"),
-                       parser::make_error(&previous, "already defined here"),
+                       parser::make_error(&previous.0, "already defined here"),
                        );
                 std::process::exit(9);
             }
@@ -167,7 +169,7 @@ impl Flatten {
                     deps,
                 });
 
-                m2.emit_local(&ast.name, &ast.loc);
+                m2.emit_local(&ast.name, &ast.loc, &ast.vis);
             }
 
 
@@ -189,13 +191,14 @@ impl Flatten {
             debug!("type resolve {:?}", module_name);
 
             // ireference the global symbol for each local
-            for (local_name, source_loc) in &module.locals {
+            for (local_name, (source_loc, vis)) in &module.locals {
                 let mut fqn = module_name.clone();
                 fqn.push(local_name.to_string());
                 table.get(&fqn).expect(&format!("ice: {:?} not in global" , fqn));
                 module.scope.insert(local_name.clone(), Scoped{
                     fqn,
                     in_scope_here: source_loc.clone(),
+                    vis: vis.clone(),
                 });
             }
 
@@ -273,6 +276,7 @@ impl Flatten {
                         module.scope.insert(import.namespace.last().unwrap().clone(), Scoped{
                             fqn: import.namespace.clone(),
                             in_scope_here: import.loc.clone(),
+                            vis: ast::Visibility::Export,
                         });
                         continue;
                     }
@@ -298,7 +302,7 @@ impl Flatten {
                                );
                         std::process::exit(9);
                     } else {
-                        let foreign_fqn = match imported_module.scope.get(&name) {
+                        let foreign = match imported_module.scope.get(&name) {
                             None => {
                                 error!("'{}' not defined in module '{}' \n{}",
                                        name, ns.join("::"),
@@ -307,25 +311,44 @@ impl Flatten {
                                 std::process::exit(9);
                             },
                             Some(v) => v,
-                        }.fqn.clone();
+                        };
+
+                        let g = table.get(&foreign.fqn).expect(&format!("ice: {:?} not in global" , foreign.fqn));
+
+                        if foreign.vis == ast::Visibility::Object {
+                            if let Some(ast) = &g.ast {
+                                error!("'{}' in module '{}' is private \n{}\n{}",
+                                       name, ns.join("::"),
+                                       parser::make_error(&import.loc, "cannot import private symbol"),
+                                       parser::make_error(&ast.loc,    "suggestion: use 'pub' to make symbol visibile"),
+                                       );
+                                std::process::exit(9);
+                            } else {
+                                error!("'{}' in module '{}' is private \n{}",
+                                       name, ns.join("::"),
+                                       parser::make_error(&import.loc, "cannot import private symbol"),
+                                       );
+                                std::process::exit(9);
+                            }
+                        }
 
                         let scoped = Scoped{
-                            fqn:            foreign_fqn.clone(),
+                            fqn:            foreign.fqn.clone(),
                             in_scope_here:  import.loc.clone(),
+                            vis:            import.vis.clone(),
                         };
 
 
-                        let g = table.get(&foreign_fqn).expect(&format!("ice: {:?} not in global" , foreign_fqn));
                         let mut all_resolved = true;
                         let mut dep_imports = Vec::new();
                         for dep in &g.deps {
                             match dep {
                                 Dependency::NeedLocal{..} => {
-                                    debug!("cannot complete import of {:?} yet because of missing dep {:?}", foreign_fqn, dep);
+                                    debug!("cannot complete import of {:?} yet because of missing dep {:?}", foreign.fqn, dep);
                                     all_resolved = false;
                                 },
                                 Dependency::Resolved{fqn, ..}  => {
-                                    if fqn == &foreign_fqn {
+                                    if fqn == &foreign.fqn {
                                         panic!("ICE: {:?} has itself as dependency", fqn);
                                     }
                                     let mut im2 = import.clone();
@@ -338,24 +361,24 @@ impl Flatten {
                                         std::process::exit(9);
                                     }
                                     dep_imports.push(im2);
-                                    debug!("dependency import  {:?} < {:?} => {:?}", module_name, foreign_fqn, fqn);
+                                    debug!("dependency import  {:?} < {:?} => {:?}", module_name, foreign.fqn, fqn);
                                 },
                             }
                         }
                         if all_resolved {
                             any_import_completed = true;
                             module.imports.extend(dep_imports);
-                            debug!("completed import of {:?} into {}", foreign_fqn, module_name.join("::"));
+                            debug!("completed import of {:?} into {}", foreign.fqn, module_name.join("::"));
 
 
 
                             if let Some(previous) = module.scope.insert(name.clone(), scoped) {
-                                if previous.fqn != foreign_fqn {
+                                if previous.fqn != foreign.fqn {
                                     if let Some(local) = module.locals.get(&name) {
                                         error!("conflicting declaration of '{}' in scope '{}'\n{}\n{}",
                                                name, module_name.join("::"),
                                                parser::make_error(&import.loc, "if we would import here"),
-                                               parser::make_error(local, "already declared here"),
+                                               parser::make_error(&local.0, "already declared here"),
                                                );
                                     } else {
                                         error!("conflicting declaration of '{}' in scope '{}' \n{}",
@@ -484,6 +507,7 @@ impl Flatten {
                     Some(ast) => {
                         let local_type = scoped.fqn[0] == name[0] && scoped.fqn[1] == name[1];
                         flatlocals.push(FlatLocal{
+                            fqn:     scoped.fqn.clone(),
                             foreign: !local_type,
                             ast: ast.clone(),
                         });
