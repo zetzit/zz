@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fmt;
 use std::path::PathBuf;
+use std::fmt;
 
 #[derive(PartialEq, Clone)]
 pub struct Location {

@@ -121,10 +121,28 @@ fn build(tests: bool) {
         let modules = resolver::resolve(&project, &root_namespace, &Path::new(&artifact.file));
         let modules = flatten::Flatten::new(modules).run();
 
-        for (name, md) in modules {
-            let mut em = emitter::Emitter::new(name.join("::"), md, artifact.typ.clone());
-            em.emit();
-        };
+        let cfiles : Vec<emitter::CFile> = modules.into_iter().map(|(name, module)|{
+            let em = emitter::Emitter::new(name.join("::"), module, artifact.typ.clone());
+            em.emit()
+        }).collect();
+
+        let mut make = make::Make::new(project.project.clone(), artifact);
+        for module in cfiles {
+            make.build(module);
+        }
+
+
+        for entry in std::fs::read_dir("./src").unwrap() {
+            let entry = entry.unwrap();
+            let path  = entry.path();
+            if path.is_file() {
+                if let Some("c") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
+                    make.cobject(&path);
+                }
+            }
+        }
+
+        make.link();
 
         return;
         /*
@@ -225,7 +243,6 @@ fn build(tests: bool) {
         }
 
         let mut make = make::Make::new(project.project.clone(), artifact);
-
         for (_, module) in &modules {
             make.module(&module);
         }

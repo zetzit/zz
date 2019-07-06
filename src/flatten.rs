@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use super::ast;
 use super::parser;
-use super::parser::Rule;
+use std::path::PathBuf;
+use std::collections::HashSet;
 
+
+// TODO check import visibility
 
 #[derive(Clone)]
 pub enum Dependency {
@@ -35,27 +38,57 @@ pub struct Global {
 
 impl std::fmt::Debug for Global {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "=> {:?}", self.deps)
+        write!(f, "{}", match self.ast {
+            None => "none",
+            Some(ref local) => {
+                match local.def {
+                    ast::Def::Static {..} => "static",
+                    ast::Def::Const {..} => "const",
+                    ast::Def::Function {..} => "function",
+                    ast::Def::Struct {..} => "struct",
+                    ast::Def::Macro {..} => "macro",
+                }
+            },
+        })?;
+        write!(f, " {:?}", self.deps)
     }
 }
 
 pub struct Flatten{
-    modules:    HashMap<Vec<String>, Module>,
+    modules:    HashMap<Vec<String>, InterModule>,
     table:      HashMap<Vec<String>, Global>,
 }
 
+pub struct Scoped{
+    in_scope_here:  ast::Location,
+    fqn:            Vec<String>,
+}
+
 #[derive(Default)]
-pub struct Module {
-    pub includes:    HashMap<String, ast::Include>,
+pub struct InterModule {
+    includes:    HashMap<String, ast::Include>,
+    sources:     HashSet<PathBuf>,
 
-
-    locals:          HashMap<String, ast::Location>,
-    imports:         Vec<ast::Import>,
-    scope:           HashMap<String, Vec<String>>,
+    locals:      HashMap<String, ast::Location>,
+    imports:     Vec<ast::Import>,
+    scope:       HashMap<String, Scoped>,
 }
 
 
-impl Module {
+pub struct FlatLocal {
+    pub foreign:    bool,
+    pub ast:        ast::Local,
+}
+
+pub struct FlatModule {
+    pub includes:   HashMap<String, ast::Include>,
+    pub sources:    HashSet<PathBuf>,
+
+    pub locals:     Vec<FlatLocal>,
+}
+
+
+impl InterModule {
     pub fn emit_local(&mut self, name: &str, source_loc: &ast::Location) {
         if let Some(previous) = self.locals.insert(name.to_string(), source_loc.clone()) {
             if &previous != source_loc {
@@ -74,12 +107,13 @@ impl Module {
 impl Flatten {
     pub fn new(modules: HashMap<String, ast::Module>) -> Self {
         let mut table  = HashMap::new();
-        let mut mm2 : HashMap<Vec<String>, Module>    = HashMap::new();
+        let mut mm2 : HashMap<Vec<String>, InterModule>    = HashMap::new();
 
         for (module_name, module) in modules {
             debug!("flatten {}", module_name);
 
-            let mut m2 = Module::default();
+            let mut m2 = InterModule::default();
+            m2.sources = module.sources;
             for ast in module.includes {
                 m2.includes.insert(ast.expr.clone(), ast);
             }
@@ -159,15 +193,18 @@ impl Flatten {
                 let mut fqn = module_name.clone();
                 fqn.push(local_name.to_string());
                 table.get(&fqn).expect(&format!("ice: {:?} not in global" , fqn));
-                module.scope.insert(local_name.clone(), fqn);
+                module.scope.insert(local_name.clone(), Scoped{
+                    fqn,
+                    in_scope_here: source_loc.clone(),
+                });
             }
 
             debug!("presolved locals: {:#?}", module.scope.iter().map(|(k,v)|
-                format!("{} => {:?}", k, v)).collect::<Vec<String>>());
+                format!("{} => {:?}", k, v.fqn)).collect::<Vec<String>>());
 
             // for each global in scope, find all dependencies, but only locally
             for (local_name,_) in &module.locals {
-                let mut fqn = module.scope.get(local_name).unwrap().clone();
+                let fqn = module.scope.get(local_name).unwrap().fqn.clone();
                 let mut g  =  table.remove(&fqn).unwrap();
 
                 for dep in &mut g.deps {
@@ -198,10 +235,10 @@ impl Flatten {
                                 std::process::exit(9);
                             }
 
-                            let mut fqn = module_name.clone();
-                            fqn.push(ast.name.clone());
-                            if let Some(_) = table.get(&fqn) {
-                                *dep = Dependency::Resolved{fqn};
+                            let mut fqn2 = module_name.clone();
+                            fqn2.push(ast.name.clone());
+                            if let Some(_) = table.get(&fqn2) {
+                                *dep = Dependency::Resolved{fqn:fqn2};
                             };
                         }
                     }
@@ -211,7 +248,7 @@ impl Flatten {
             }
 
             debug!("resolved locals: {:#?}", module.scope.iter().map(|(k,v)|
-                format!("{} => {:?}", k, v)).collect::<Vec<String>>());
+                format!("{} => {:?}", k, v.fqn)).collect::<Vec<String>>());
         }
 
         debug!("locally resolved global table: {:#?}", table.iter().map(|(k,v)|
@@ -220,7 +257,7 @@ impl Flatten {
 
 
         //imports
-        let mut any_import_completed = false;
+        let mut any_import_completed : bool;
         loop {
             any_import_completed = false;
             for module_name in mm2.keys().cloned().collect::<Vec<Vec<String>>>().into_iter() {
@@ -233,7 +270,10 @@ impl Flatten {
                     }
 
                     if import.namespace.get(0) == Some(&String::from("libc")) {
-                        module.scope.insert(import.namespace.last().unwrap().clone(), import.namespace.clone());
+                        module.scope.insert(import.namespace.last().unwrap().clone(), Scoped{
+                            fqn: import.namespace.clone(),
+                            in_scope_here: import.loc.clone(),
+                        });
                         continue;
                     }
 
@@ -258,7 +298,7 @@ impl Flatten {
                                );
                         std::process::exit(9);
                     } else {
-                        let mut foreign_fqn = match imported_module.scope.get(&name) {
+                        let foreign_fqn = match imported_module.scope.get(&name) {
                             None => {
                                 error!("'{}' not defined in module '{}' \n{}",
                                        name, ns.join("::"),
@@ -267,11 +307,15 @@ impl Flatten {
                                 std::process::exit(9);
                             },
                             Some(v) => v,
-                        }.clone();
+                        }.fqn.clone();
 
+                        let scoped = Scoped{
+                            fqn:            foreign_fqn.clone(),
+                            in_scope_here:  import.loc.clone(),
+                        };
 
-                        if let Some(previous_fqn) = module.scope.insert(name.clone(), foreign_fqn.clone()) {
-                            if previous_fqn != foreign_fqn {
+                        if let Some(previous) = module.scope.insert(name.clone(), scoped) {
+                            if previous.fqn != foreign_fqn {
                                 if let Some(local) = module.locals.get(&name) {
                                     error!("conflicting declaration of '{}' in scope '{}'\n{}\n{}",
                                            name, module_name.join("::"),
@@ -298,24 +342,27 @@ impl Flatten {
                                     all_resolved = false;
                                 },
                                 Dependency::Resolved{fqn, ..}  => {
+                                    if fqn == &foreign_fqn {
+                                        panic!("ICE: {:?} has itself as dependency", fqn);
+                                    }
                                     let mut im2 = import.clone();
                                     im2.namespace = fqn.clone();
                                     dep_imports.push(im2);
-                                    debug!("dependency import {:?} => {:?}", foreign_fqn, dep);
+                                    debug!("dependency import {:?} => {:?}", foreign_fqn, fqn);
                                 },
                             }
                         }
                         if all_resolved {
                             any_import_completed = true;
                             module.imports.extend(dep_imports);
-                            debug!("completed import of {:?}", foreign_fqn);
+                            debug!("completed import of {:?} into {}", foreign_fqn, module_name.join("::"));
                         } else {
                             module.imports.push(import);
                         }
                     }
                 }
                 debug!("post import locals: {:#?}", module.scope.iter().map(|(k,v)|
-                    format!("{} => {:?}", k, v)).collect::<Vec<String>>());
+                    format!("{} => {:?}", k, v.fqn)).collect::<Vec<String>>());
                 mm2.insert(module_name, module);
             }
 
@@ -328,19 +375,19 @@ impl Flatten {
 
             // local resolving round post imports
             for (module_name, module) in &mut mm2 {
-                for (local, fqn) in &module.scope {
-                    if fqn.get(0) == Some(&String::from("libc")) {
+                for (local, scoped) in &module.scope {
+                    if scoped.fqn.get(0) == Some(&String::from("libc")) {
                         continue
                     }
-                    let mut g = table.remove(fqn).expect(&format!("ice: {:?} not in global", fqn));
+                    let mut g = table.remove(&scoped.fqn).expect(&format!("ice: {:?} not in global", scoped.fqn));
                     for dep in &mut g.deps {
                         if let Dependency::NeedLocal{ast} = dep {
-                            if let Some(fqn) = module.scope.get(&ast.name) {
-                                *dep = Dependency::Resolved{fqn: fqn.clone()};
+                            if let Some(scoped2) = module.scope.get(&ast.name) {
+                                *dep = Dependency::Resolved{fqn: scoped2.fqn.clone()};
                             }
                         }
                     }
-                    table.insert(fqn.clone(), g);
+                    table.insert(scoped.fqn.clone(), g);
                 }
             }
 
@@ -352,15 +399,15 @@ impl Flatten {
         for (module_name, module) in &mut mm2 {
             debug!("type check {:?}", module_name);
             debug!("presolved locals: {:#?}", module.scope.iter().map(|(k,v)|
-                format!("{} => {:?}", k, v)).collect::<Vec<String>>());
+                format!("{} => {:?}", k, v.fqn)).collect::<Vec<String>>());
 
-            for (local, fqn) in &module.scope {
+            for (local, scoped) in &module.scope {
 
-                if fqn.get(0) == Some(&String::from("libc")) {
+                if scoped.fqn.get(0) == Some(&String::from("libc")) {
                     continue
                 }
 
-                let mut g = table.remove(fqn).expect(&format!("ice: {:?} not in global", fqn));
+                let mut g = table.remove(&scoped.fqn).expect(&format!("ice: {:?} not in global", scoped.fqn));
                 for dep in &mut g.deps {
                     match dep {
                         Dependency::Resolved{..} => {
@@ -368,7 +415,7 @@ impl Flatten {
                         },
                         Dependency::NeedLocal{ast} => {
                             if let Some(fqn) = module.scope.get(&ast.name) {
-                                *dep = Dependency::Resolved{fqn: fqn.clone()};
+                                *dep = Dependency::Resolved{fqn: scoped.fqn.clone()};
                             } else {
                                 error!("undefined type '{}' in the context '{}'\n{}",
                                        ast.name,
@@ -380,11 +427,11 @@ impl Flatten {
                         }
                     }
                 }
-                table.insert(fqn.clone(), g);
+                table.insert(scoped.fqn.clone(), g);
             }
 
             debug!("resolved locals: {:#?}", module.scope.iter().map(|(k,v)|
-                format!("{} => {:?}", k, v)).collect::<Vec<String>>());
+                format!("{} => {:?}", k, v.fqn)).collect::<Vec<String>>());
         }
 
 
@@ -398,8 +445,43 @@ impl Flatten {
         }
     }
 
-    pub fn run(self) -> HashMap<Vec<String>, Module> {
-        self.modules
+    pub fn run(mut self) -> HashMap<Vec<String>, FlatModule> {
+        std::mem::replace(&mut self.modules, HashMap::new()).into_iter().map(|(name, module)|{
+
+            let mut includes =  module.includes;
+            let mut flatlocals = Vec::new();
+
+            for (local, scoped) in &module.scope {
+                if scoped.fqn.get(0) == Some(&String::from("libc")) {
+                    if scoped.fqn.len() == 3 {
+                        includes.insert(scoped.fqn[1].clone(), ast::Include{
+                            expr: format!("<{}.h>", scoped.fqn[1]),
+                            loc:  scoped.in_scope_here.clone(),
+                        });
+                    }
+                    continue
+                }
+                let g = self.table.get(&scoped.fqn).expect(&format!("ice: {:?} not in global", scoped.fqn));
+                match &g.ast {
+                    None => {
+                        panic!("ice: no ast while flattening '{:?}' into module '{:?}'", scoped.fqn, name);
+                    }
+                    Some(ast) => {
+                        let local_type = scoped.fqn[0] == name[0] && scoped.fqn[1] == name[1];
+                        flatlocals.push(FlatLocal{
+                            foreign: !local_type,
+                            ast: ast.clone(),
+                        });
+                    }
+                }
+            }
+
+            (name, FlatModule{
+                locals: flatlocals, 
+                includes,
+                sources:  module.sources,
+            })
+        }).collect()
     }
 }
 

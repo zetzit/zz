@@ -5,6 +5,7 @@ use fasthash::metro;
 use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
+use super::flatten;
 
 
 pub struct Step {
@@ -108,27 +109,24 @@ impl Make {
         self.lflags.push(outp);
     }
 
-    pub fn module(&mut self, md: &ast::Module) {
-        let name = md.namespace.join("::");
-        let inp  = format!("./target/zz/{}.c", name);
-
+    pub fn build(&mut self, cf: super::emitter::CFile) {
         let mut args = self.cflags.clone();
         args.push("-Werror=implicit-function-declaration".to_string());
         args.push("-Werror=incompatible-pointer-types".to_string());
         args.push("-Wpedantic".to_string());
         args.push("-Wall".to_string());
         args.push("-c".to_string());
-        args.push(inp.clone());
+        args.push(cf.filepath.clone());
         args.push("-o".to_string());
 
         let hash = metro::hash128(args.join(" ").as_bytes());
 
-        let outp = format!("./target/zz/{}_{:x}.o", name, hash);
+        let outp = format!("./target/zz/{}_{:x}.o", cf.name, hash);
         args.push(outp.clone());
 
-        if self.is_dirty(&md.sources, &outp) {
+        if self.is_dirty(&cf.sources, &outp) {
             self.steps.push(Step{
-                source: Path::new(&inp).into(),
+                source: Path::new(&cf.filepath).into(),
                 args,
             });
         }

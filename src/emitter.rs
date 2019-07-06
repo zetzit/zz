@@ -3,16 +3,26 @@ use super::flatten;
 use super::ast;
 use super::project::ArtifactType;
 use std::io::Write;
+use std::collections::HashSet;
+use std::path::PathBuf;
+
+
+pub struct CFile {
+    pub name:       String,
+    pub filepath:   String,
+    pub sources:    HashSet<PathBuf>,
+}
 
 pub struct Emitter{
+    p:              String,
     f:              fs::File,
     name:           String,
-    module:         Option<flatten::Module>,
+    module:         Option<flatten::FlatModule>,
     artifact:       ArtifactType,
 }
 
 impl Emitter {
-    pub fn new(name: String, module: flatten::Module, artifact: ArtifactType) -> Self {
+    pub fn new(name: String, module: flatten::FlatModule, artifact: ArtifactType) -> Self {
         let p = if let ArtifactType::Header = artifact {
             format!("target/include/{}.h", name)
         } else {
@@ -21,6 +31,7 @@ impl Emitter {
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
         Emitter{
+            p,
             name,
             f,
             artifact,
@@ -28,14 +39,11 @@ impl Emitter {
         }
     }
 
-    pub fn emit(mut self) {
+    pub fn emit(mut self) -> CFile {
         if let ArtifactType::Header = self.artifact {
             write!(self.f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", self.name, self.name).unwrap();
         }
         let module = std::mem::replace(&mut self.module, None).unwrap();
-
-
-
 
         for (name,v) in module.includes {
             write!(self.f, "\n//{}\n", name).unwrap();
@@ -43,34 +51,70 @@ impl Emitter {
         }
 
 
-        /*
-        for (name,v) in module.f_structs {
-            write!(self.f, "\n//{}\n", name).unwrap();
-            self.emit_struct(&v);
-        }
-        for (name,v) in module.f_statics{
-            write!(self.f, "\n//{}\n", name).unwrap();
-            self.emit_static(&v);
-        }
-        for (name,v) in module.f_constants{
-            write!(self.f, "\n//{}\n", name).unwrap();
-            self.emit_constant(&v);
-        }
-        for (name,v) in module.f_decls{
-            write!(self.f, "\n//{}\n", name).unwrap();
-            self.emit_decl(&v);
-        }
-        for (name,v) in module.f_defs{
-            write!(self.f, "\n//{}\n", name).unwrap();
-            self.emit_def(&v);
+        for decl in &module.locals {
+            match decl.ast.def {
+                ast::Def::Macro{..} => {
+                    self.emit_macro(decl)
+                }
+                _ => (),
+            }
         }
 
+        for decl in &module.locals {
+            match decl.ast.def {
+                ast::Def::Const {..} => {
+                    self.emit_const(decl)
+                }
+                _ => (),
+            }
+        }
 
-        */
+        for decl in &module.locals {
+            match decl.ast.def {
+                ast::Def::Static {..} => {
+                    self.emit_static(decl)
+                },
+                _ => (),
+            }
+        };
 
+        for decl in &module.locals {
+            match decl.ast.def {
+                ast::Def::Struct {..} => {
+                    self.emit_struct(decl)
+                },
+                _ => (),
+            }
+        };
+
+        for decl in &module.locals {
+            match decl.ast.def {
+                ast::Def::Function{..} => {
+                    self.emit_decl(decl);
+                },
+                _ => (),
+            }
+        };
+
+        for decl in &module.locals {
+            match decl.ast.def {
+                ast::Def::Function{..} => {
+                    if !decl.foreign {
+                        self.emit_def(decl);
+                    }
+                },
+                _ => (),
+            }
+        };
 
         if let ArtifactType::Header = self.artifact {
             write!(self.f, "\n#endif\n").unwrap();
+        }
+
+        CFile {
+            name:     self.name,
+            filepath: self.p,
+            sources:  module.sources,
         }
     }
 
@@ -83,38 +127,24 @@ impl Emitter {
         write!(self.f, "#include {}\n", i.expr).unwrap();
     }
 
-    /*
-    pub fn emit_struct(&mut self, s: &ast::Struct) {
+    pub fn emit_static(&mut self, v: &flatten::FlatLocal) {
         if let ArtifactType::Header = self.artifact {
         } else {
-            write!(self.f, "#line {} \"{}\"\n", s.loc.line(), s.loc.file).unwrap();
-        }
-        write!(self.f, "typedef struct \n").unwrap();
-
-        write!(self.f, "{{\n").unwrap();
-        for field in &s.fields {
-            write!(self.f, "#line {} \"{}\"\n", field.expr.loc.line(), field.expr.loc.file).unwrap();
-            write!(self.f, "{} {}\n",
-                   &field.typeref.name, field.expr.expr,
-                   ).unwrap();
+            write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
         }
 
-        write!(self.f, "}} {} ;\n", s.name).unwrap();
-    }
+        let (typeref, expr, muta, storage) = match &v.ast.def {
+            ast::Def::Static{typeref, expr, muta, storage} => (typeref, expr, muta, storage),
+            _ => unreachable!(),
+        };
 
-    pub fn emit_static(&mut self, v: &ast::Static) {
-        if let ArtifactType::Header = self.artifact {
-        } else {
-            write!(self.f, "#line {} \"{}\"\n", v.loc.line(), v.loc.file).unwrap();
-        }
-
-        if v.muta {
+        if *muta {
             write!(self.f, "static ").unwrap();
         } else {
             write!(self.f, "const ").unwrap();
         }
 
-        match v.storage {
+        match storage {
             ast::Storage::Atomic => {
                 write!(self.f, "_Atomic ").unwrap();
             },
@@ -126,37 +156,71 @@ impl Emitter {
 
         if let ArtifactType::Header = self.artifact {
         } else {
-            write!(self.f, "\n#line {} \"{}\"\n", v.expr.loc.line(), v.expr.loc.file).unwrap();
+            write!(self.f, "\n#line {} \"{}\"\n", expr.loc.line(), expr.loc.file).unwrap();
         }
-        write!(self.f, "{} {} __attribute__ ((visibility (\"hidden\"))) = {};\n", v.typeref.name, v.name, v.expr.expr).unwrap();
+        write!(self.f, "{} {} __attribute__ ((visibility (\"hidden\"))) = {};\n", typeref.name, v.ast.name, expr.expr).unwrap();
     }
 
-    pub fn emit_constant(&mut self, v: &ast::Const) {
+    pub fn emit_const(&mut self, v: &flatten::FlatLocal) {
+        let (typeref, expr) = match &v.ast.def {
+            ast::Def::Const{typeref, expr} => (typeref, expr),
+            _ => unreachable!(),
+        };
+
         if let ArtifactType::Header = self.artifact {
         } else {
-            write!(self.f, "#line {} \"{}\"\n", v.expr.loc.line(), v.expr.loc.file).unwrap();
+            write!(self.f, "#line {} \"{}\"\n", expr.loc.line(), expr.loc.file).unwrap();
         }
-        write!(self.f, "#define {} (({}){})\n", v.name, v.typeref.name, v.expr.expr.replace("\n", "\\\n")).unwrap();
+
+        write!(self.f, "#define {} (({}){})\n", v.ast.name, typeref.name, expr.expr.replace("\n", "\\\n")).unwrap();
     }
 
-    pub fn emit_macro(&mut self, v: &ast::Macro) {
+    pub fn emit_struct(&mut self, v: &flatten::FlatLocal) {
+        let (fields, packed) = match &v.ast.def {
+            ast::Def::Struct{fields, packed} => (fields, packed),
+            _ => unreachable!(),
+        };
+
         if let ArtifactType::Header = self.artifact {
         } else {
-            write!(self.f, "#line {} \"{}\"\n", v.body.loc.line(), v.body.loc.file).unwrap();
+            write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
+        }
+        write!(self.f, "typedef struct \n").unwrap();
+
+        write!(self.f, "{{\n").unwrap();
+        for field in fields {
+            write!(self.f, "#line {} \"{}\"\n", field.expr.loc.line(), field.expr.loc.file).unwrap();
+            write!(self.f, "{} {}\n",
+                   &field.typeref.name, field.expr.expr,
+                   ).unwrap();
         }
 
-        write!(self.f, "#define {}", v.name).unwrap();
-        if v.args.len() > 0  {
-            write!(self.f, "({})", v.args.join(",")).unwrap();
-        }
-        write!(self.f, " {}\n", v.body.expr[1..v.body.expr.len()-1].replace("\n", "\\\n")).unwrap();
+        write!(self.f, "}} {} ;\n", v.ast.name).unwrap();
     }
 
 
 
-    fn function_args(&mut self, v: &ast::Function) {
+    pub fn emit_macro(&mut self, v: &flatten::FlatLocal) {
+        let (args, body) = match &v.ast.def {
+            ast::Def::Macro{args, body, ..} => (args, body),
+            _ => unreachable!(),
+        };
+
+        if let ArtifactType::Header = self.artifact {
+        } else {
+            write!(self.f, "#line {} \"{}\"\n", body.loc.line(), body.loc.file).unwrap();
+        }
+
+        write!(self.f, "#define {}", v.ast.name).unwrap();
+        if args.len() > 0  {
+            write!(self.f, "({})", args.join(",")).unwrap();
+        }
+        write!(self.f, " {}\n", body.expr[1..body.expr.len()-1].replace("\n", "\\\n")).unwrap();
+    }
+
+    fn function_args(&mut self, args: &Vec<ast::NamedArg>) {
         let mut first = true ;
-        for arg in &v.args {
+        for arg in args {
             if first {
                 first = false;
             } else {
@@ -181,78 +245,84 @@ impl Emitter {
         }
     }
 
-    pub fn emit_decl(&mut self, v: &ast::Function) {
+    pub fn emit_decl(&mut self, v: &flatten::FlatLocal) {
+        let (ret, args, body ) = match &v.ast.def {
+            ast::Def::Function{ret, args, body} => (ret, args, body),
+            _ => unreachable!(),
+        };
+
         if let ArtifactType::Header = self.artifact {
         } else {
-            write!(self.f, "#line {} \"{}\"\n", v.loc.line(), v.loc.file).unwrap();
+            write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
         }
 
-        match &v.vis {
+        match &v.ast.vis {
             ast::Visibility::Object  => {
                 write!(self.f, "static ").unwrap();
             },
             _ => (),
         };
 
-        match &v.ret {
+        match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", &a.typeref.name).unwrap();
             }
         };
 
-        match &v.vis {
+        match &v.ast.vis {
             ast::Visibility::Object => (),
             ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
             ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
         }
 
-        write!(self.f, "{} (", v.name).unwrap();
-        self.function_args(&v);
+        write!(self.f, "{} (", v.ast.name).unwrap();
+        self.function_args(args);
         write!(self.f, ");\n").unwrap();
     }
 
-    pub fn emit_def(&mut self, v: &ast::Function) {
+    pub fn emit_def(&mut self, v: &flatten::FlatLocal) {
+        let (ret, args, body ) = match &v.ast.def {
+            ast::Def::Function{ret, args, body} => (ret, args, body),
+            _ => unreachable!(),
+        };
+
         if let ArtifactType::Header = self.artifact {
         } else {
-            write!(self.f, "#line {} \"{}\"\n", v.loc.line(), v.loc.file).unwrap();
+            write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
         }
 
-        match &v.vis {
+        match &v.ast.vis {
             ast::Visibility::Object  => {
                 write!(self.f, "static ").unwrap();
             },
             _ => (),
         };
 
-        match &v.ret {
+        match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", &a.typeref.name).unwrap();
             }
         };
 
-        match &v.vis {
+        match &v.ast.vis {
             ast::Visibility::Object => (),
             ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
             ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
         }
 
-        write!(self.f, "{} (", v.name).unwrap();
-        self.function_args(&v);
+        write!(self.f, "{} (", v.ast.name).unwrap();
+        self.function_args(args);
         write!(self.f, ")\n").unwrap();
 
         if let ArtifactType::Header = self.artifact {
         } else {
-            write!(self.f, "#line {} \"{}\"\n", v.body.loc.line(), v.body.loc.file).unwrap();
+            write!(self.f, "#line {} \"{}\"\n", body.loc.line(), body.loc.file).unwrap();
         }
 
-        write!(self.f, "{}\n\n", v.body.expr).unwrap();
+        write!(self.f, "{}\n\n", body.expr).unwrap();
     }
-
-
-    */
-
 
 
 
