@@ -314,23 +314,6 @@ impl Flatten {
                             in_scope_here:  import.loc.clone(),
                         };
 
-                        if let Some(previous) = module.scope.insert(name.clone(), scoped) {
-                            if previous.fqn != foreign_fqn {
-                                if let Some(local) = module.locals.get(&name) {
-                                    error!("conflicting declaration of '{}' in scope '{}'\n{}\n{}",
-                                           name, module_name.join("::"),
-                                           parser::make_error(&import.loc, "if we would import here"),
-                                           parser::make_error(local, "already declared here"),
-                                           );
-                                } else {
-                                    error!("conflicting declaration of '{}' in scope '{}' \n{}",
-                                           name, module_name.join("::"),
-                                           parser::make_error(&import.loc, "if we would import here"),
-                                           );
-                                }
-                                std::process::exit(9);
-                            }
-                        }
 
                         let g = table.get(&foreign_fqn).expect(&format!("ice: {:?} not in global" , foreign_fqn));
                         let mut all_resolved = true;
@@ -347,8 +330,15 @@ impl Flatten {
                                     }
                                     let mut im2 = import.clone();
                                     im2.namespace = fqn.clone();
+                                    if fqn.len() > 1 && fqn[0] == module_name[1] && fqn[1] == module_name[1] {
+                                        error!("conflicting declaration of '{}' in scope '{}' \n{}",
+                                               name, module_name.join("::"),
+                                               parser::make_error(&import.loc, "if we would import here"),
+                                               );
+                                        std::process::exit(9);
+                                    }
                                     dep_imports.push(im2);
-                                    debug!("dependency import {:?} => {:?}", foreign_fqn, fqn);
+                                    debug!("dependency import  {:?} < {:?} => {:?}", module_name, foreign_fqn, fqn);
                                 },
                             }
                         }
@@ -356,6 +346,28 @@ impl Flatten {
                             any_import_completed = true;
                             module.imports.extend(dep_imports);
                             debug!("completed import of {:?} into {}", foreign_fqn, module_name.join("::"));
+
+
+
+                            if let Some(previous) = module.scope.insert(name.clone(), scoped) {
+                                if previous.fqn != foreign_fqn {
+                                    if let Some(local) = module.locals.get(&name) {
+                                        error!("conflicting declaration of '{}' in scope '{}'\n{}\n{}",
+                                               name, module_name.join("::"),
+                                               parser::make_error(&import.loc, "if we would import here"),
+                                               parser::make_error(local, "already declared here"),
+                                               );
+                                    } else {
+                                        error!("conflicting declaration of '{}' in scope '{}' \n{}",
+                                               name, module_name.join("::"),
+                                               parser::make_error(&import.loc, "if we would import here"),
+                                               );
+                                    }
+                                    std::process::exit(9);
+                                }
+                            }
+
+
                         } else {
                             module.imports.push(import);
                         }
@@ -390,6 +402,9 @@ impl Flatten {
                     table.insert(scoped.fqn.clone(), g);
                 }
             }
+
+            debug!("global table: {:#?}", table.iter().map(|(k,v)|
+                format!("{} => {:?}", k.join("::"), v)).collect::<Vec<String>>());
 
         }
 
