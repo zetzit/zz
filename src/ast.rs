@@ -107,7 +107,9 @@ pub struct Module {
 
 #[derive(Clone)]
 pub struct AnonArg {
-    pub typeref:    TypeUse
+    pub typeref:    TypeUse,
+    pub ptr:        bool,
+    pub namespace:  Option<String>,
 }
 
 #[derive(Clone)]

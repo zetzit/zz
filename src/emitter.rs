@@ -238,7 +238,7 @@ impl Emitter {
             write!(self.f, "{}", arg.typeref.name).unwrap();
 
             if arg.ptr {
-                write!(self.f, " *").unwrap();
+                write!(self.f, "* ").unwrap();
             }
 
             write!(self.f, " {}", arg.name).unwrap();
@@ -269,6 +269,9 @@ impl Emitter {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", &a.typeref.name).unwrap();
+                if a.ptr {
+                    write!(self.f, "* ").unwrap();
+                }
             }
         };
 
@@ -298,14 +301,18 @@ impl Emitter {
             write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
         }
 
+        write!(self.f, "static inline ").unwrap();
+
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", &a.typeref.name).unwrap();
+                if a.ptr {
+                    write!(self.f, "* ").unwrap();
+                }
             }
         };
 
-        write!(self.f, "static inline ").unwrap();
         write!(self.f, " __attribute__ ((always_inline, unused)) ").unwrap();
 
 
@@ -355,6 +362,9 @@ impl Emitter {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", &a.typeref.name).unwrap();
+                if a.ptr {
+                    write!(self.f, "* ").unwrap();
+                }
             }
         };
 

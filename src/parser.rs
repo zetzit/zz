@@ -139,16 +139,37 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             name = part.as_str().into();
                         }
                         Rule::ret_arg => {
-                            let typespan = part.as_span();
-                            let typeref  = part.into_inner().as_str().to_string();
+                            let mut namespace = None;
+                            let mut ptr       = false;
+                            let mut typeref   = String::new();
+                            let mut typeloc   = None;
+
+                            for part in part.into_inner().next().unwrap().into_inner().next().unwrap().into_inner() {
+                                match part.as_rule() {
+                                    Rule::namespace => {
+                                        namespace = Some(part.as_str().to_string());
+                                    },
+                                    Rule::key_ptr => {
+                                        ptr = true;
+                                    },
+                                    Rule::ident => {
+                                        typeref = part.as_str().to_string();
+                                        typeloc = Some(Location{
+                                            file: n.to_string_lossy().into(),
+                                            span: part.as_span(),
+                                        })
+                                    },
+                                    e => panic!("unexpected rule {:?} in return argument", e),
+                                }
+                            }
+
                             ret = Some(AnonArg{
                                 typeref: TypeUse {
                                     name : typeref.clone(),
-                                    loc : Location{
-                                        file: n.to_string_lossy().into(),
-                                        span: typespan,
-                                    },
-                                }
+                                    loc : typeloc.unwrap(),
+                                },
+                                ptr,
+                                namespace,
                             });
                         },
                         Rule::fn_args => {

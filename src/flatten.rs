@@ -218,9 +218,10 @@ impl Flatten {
                         Dependency::NeedLocal{ast} => {
                             match ast.name.as_str() {
                                 "char"
-                                    | "int"
-                                    | "float"
-                                    | "double"
+                                | "void"
+                                | "int"
+                                | "float"
+                                | "double"
                                     => {
                                         *dep = Dependency::Resolved{fqn: vec![
                                             "libc".into(), ast.name.as_str().to_string()]
