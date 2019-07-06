@@ -18,6 +18,3 @@ export fn main() -> int {
     return some_helper(&err, &bob);
 }
 
-
-static int error =21;
-

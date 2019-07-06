@@ -7,7 +7,7 @@ use super::parser::Rule;
 #[derive(Clone)]
 pub enum Dependency {
     Resolved {
-        name: Vec<String>,
+        fqn: Vec<String>,
     },
     NeedLocal {
         ast: ast::TypeUse,
@@ -16,8 +16,8 @@ pub enum Dependency {
 impl std::fmt::Debug for Dependency {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Dependency::Resolved{name,..} => {
-                write!(f, "{}", name.join("::"))?;
+            Dependency::Resolved{fqn,..} => {
+                write!(f, "{}", fqn.join("::"))?;
             }
             Dependency::NeedLocal{ast,..} => {
                 write!(f, "?{}", ast.name)?;
@@ -119,7 +119,7 @@ impl Flatten {
                     ast::Def::Macro{imports,..} => {
                         for dep in imports {
                             deps.push(Dependency::Resolved{
-                                name: dep.namespace.clone(),
+                                fqn: dep.namespace.clone(),
                             });
                         }
                     }
@@ -138,37 +138,6 @@ impl Flatten {
 
 
             for ast in module.imports {
-                /*
-                if ast.namespace.first().map(|s|s.as_str()) == Some("libc") {
-                    let mut ns = ast.namespace.clone();
-                    ns.remove(0);
-                    let typ = ns.pop().unwrap();
-
-                    if typ == "*" {
-                        error!("cannot import * from a c header\n{}",
-                               parser::make_error(&ast.loc, "in this import"),
-                               );
-                        std::process::exit(9);
-                    }
-
-
-                    let mut ns2 = module.namespace.clone();
-                    ns2.push(typ.clone());
-                    table.insert(ns2, Global{
-                        ast: Some(ast.clone()),
-                        deps: Vec::new(),
-                    });
-
-                    m2.emit_local(&typ, &ast.loc);
-                    let ast = ast::Include{
-                        expr: format!("<{}.h>", ns.join("/")),
-                        loc: ast.loc.clone(),
-                    };
-                    m2.includes.insert(typ, ast);
-                } else {
-                    m2.imports.push(ast);
-                }
-                */
                 m2.imports.push(ast);
             }
 
@@ -181,7 +150,7 @@ impl Flatten {
 
 
 
-        // partially resolve local scope (without imports)
+        // partially resolve local scope
         for (module_name, module) in &mut mm2 {
             debug!("type resolve {:?}", module_name);
 
@@ -213,7 +182,7 @@ impl Flatten {
                                     | "float"
                                     | "double"
                                     => {
-                                        *dep = Dependency::Resolved{name: vec![
+                                        *dep = Dependency::Resolved{fqn: vec![
                                             "libc".into(), ast.name.as_str().to_string()]
                                         };
                                         continue;
@@ -232,7 +201,7 @@ impl Flatten {
                             let mut fqn = module_name.clone();
                             fqn.push(ast.name.clone());
                             if let Some(_) = table.get(&fqn) {
-                                *dep = Dependency::Resolved{name: fqn};
+                                *dep = Dependency::Resolved{fqn};
                             };
                         }
                     }
@@ -251,73 +220,130 @@ impl Flatten {
 
 
         //imports
-        for module_name in mm2.keys().cloned().collect::<Vec<Vec<String>>>().into_iter() {
-            debug!("imports {:?}", module_name);
-            let mut module = mm2.remove(&module_name).unwrap();
-            for import in std::mem::replace(&mut module.imports, Vec::new()) {
+        let mut any_import_completed = false;
+        loop {
+            any_import_completed = false;
+            for module_name in mm2.keys().cloned().collect::<Vec<Vec<String>>>().into_iter() {
+                debug!("imports {:?}", module_name);
+                let mut module = mm2.remove(&module_name).unwrap();
+                for import in std::mem::replace(&mut module.imports, Vec::new()) {
 
-                if import.namespace.get(0) == Some(&String::from("libc")) {
-                    module.scope.insert(import.namespace.last().unwrap().clone(), import.namespace.clone());
-                    continue;
-                }
-
-                let mut ns = import.namespace.clone();
-                let name = ns.pop().unwrap();
-
-                if ns == module_name {
-                    error!("self referencing import '{}'\n{}",
-                           name,
-                           parser::make_error(&import.loc, "cannot import module of same name"),
-                           );
-                    std::process::exit(9);
-                }
-
-                let imported_module = mm2.get(&ns).expect(&format!("ice: module {:?} not resolved" , ns));
-
-
-                if &name == "*" {
-                    error!("import * doesnt work yet \n{}",
-                           parser::make_error(&import.loc, "in this import"),
-                           );
-                    std::process::exit(9);
-                } else {
-                    let mut foreign_fqn = match imported_module.scope.get(&name) {
-                        None => {
-                            error!("'{}' not defined in module '{}' \n{}",
-                                   name, ns.join("::"),
-                                   parser::make_error(&import.loc, "in this import"),
-                                   );
-                            std::process::exit(9);
-                        },
-                        Some(v) => v,
-                    }.clone();
-
-
-                    if let Some(previous_fqn) = module.scope.insert(name.clone(), foreign_fqn.clone()) {
-                        if previous_fqn != foreign_fqn {
-                            if let Some(local) = module.locals.get(&name) {
-                                error!("conflicting declaration of '{}' in scope '{}'\n{}\n{}",
-                                       name, module_name.join("::"),
-                                       parser::make_error(&import.loc, "if we would import here"),
-                                       parser::make_error(local, "already declared here"),
-                                       );
-                            } else {
-                                error!("conflicting declaration of '{}' in scope '{}' \n{}",
-                                       name, module_name.join("::"),
-                                       parser::make_error(&import.loc, "if we would import here"),
-                                       );
-                            }
-                            std::process::exit(9);
-                        }
+                    if import.namespace.len() < 2 {
+                        panic!("ice: import {:?} is not a valid name" , import.namespace);
                     }
 
+                    if import.namespace.get(0) == Some(&String::from("libc")) {
+                        module.scope.insert(import.namespace.last().unwrap().clone(), import.namespace.clone());
+                        continue;
+                    }
 
-                    TODO, so what about the dependencies of what we just imported....
+                    let mut ns = import.namespace.clone();
+                    let name = ns.pop().unwrap();
+
+                    if ns == module_name {
+                        error!("circular import '{}'\n{}",
+                               name,
+                               parser::make_error(&import.loc, format!("cannot import '{}' into context '{}'",
+                                                  import.namespace.join("::"), module_name.join("::"))),
+                               );
+                        std::process::exit(9);
+                    }
+
+                    let imported_module = mm2.get(&ns).expect(&format!("ice: module {:?} not resolved" , ns));
+
+
+                    if &name == "*" {
+                        error!("import * doesnt work yet \n{}",
+                               parser::make_error(&import.loc, "in this import"),
+                               );
+                        std::process::exit(9);
+                    } else {
+                        let mut foreign_fqn = match imported_module.scope.get(&name) {
+                            None => {
+                                error!("'{}' not defined in module '{}' \n{}",
+                                       name, ns.join("::"),
+                                       parser::make_error(&import.loc, "in this import"),
+                                       );
+                                std::process::exit(9);
+                            },
+                            Some(v) => v,
+                        }.clone();
+
+
+                        if let Some(previous_fqn) = module.scope.insert(name.clone(), foreign_fqn.clone()) {
+                            if previous_fqn != foreign_fqn {
+                                if let Some(local) = module.locals.get(&name) {
+                                    error!("conflicting declaration of '{}' in scope '{}'\n{}\n{}",
+                                           name, module_name.join("::"),
+                                           parser::make_error(&import.loc, "if we would import here"),
+                                           parser::make_error(local, "already declared here"),
+                                           );
+                                } else {
+                                    error!("conflicting declaration of '{}' in scope '{}' \n{}",
+                                           name, module_name.join("::"),
+                                           parser::make_error(&import.loc, "if we would import here"),
+                                           );
+                                }
+                                std::process::exit(9);
+                            }
+                        }
+
+                        let g = table.get(&foreign_fqn).expect(&format!("ice: {:?} not in global" , foreign_fqn));
+                        let mut all_resolved = true;
+                        let mut dep_imports = Vec::new();
+                        for dep in &g.deps {
+                            match dep {
+                                Dependency::NeedLocal{..} => {
+                                    debug!("cannot complete import of {:?} yet because of missing dep {:?}", foreign_fqn, dep);
+                                    all_resolved = false;
+                                },
+                                Dependency::Resolved{fqn, ..}  => {
+                                    let mut im2 = import.clone();
+                                    im2.namespace = fqn.clone();
+                                    dep_imports.push(im2);
+                                    debug!("dependency import {:?} => {:?}", foreign_fqn, dep);
+                                },
+                            }
+                        }
+                        if all_resolved {
+                            any_import_completed = true;
+                            module.imports.extend(dep_imports);
+                            debug!("completed import of {:?}", foreign_fqn);
+                        } else {
+                            module.imports.push(import);
+                        }
+                    }
+                }
+                debug!("post import locals: {:#?}", module.scope.iter().map(|(k,v)|
+                    format!("{} => {:?}", k, v)).collect::<Vec<String>>());
+                mm2.insert(module_name, module);
+            }
+
+            if !any_import_completed{
+                break;
+            }
+
+
+
+
+            // local resolving round post imports
+            for (module_name, module) in &mut mm2 {
+                for (local, fqn) in &module.scope {
+                    if fqn.get(0) == Some(&String::from("libc")) {
+                        continue
+                    }
+                    let mut g = table.remove(fqn).expect(&format!("ice: {:?} not in global", fqn));
+                    for dep in &mut g.deps {
+                        if let Dependency::NeedLocal{ast} = dep {
+                            if let Some(fqn) = module.scope.get(&ast.name) {
+                                *dep = Dependency::Resolved{fqn: fqn.clone()};
+                            }
+                        }
+                    }
+                    table.insert(fqn.clone(), g);
                 }
             }
-            debug!("post import locals: {:#?}", module.scope.iter().map(|(k,v)|
-                format!("{} => {:?}", k, v)).collect::<Vec<String>>());
-            mm2.insert(module_name, module);
+
         }
 
 
@@ -341,8 +367,8 @@ impl Flatten {
 
                         },
                         Dependency::NeedLocal{ast} => {
-                            if let Some(_) = module.scope.get(&ast.name) {
-                                *dep = Dependency::Resolved{name: vec![ast.name.as_str().to_string()]};
+                            if let Some(fqn) = module.scope.get(&ast.name) {
+                                *dep = Dependency::Resolved{fqn: fqn.clone()};
                             } else {
                                 error!("undefined type '{}' in the context '{}'\n{}",
                                        ast.name,
