@@ -1,61 +1,49 @@
 use super::ast;
 use super::parser;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use super::name::Name;
 use super::project::Config;
 
-#[derive(Default)]
-struct Resolver {
-    modules: HashMap<String, ast::Module>,
+
+pub enum Module {
+    C(PathBuf),
+    ZZ(ast::Module),
 }
 
-
-pub fn to_absolute_namespace(
-    project_name:               &String,
-    importer_module_source:     &Path,
-    importer_module_namespace:  &Vec<String>,
-    artifact_namespace:         &Vec<String>,
-    search:                     Vec<String>,
-)-> Option<(Vec<String>, PathBuf)> {
-    debug!("to absolute {:?} ", search);
-
-    let path = search.join("/");
-    let p = importer_module_source.parent().unwrap().join(&path).with_extension("zz");
-    if p.exists() {
-        let mut ns = importer_module_namespace.clone();
-        ns.pop();
-        ns.extend(search);
-        debug!("   relative to importer => {:?}", ns);
-        return Some((ns, p));
-    }
-
-    if &search[0] == project_name {
-        let mut search = search.clone();
-        search.remove(0);
-        let path = search.join("/");
-
-        let p = Path::new("./src").join(&path).with_extension("zz");
-        if p.exists() {
-            let mut ns = vec![project_name.clone()];
-            ns.extend(search);
-            debug!("   relative to project root => {:?}", ns);
-            return Some((ns, p));
+pub fn load(
+    modules:       &mut HashMap<Name, Module>,
+    artifact_name: &Name,
+    src:          &Path
+) {
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let path  = entry.path();
+        if path.is_file() {
+            let ext = path.extension().map(|v|v.to_str()).expect(&format!("invalid file name {:?}", path));
+            match ext {
+                Some("h") => {
+                    let mut name = artifact_name.clone();
+                    name.push(path.file_stem().unwrap().to_string_lossy().to_string());
+                    modules.insert(name, Module::C(path.into()));
+                },
+                Some("zz") => {
+                    let mut m = parser::parse(&path);
+                    m.name = artifact_name.clone();
+                    m.name.push(path.file_stem().unwrap().to_string_lossy().to_string());
+                    modules.insert(m.name.clone(), Module::ZZ(m));
+                },
+                _ => {},
+            }
         }
     }
-
-    None
 }
 
-pub fn resolve(
-    project: &Config,
-    artifact_namespace: &Vec<String>,
-    main: &Path
-) -> HashMap<String, ast::Module> {
+/*
 
-    let mut r = Resolver::default();
-    let md = parser::parse(artifact_namespace.clone(), &main);
-    r.modules.insert(md.namespace.join("::"), md);
+
 
     loop {
         let mut is_dirty = false;
@@ -65,18 +53,15 @@ pub fn resolve(
             let imports = imports.into_iter().filter_map(|mut imp|{
 
                 // is a c system include
-                if let Some("libc") = imp.namespace.first().map(|s|s.as_str()) {
-                    debug!("resolved import {} as c system include", imp.namespace.join("::"));
+                if let Some("libc") = imp.name.0.first().map(|s|s.as_str()) {
+                    debug!("resolved import {} as c system include", imp.name);
                     return Some(imp);
                 }
 
-                // make search path absolute
-                let mut search = imp.namespace.clone();
-                search.pop();
                 let (search, path) = match to_absolute_namespace(
                     &project.project.name,
                     &module.source,
-                    &module.namespace,
+                    &module.name,
                     artifact_namespace,
                     search.clone(),
                 ) {
@@ -109,9 +94,10 @@ pub fn resolve(
 
 
                 // change import to absolute
-                let importname = imp.namespace.pop().unwrap();
                 imp.namespace = search.clone();
-                imp.namespace.push(importname);
+                if let Some(name) = import_one_name {
+                    imp.namespace.push(name);
+                }
 
                 // already cached
                 if let Some(m3) = &r.modules.get(&search.join("::")) {
@@ -161,3 +147,46 @@ pub fn resolve(
     }
     r.modules
 }
+
+#[derive(Default)]
+struct Resolver {
+    modules: HashMap<String, ast::Module>,
+}
+
+
+pub fn to_absolute_namespace(
+    project_name:               &Name,
+    search:                     &Name,
+    importer_module_source:     &Path,
+    importer_module_name:       &Name,
+    artifact_name:              &Name,
+)-> Option<(Name, PathBuf)> {
+    debug!("to absolute {:?} ", search);
+
+    let path = search.0.join("/");
+    let p = importer_module_source.parent().unwrap().join(&path).with_extension("zz");
+    if p.exists() {
+        let mut ns = importer_module_name.clone();
+        ns.pop();
+        ns.0.extend(search.0);
+        debug!("   relative to importer => {:?}", ns);
+        return Some((ns, p));
+    }
+
+    if &search[0] == project_name {
+        let mut search = search.clone();
+        search.remove(0);
+        let path = search.join("/");
+
+        let p = Path::new("./src").join(&path).with_extension("zz");
+        if p.exists() {
+            let mut ns = vec![project_name.clone()];
+            ns.extend(search);
+            debug!("   relative to project root => {:?}", ns);
+            return Some((ns, p));
+        }
+    }
+
+    None
+}
+*/

@@ -17,7 +17,6 @@ pub struct Artifact {
     #[serde(rename = "type")]
     pub name:   String,
     pub typ:    ArtifactType,
-    pub file:   String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -61,7 +60,6 @@ pub fn load() -> (PathBuf, Config) {
         if search.join("./src/main.zz").exists() {
             a.push(Artifact{
                 name: c.project.name.clone(),
-                file: "./src/main.zz".to_string(),
                 typ:  ArtifactType::Exe,
             });
         }
@@ -69,7 +67,6 @@ pub fn load() -> (PathBuf, Config) {
         if search.join("./src/lib.zz").exists() {
             a.push(Artifact{
                 name: c.project.name.clone(),
-                file: "./src/lib.zz".to_string(),
                 typ:  ArtifactType::Lib,
             });
         }
@@ -84,7 +81,6 @@ pub fn load() -> (PathBuf, Config) {
                 if let Some("zz") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
                     c.artifacts.as_mut().unwrap().push(Artifact{
                         name: format!("tests::{}", path.file_stem().unwrap().to_string_lossy()),
-                        file: path.to_string_lossy().into(),
                         typ:  ArtifactType::Test,
                     });
                 }

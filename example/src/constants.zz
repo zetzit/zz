@@ -1,12 +1,15 @@
 pub const int foo = 3 * 6;
 
 
-pub macro using(libc::math::floor) ADD_IMPL (a,b) {
+pub macro using libc::math::{floor} ADD_IMPL (a,b)
+{
     floor(a +
         b)
 }
 
 
-export fn conflict() -> int {
+using aye;
+
+export fn conflict() -> aye::bob {
     return 3;
 }

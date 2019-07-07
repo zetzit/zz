@@ -1,6 +1,6 @@
-import example::aye::yoo;
+using example::aye;
 
 export fn main() -> int {
-    yoo();
+    aye_yoo();
     return 0;
 }

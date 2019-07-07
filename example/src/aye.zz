@@ -1,3 +1,15 @@
+using libc::stdint;
+
 fn yoo() -> int {
     return 2;
 }
+
+
+pub struct bob {
+    stdint::uint32_t dibdoo;
+}
+
+
+
+
+pub const int horst =3 ;

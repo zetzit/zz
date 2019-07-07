@@ -7,14 +7,19 @@ extern crate env_logger;
 mod ast;
 mod parser;
 mod project;
-mod make;
-mod resolver;
+//mod make;
+mod loader;
 mod flatten;
-mod emitter;
+//mod emitter;
+mod abs;
+mod name;
 
 use std::path::Path;
 use clap::{App, SubCommand};
 use std::process::Command;
+use name::Name;
+use std::collections::HashSet;
+use std::collections::HashMap;
 
 fn main() {
     if let Err(_) = std::env::var("RUST_LOG") {
@@ -100,15 +105,51 @@ fn main() {
 
 fn build(tests: bool) {
 
-    let (root, mut project) = project::load();
+    let (root, project) = project::load();
     std::env::set_current_dir(root).unwrap();
 
     std::fs::create_dir_all("./target/c/").expect("create target dir");
     std::fs::create_dir_all("./target/zz/").expect("create target dir");
     std::fs::create_dir_all("./target/include/").expect("create target dir");
 
+    let project_name        = Name(vec![String::new(), project.project.name.clone()]);
+    let project_tests_name  = Name(vec![String::new(), project.project.name.clone(), "tests".to_string()]);
+
+    let mut modules = HashMap::new();
+    loader::load(&mut modules, &project_name, &Path::new("./src"));
+    loader::load(&mut modules, &project_tests_name, &Path::new("./tests"));
+
+    let names : HashSet<Name> = modules.keys().cloned().collect();
+    for name in &names {
+        let mut md = modules.remove(name).unwrap();
+        match &mut md {
+            loader::Module::C(_) => (),
+            loader::Module::ZZ(ast) => abs::abs(ast, &modules),
+        }
+        modules.insert(name.clone(), md);
+    }
+    for name in &names {
+        let mut md = modules.remove(name).unwrap();
+        match &mut md {
+            loader::Module::C(_) => (),
+            loader::Module::ZZ(ast) => flatten::flatten(ast, &modules),
+        }
+        modules.insert(name.clone(), md);
+    }
+
+    //for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
+    //    let mut artifact_name = Name(artifact.name.split("::").map(|s|s.to_string()).collect());
+    //    artifact_name.0.insert(0, String::new());
+    //};
+
+
+    /*
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
-        let root_namespace = artifact.name.split("::").map(|s|s.to_string()).collect();
+
+        let project_name = Name(vec![String::new(), project.project.name.clone()]);
+        project_name.0.insert(0, String::new());
+        let artifact_name = project_name.join(Name(artifact.name.split("::").map(|s|s.to_string()).collect()));
+
 
         match (tests, &artifact.typ) {
             (false, project::ArtifactType::Test) => continue,
@@ -118,7 +159,10 @@ fn build(tests: bool) {
             (true,  _) => continue,
         }
 
-        let modules = resolver::resolve(&project, &root_namespace, &Path::new(&artifact.file));
+        let mut modules = resolver::resolve(&project_name, &artifact_name, &Path::new(&artifact.file));
+        for (name, md) in &mut modules {
+            abs::abs(name, md);
+        }
         let modules = flatten::Flatten::new(modules).run();
 
         let cfiles : Vec<emitter::CFile> = modules.into_iter().map(|(name, module)|{
@@ -144,123 +188,7 @@ fn build(tests: bool) {
 
         make.link();
 
-        return;
-        /*
-
-        let mut ems : Vec<(String, Emitter)> = modules.iter().map(|(name,md)|{
-            let mut em = Emitter::new(md.namespace.clone(), artifact.typ.clone());
-
-            debug!("emitting {}", name);
-
-            for i in &md.includes {
-                em.include(i);
-            }
-            for (_,v) in &md.macros {
-                em.imacro(&v);
-            }
-            for s in &md.structs {
-                em.struc(&s);
-            }
-            for (_,v) in &md.statics {
-                em.istatic(&v);
-            }
-            for (_,v) in &md.constants {
-                em.constant(&v);
-            }
-            for (_,fun) in &md.functions {
-                em.declare(&fun, &md.namespace);
-            }
-            for (_,fun) in &md.functions {
-                em.define(&fun, &md.namespace, &fun.body);
-            }
-
-            (name.clone(), em)
-        }).collect();
-
-        for (name, em) in &mut ems {
-            modules.get_mut(name).as_mut().unwrap().resolved_locals = em.locals.clone();
-        }
-
-        for (name, em) in &mut ems {
-            em.import(&modules, modules[name].imports.clone());
-            modules.get_mut(name).as_mut().unwrap().resolved_locals = em.locals.clone();
-        }
-
-        for (name, mut em) in ems {
-            debug!("type checking {}", name);
-            em.types();
-        }
-
-        if let project::ArtifactType::Lib = artifact.typ {
-            let mut header = Emitter::new(vec![project.project.name.clone()], project::ArtifactType::Header);
-            for (_name, md) in &modules {
-                for (_, v) in &md.macros{
-                    if let ast::Visibility::Export = v.vis {
-                        for mp in &v.imports {
-                            header.import(&modules, vec![mp.clone()]);
-                        }
-                        header.imacro(&v);
-                    }
-                }
-            }
-            for (_name, md) in &modules {
-                for i in &md.includes {
-                    if let ast::Visibility::Export = i.vis {
-                        if i.expr.contains("<") {
-                            header.include(i);
-                        } else {
-                            let e = pest::error::Error::<parser::Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                                message: format!("cannot re-export local c header"),
-                            }, i.loc.span.clone());
-                            error!("{} : {}", i.loc.file, e);
-                            std::process::exit(9);
-                        }
-                    }
-                }
-            }
-            for (_name, md) in &modules {
-                for i in &md.imports {
-                    if let ast::Visibility::Export = i.vis {
-                        header.import(&modules, vec![i.clone()]);
-                    }
-                }
-            }
-            for (_name, md) in &modules {
-                for s in &md.structs {
-                    if let ast::Visibility::Export = s.vis {
-                        header.struc(&s);
-                    }
-                }
-            }
-            for (_name, md) in &modules {
-                for (_,fun) in &md.functions {
-                    if let ast::Visibility::Export = fun.vis {
-                        header.declare(&fun, &md.namespace);
-                    }
-                }
-            }
-            drop(header);
-        }
-
-        let mut make = make::Make::new(project.project.clone(), artifact);
-        for (_, module) in &modules {
-            make.module(&module);
-        }
-
-        for entry in std::fs::read_dir("./src").unwrap() {
-            let entry = entry.unwrap();
-            let path  = entry.path();
-            if path.is_file() {
-                if let Some("c") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
-                    make.cobject(&path);
-                }
-            }
-        }
-
-        make.link();
-
-
-        */
     }
+    */
 }
 

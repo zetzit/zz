@@ -1,11 +1,14 @@
-import c::assert::assert;
+using libc::assert::{assert};
 
-fn bob_is_a_failure() {
+
+struct bob{}
+
+fn bob_is_a_failure(bob* b) {
     assert(1 == 0);
 }
 
 
 export fn main() -> int {
-    bob_is_a_failure();
+    bob_is_a_failure(0);
     return 0;
 }

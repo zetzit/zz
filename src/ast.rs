@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::fmt;
+use super::name::Name;
 
 #[derive(PartialEq, Clone)]
 pub struct Location {
@@ -38,9 +39,10 @@ pub enum Visibility {
 
 #[derive(Clone, PartialEq)]
 pub struct Import {
-    pub namespace:  Vec<String>,
-    pub vis:        Visibility,
-    pub loc:        Location,
+    pub name:   Name,
+    pub local:  Vec<String>,
+    pub vis:    Visibility,
+    pub loc:    Location,
 }
 
 
@@ -49,12 +51,14 @@ pub struct Import {
 pub enum Def {
     Static {
         typeref:    TypeUse,
+        ptr:        bool,
         expr:       CExpr,
         muta:       bool,
         storage:    Storage,
     },
     Const {
         typeref:    TypeUse,
+        ptr:        bool,
         expr:       CExpr,
     },
     Function {
@@ -91,13 +95,13 @@ pub struct Include {
 
 #[derive(Clone)]
 pub struct TypeUse {
-    pub name:   String,
+    pub name:   Name,
     pub loc:    Location,
 }
 
 #[derive(Default, Clone)]
 pub struct Module {
-    pub namespace:  Vec<String>,
+    pub name:       Name,
     pub source:     PathBuf,
     pub locals:     Vec<Local>,
     pub includes:   Vec<Include>,
@@ -109,7 +113,6 @@ pub struct Module {
 pub struct AnonArg {
     pub typeref:    TypeUse,
     pub ptr:        bool,
-    pub namespace:  Option<String>,
 }
 
 #[derive(Clone)]
@@ -118,7 +121,6 @@ pub struct NamedArg {
     pub name:       String,
     pub muta:       bool,
     pub ptr:        bool,
-    pub namespace:  Option<String>,
 }
 
 #[derive(Clone)]

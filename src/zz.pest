@@ -15,9 +15,10 @@ string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 int_literal     = @{ digit+ }
 
 ident       = @{ (alpha | digit | "_")+ }
-ident_or_star = @{ (alpha | digit | "_" | "*" )+ }
+star        = @{ "*" }
+local       = { "{" ~ WHITESPACE* ~ ident ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ ident )* ~ WHITESPACE* ~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
-name        = ${ namespace+ ~ ident_or_star }
+name        = ${ ident ~ ( "::" ~ (local | name))? }
 
 typ = ${
     ((key_const | key_mut) ~ WHITESPACE+)? ~ namespace? ~ ident ~ key_ptr?
@@ -32,7 +33,7 @@ ret_arg     = {"->" ~ anon_arg}
 function    = { ( key_pub | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 
-import      = { key_pub? ~  "import" ~ name ~ ";" }
+import      = { key_pub? ~  "using" ~ name ~  ";"? }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
@@ -63,7 +64,7 @@ comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
 
 vararg      = @{"..."}
 call_args   = {ident ~ ( "," ~ ( ident | vararg) )* }
-macroimports = { "using" ~ "(" ~ name ~ ( "," ~ name )* ~ ","? ~ ")" }
+macroimports = { "using" ~ name }
 imacro      = { ( key_pub | key_shared)? ~ "macro" ~ macroimports* ~ ident ~ "(" ~ call_args? ~")" ~ block }
 
 file        = { SOI ~ (struct_d

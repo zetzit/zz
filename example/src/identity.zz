@@ -1,12 +1,12 @@
-import libc::stdint::uint32_t;
-import libc::stdio::printf;
-import math::add;
+using math;
+using libc::stdint::{ uint32_t };
+using libc::stdio::{printf} ;
 
-import constants::foo;
-import errors::error;
-import constants::ADD_IMPL;
+using constants::{foo};
+using errors::{error};
+using constants::{ADD_IMPL};
 
-import main::gimme_wee;
+using main;
 
 static uint32_t wuast  = 9;
 static mutable uint32_t counter = 1;
@@ -23,7 +23,7 @@ pub fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
 }
 
 fn horst() -> uint32_t {
-    printf("wee? %f\n", gimme_wee());
+    printf("wee? %f\n", main_gimme_wee());
     return ADD_IMPL(3, 3);
 }
 
@@ -31,3 +31,6 @@ fn horst() -> uint32_t {
 
 
 const int conflict = 1;
+
+
+const char* lol = "bob";

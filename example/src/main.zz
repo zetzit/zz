@@ -1,10 +1,11 @@
-import identity::some_helper;
+using identity::{some_helper};
+using aye;
 
 thread_local mutable float wee = 0.1;
 
 atomic mutable int bob = 932;
 
-pub fn gimme_wee() -> float {
+pub fn gimme_wee(aye::bob* lol) -> float {
     bob++;
     return wee;
 }
@@ -19,5 +20,5 @@ export fn main() -> int {
 }
 
 
-import libc::stdbool::bool;
-static bool horst = false;
+using libc::stdbool;
+static stdbool::bool horst = false;

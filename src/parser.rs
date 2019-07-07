@@ -1,5 +1,6 @@
 use pest::Parser;
 use super::ast::*;
+use super::name::Name;
 use std::path::Path;
 use std::io::{Read};
 
@@ -14,9 +15,9 @@ pub fn make_error<S: Into<String>>(loc: &Location, message: S) -> pest::error::E
     }, loc.span.clone()).with_path(&loc.file)
 }
 
-pub fn parse(ns: Vec<String>, n: &Path) -> Module
+pub fn parse(n: &Path) -> Module
 {
-    match p(ns, &n){
+    match p(&n){
         Err(e) => {
             let e = e.with_path(&n.to_string_lossy());
             error!("syntax error\n{}", e);
@@ -28,13 +29,12 @@ pub fn parse(ns: Vec<String>, n: &Path) -> Module
     }
 }
 
-fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
+fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
     let mut module = Module::default();
     module.source = n.to_path_buf();
     module.sources.insert(n.canonicalize().unwrap());
-    module.namespace = nsi;
-    module.namespace.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
+    module.name.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
 
     let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
     let mut file = String::new();
@@ -68,20 +68,20 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             name = part.as_str().into();
                         }
                         Rule::macroimports => {
-                            for arg in part.into_inner() {
-                                let loc = Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: arg.as_span(),
-                                };
-                                let namespace : Vec<String> = arg.as_str().split("::").map(|s|s.to_string()).collect();
-                                let import = Import{
-                                    loc,
-                                    namespace,
-                                    vis: Visibility::Object,
-                                };
-                                module.imports.push(import.clone());
-                                imports.push(import);
-                            }
+                            let loc = Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            };
+                            let (name, local) = parse_name(part.into_inner().next().unwrap());
+
+                            let import = Import{
+                                loc,
+                                name,
+                                local,
+                                vis: Visibility::Object,
+                            };
+                            module.imports.push(import.clone());
+                            imports.push(import);
                         }
                         Rule::call_args => {
                             for arg in part.into_inner() {
@@ -139,21 +139,22 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             name = part.as_str().into();
                         }
                         Rule::ret_arg => {
-                            let mut namespace = None;
+                            let mut name      = Vec::new();
                             let mut ptr       = false;
-                            let mut typeref   = String::new();
                             let mut typeloc   = None;
 
                             for part in part.into_inner().next().unwrap().into_inner().next().unwrap().into_inner() {
                                 match part.as_rule() {
                                     Rule::namespace => {
-                                        namespace = Some(part.as_str().to_string());
+                                        for nspart in part.into_inner() {
+                                            name.push(nspart.as_str().to_string());
+                                        }
                                     },
                                     Rule::key_ptr => {
                                         ptr = true;
                                     },
                                     Rule::ident => {
-                                        typeref = part.as_str().to_string();
+                                        name.push(part.as_str().to_string());
                                         typeloc = Some(Location{
                                             file: n.to_string_lossy().into(),
                                             span: part.as_span(),
@@ -165,11 +166,10 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                             ret = Some(AnonArg{
                                 typeref: TypeUse {
-                                    name : typeref.clone(),
+                                    name : Name(name),
                                     loc : typeloc.unwrap(),
                                 },
                                 ptr,
-                                namespace,
                             });
                         },
                         Rule::fn_args => {
@@ -179,20 +179,21 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 let name          = arg.next().unwrap().as_str().to_string();
                                 let mut muta      = false;
                                 let mut ptr       = false;
-                                let mut typeref   = String::new();
                                 let mut typeloc   = None;
-                                let mut namespace = None;
+                                let mut typename  = Vec::new();
 
                                 for part in types.into_inner() {
                                     match part.as_rule() {
                                         Rule::namespace => {
-                                            namespace = Some(part.as_str().to_string());
+                                            for nspart in part.into_inner() {
+                                                typename.push(nspart.as_str().to_string());
+                                            }
                                         },
                                         Rule::key_ptr => {
                                             ptr = true;
                                         },
                                         Rule::ident => {
-                                            typeref = part.as_str().to_string();
+                                            typename.push(part.as_str().to_string());
                                             typeloc = Some(Location{
                                                 file: n.to_string_lossy().into(),
                                                 span: part.as_span(),
@@ -209,7 +210,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 }
 
                                 let typeref = TypeUse{
-                                    name : typeref.clone(),
+                                    name : Name(typename),
                                     loc: typeloc.unwrap(),
                                 };
 
@@ -218,7 +219,6 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                     typeref,
                                     muta,
                                     ptr,
-                                    namespace,
                                 });
                             }
                         },
@@ -283,7 +283,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                             let mut field = part.into_inner();
                             let typespan = field.next().unwrap();
-                            let typeref  = typespan.as_str().to_string();
+                            let typeref  = typespan.as_str().split("::").map(|s|s.to_string()).collect();
                             let expr     = field.next().unwrap();
                             let expr     = CExpr{
                                 expr: expr.as_str().into(),
@@ -294,7 +294,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             };
 
                             let typeref = TypeUse{
-                                name : typeref.clone(),
+                                name : Name(typeref),
                                 loc : Location{
                                     file: n.to_string_lossy().into(),
                                     span: typespan.as_span(),
@@ -347,10 +347,11 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 };
                 let decl = decli.unwrap();
 
-                let namespace  = collect_ns(decl);
+                let (name, local) = parse_name(decl);
 
                 module.imports.push(Import{
-                    namespace,
+                    name,
+                    local,
                     vis,
                     loc
                 });
@@ -378,6 +379,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut name    = None;
                 let mut expr    = None;
                 let mut muta    = false;
+                let mut ptr     = false;
                 let mut storage = Storage::Static;
 
                 for part in decl.into_inner() {
@@ -402,13 +404,16 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             std::process::exit(9);
                         }
                         Rule::typ if typeref.is_none() => {
-                            typeref =  Some(TypeUse {
-                                name : part.as_str().into(),
-                                loc : Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: part.as_span().clone(),
-                                },
+                            let loc = Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span().clone(),
+                            };
+                            let (name, p) =  parse_typ(part);
+                            typeref = Some(TypeUse{
+                                name,
+                                loc,
                             });
+                            ptr = p;
                         },
                         Rule::ident if name.is_none() => {
                             name  = Some(part.as_str().to_string());
@@ -431,6 +436,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     vis: Visibility::Object,
                     def: Def::Static {
                         storage,
+                        ptr,
                         muta,
                         typeref: typeref.unwrap(),
                         expr: expr.unwrap(),
@@ -445,6 +451,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut typeref = None;
                 let mut name    = None;
                 let mut expr    = None;
+                let mut ptr     = false;
                 let mut vis     = Visibility::Object;
 
                 for part in decl.into_inner() {
@@ -456,13 +463,16 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             vis = Visibility::Export;
                         }
                         Rule::typ if typeref.is_none() => {
-                            typeref =  Some(TypeUse {
-                                name : part.as_str().into(),
-                                loc : Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: part.as_span().clone(),
-                                },
+                            let loc = Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span().clone(),
+                            };
+                            let (name, p) =  parse_typ(part);
+                            typeref = Some(TypeUse{
+                                name,
+                                loc,
                             });
+                            ptr = p;
                         },
                         Rule::ident if name.is_none() => {
                             name  = Some(part.as_str().into());
@@ -485,6 +495,7 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     loc,
                     def: Def::Const {
                         typeref: typeref.unwrap(),
+                        ptr,
                         expr: expr.unwrap(),
                     }
                 });
@@ -499,19 +510,54 @@ fn p(nsi: Vec<String>, n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 }
 
 
+fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
+    let mut name = Vec::new();
+    let mut ptr  = false;
+    for part in decl.into_inner() {
+        match part.as_rule() {
+            Rule::namespace => {
+                for nspart in part.into_inner() {
+                    name.push(nspart.as_str().to_string());
+                }
+            },
+            Rule::key_ptr => {
+                ptr = true;
+            },
+            Rule::ident => {
+                name.push(part.as_str().to_string());
+            },
+            e => panic!("unexpected rule {:?} in typ", e),
+        }
+    }
+    (Name(name), ptr)
+}
 
-fn collect_ns(decl: pest::iterators::Pair<Rule>) -> Vec<String> {
+
+fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<String>) {
+    let mut locals = Vec::new();
     let mut v = Vec::new();
     for part in decl.into_inner() {
         match part.as_rule() {
-            Rule::ident_or_star | Rule::ident => {
+            Rule::ident => {
                 v.push(part.as_str().into());
             }
-            Rule::namespace => {
-                v.extend(collect_ns(part));
+            Rule::local => {
+                for p2 in part.into_inner() {
+                    match p2.as_rule() {
+                        Rule::ident => {
+                            locals.push(p2.as_str().into());
+                        },
+                        e => panic!("unexpected rule {:?} in local", e)
+                    }
+                }
+            },
+            Rule::name => {
+                let (name, locals2) = parse_name(part);
+                v.extend(name.0);
+                locals.extend(locals2);
             }
-            e => panic!("unexpected rule {:?} in import ", e),
+            e => panic!("unexpected rule {:?} in import name ", e),
         }
     }
-    v
+    (Name(v), locals)
 }

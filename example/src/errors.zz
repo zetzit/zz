@@ -1,7 +1,8 @@
 fn usemeeee(error* e) {
 }
 
-import libc::stdint::uint8_t;
+using libc::stdint::{uint8_t};
+
 pub struct error {
     uint8_t error;
     char    description[255];
