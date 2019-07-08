@@ -1,17 +1,18 @@
 using identity::{some_helper};
 using aye;
+using errors;
 
 thread_local mutable float wee = 0.1;
 
 atomic mutable int bob = 932;
 
 pub fn gimme_wee(aye::bob* lol) -> float {
-    bob += lol;
+    bob += (int)lol;
     return wee;
 }
 
 export fn main() -> int {
-    error err = {0};
+    errors_error err = {0};
     uint32_t bob;
 
     wee += 0.1;
@@ -20,5 +21,5 @@ export fn main() -> int {
 }
 
 
-using libc::stdbool;
-static stdbool::bool horst = false;
+using libc::stdbool::{bool};
+static bool horst = false;

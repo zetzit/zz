@@ -83,11 +83,20 @@ impl Scope{
                     std::process::exit(9);
                 }
 
+                if rhs.len() != 0 && v.name.0[1] == "libc" {
+                    error!("'{}' cannot be used as qualified name\n{}\n{}",
+                           v.name,
+                           parser::make_error(&t.loc, format!("'{}' is a c header", lhs)),
+                           parser::make_error(&v.loc, format!("suggestion: add '{}' to this import", rhs.join("::")))
+                           );
+                    std::process::exit(9);
+                }
+
                 if rhs.len() == 0 && v.is_module {
                     error!("cannot use module '{}' as a type\n{}\n{}",
                            v.name,
                            parser::make_error(&t.loc, format!("cannot use module '{}' as a type", t.name)),
-                           parser::make_error(&v.loc, format!("'{}' was imported as a module here", t.name)),
+                           parser::make_error(&v.loc, format!("if you wanted to import '{}' as a type, use ::{{{}}} here", t.name, t.name)),
                            );
                     std::process::exit(9);
                 }
@@ -193,11 +202,11 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
 
     let mut scope = Scope::default();
 
-    for import in &md.imports {
+    for import in &mut md.imports {
         let fqn  = abs_import(&md.name, &import, all_modules);
 
         if import.local.len() == 0 {
-            scope.insert(import.name.0.last().unwrap().clone(), fqn, &import.loc, true);
+            scope.insert(import.name.0.last().unwrap().clone(), fqn.clone(), &import.loc, true);
         } else {
             for local in &import.local {
                 let mut nn = fqn.clone();
@@ -206,6 +215,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                 scope.insert(local.clone(), nn, &import.loc, false);
             }
         }
+        import.name = fqn;
     }
 
     // round one, just get all local defs
@@ -242,7 +252,12 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                     check_abs_available(&field.typeref.name, all_modules, &field.typeref.loc, &md.name);
                 }
             }
-            ast::Def::Macro{..} => {}
+            ast::Def::Macro{imports,..} => {
+                for import in imports {
+                    let fqn  = abs_import(&md.name, &import, all_modules);
+                    import.name = fqn;
+                }
+            }
         }
     }
 }

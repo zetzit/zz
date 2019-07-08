@@ -7,7 +7,7 @@ extern crate env_logger;
 mod ast;
 mod parser;
 mod project;
-//mod make;
+mod make;
 mod loader;
 mod flatten;
 mod emitter;
@@ -105,7 +105,7 @@ fn main() {
 
 fn build(tests: bool) {
 
-    let (root, project) = project::load();
+    let (root, mut project) = project::load();
     std::env::set_current_dir(root).unwrap();
 
     std::fs::create_dir_all("./target/c/").expect("create target dir");
@@ -139,15 +139,53 @@ fn build(tests: bool) {
         modules.insert(name.clone(), md);
     }
 
+    let mut cfiles = HashMap::new();
     for module in flat {
         let em = emitter::Emitter::new(module, false);
-        em.emit();
+        let cf = em.emit();
+        cfiles.insert(cf.name.clone(), cf);
     }
 
-    //for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
-    //    let mut artifact_name = Name(artifact.name.split("::").map(|s|s.to_string()).collect());
-    //    artifact_name.0.insert(0, String::new());
-    //};
+    for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
+        let mut make = make::Make::new(project.project.clone(), artifact.clone());
+
+        let mut main = Name::from(&artifact.main);
+        if !main.is_absolute() {
+            main.0.insert(0,String::new());
+        }
+        let main = cfiles.get(&main).expect(&format!(
+                "cannot build artifact '{}', main module '{}' does not exist", artifact.name, main));
+
+        let mut need = Vec::new();
+        need.push(main.name.clone());
+        let mut used = HashSet::new();
+
+        while need.len() > 0 {
+            for n in std::mem::replace(&mut need, Vec::new()) {
+                if !used.insert(n.clone()) {
+                    continue
+                }
+                let n = cfiles.get(&n).unwrap();
+                for d in &n.deps {
+                    need.push(d.clone());
+                }
+                make.build(n);
+            }
+        }
+
+        for entry in std::fs::read_dir("./src").unwrap() {
+            let entry = entry.unwrap();
+            let path  = entry.path();
+            if path.is_file() {
+                if let Some("c") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
+                    make.cobject(&path);
+                }
+            }
+        }
+
+        make.link();
+
+    };
 
 
     /*

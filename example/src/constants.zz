@@ -11,5 +11,6 @@ pub macro using libc::math::{floor} ADD_IMPL (a,b)
 using aye;
 
 export fn conflict() -> aye::bob {
-    return 3;
+    aye_bob r = {0};
+    return r;
 }

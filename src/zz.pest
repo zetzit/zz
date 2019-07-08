@@ -16,7 +16,7 @@ int_literal     = @{ digit+ }
 
 ident       = @{ (alpha | digit | "_")+ }
 star        = @{ "*" }
-local       = { "{" ~ WHITESPACE* ~ ident ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ ident )* ~ WHITESPACE* ~ "}" }
+local       = { "{" ~ WHITESPACE* ~ ident ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ ident )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
 name        = ${ ident ~ ( "::" ~ (local | name))? }
 

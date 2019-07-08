@@ -109,7 +109,7 @@ impl Make {
         self.lflags.push(outp);
     }
 
-    pub fn build(&mut self, cf: super::emitter::CFile) {
+    pub fn build(&mut self, cf: &super::emitter::CFile) {
         let mut args = self.cflags.clone();
         args.push("-Werror=implicit-function-declaration".to_string());
         args.push("-Werror=incompatible-pointer-types".to_string());

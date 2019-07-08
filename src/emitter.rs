@@ -12,12 +12,13 @@ pub struct CFile {
     pub name:       Name,
     pub filepath:   String,
     pub sources:    HashSet<PathBuf>,
+    pub deps:       HashSet<Name>,
 }
 
 pub struct Emitter{
     p:              String,
     f:              fs::File,
-    module:         Option<flatten::Module>,
+    module:         flatten::Module,
     header:         bool,
 }
 
@@ -30,26 +31,60 @@ impl Emitter {
         };
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
+
+
         Emitter{
             p,
             f,
             header,
-            module: Some(module),
+            module,
         }
     }
 
-    pub fn emit(mut self) -> CFile {
-        let module = std::mem::replace(&mut self.module, None).unwrap();
+    fn to_local_name(&self, s: &Name) -> String {
+        assert!(s.is_absolute());
 
-        if self.header {
-            write!(self.f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", module.name, module.name).unwrap();
+        if s.0[1] == "libc" {
+            return s.0.last().unwrap().clone();
         }
 
-        for v in module.d {
+        let mut search  = s.clone();
+        let mut rem     = Vec::new();
+        while search.len() > 1 {
+
+            if self.module.short_names.contains(&search) {
+                rem.insert(0, search.pop().unwrap());
+                return rem.join("_");
+            }
+            rem.push(search.pop().unwrap());
+        }
+
+        let mut s = s.clone();
+        s.0.remove(0);
+        return s.0.join("_");
+    }
+
+    pub fn emit(mut self) -> CFile {
+        let module = self.module.clone();
+        debug!("emitting {}", module.name);
+
+        if self.header {
+            let headername = module.name.0.join("_");
+            write!(self.f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", headername, headername).unwrap();
+        }
+
+        for v in &module.d {
             match v {
                 flatten::D::Include(i) => {
                     self.emit_include(&i);
                 },
+                flatten::D::Local(_) => (),
+            }
+        };
+
+        for v in &module.d {
+            match v {
+                flatten::D::Include(_) => {},
                 flatten::D::Local(d) => {
                     match d.def {
                         ast::Def::Macro{..} => {
@@ -64,79 +99,39 @@ impl Emitter {
                         ast::Def::Struct{..} => {
                             self.emit_struct(&d)
                         }
-                        _ => (),
+                        ast::Def::Function{..} => {
+                            if !d.name.ends_with("::main") {
+                                self.emit_decl(&d);
+                            }
+                        }
+                    }
+                    write!(self.f, "\n");
+                }
+            }
+        }
+
+        for v in &module.d {
+            if let flatten::D::Local(d)  = v {
+                if let ast::Def::Function{..} = d.def {
+                    let mut name = Name::from(&d.name);
+                    name.pop();
+                    if name == module.name {
+                        self.emit_def(&d);
                     }
                 }
             }
         }
 
-
-        /*
-        for decl in &module.locals {
-            match decl.ast.def {
-                ast::Def::Macro{..} => {
-                    self.emit_macro(decl)
-                }
-                _ => (),
-            }
-        }
-
-        for decl in &module.locals {
-            match decl.ast.def {
-                ast::Def::Const {..} => {
-                    self.emit_const(decl)
-                }
-                _ => (),
-            }
-        }
-
-        for decl in &module.locals {
-            match decl.ast.def {
-                ast::Def::Static {..} => {
-                    self.emit_static(decl)
-                },
-                _ => (),
-            }
-        };
-
-        for decl in &module.locals {
-            match decl.ast.def {
-                ast::Def::Struct {..} => {
-                    self.emit_struct(decl)
-                },
-                _ => (),
-            }
-        };
-
-        for decl in &module.locals {
-            match decl.ast.def {
-                ast::Def::Function{..} => {
-                    self.emit_decl(decl);
-                },
-                _ => (),
-            }
-        };
-
-        for decl in &module.locals {
-            match decl.ast.def {
-                ast::Def::Function{..} => {
-                    if !decl.foreign {
-                        self.emit_def(decl);
-                    }
-                },
-                _ => (),
-            }
-        };
-        */
 
         if self.header {
             write!(self.f, "\n#endif\n").unwrap();
         }
 
         CFile {
-            name:     module.name,
-            filepath: self.p,
-            sources:  module.sources,
+            name:       module.name,
+            filepath:   self.p,
+            sources:    module.sources,
+            deps:       module.deps,
         }
     }
 
@@ -158,7 +153,7 @@ impl Emitter {
             write!(self.f, "#line {} \"{}\"\n", body.loc.line(), body.loc.file).unwrap();
         }
 
-        write!(self.f, "#define {}", v.name).unwrap();
+        write!(self.f, "#define {}", self.to_local_name(&Name::from(&v.name))).unwrap();
         if args.len() > 0  {
             write!(self.f, "({})", args.join(",")).unwrap();
         }
@@ -178,7 +173,7 @@ impl Emitter {
         if *muta {
             write!(self.f, "static ").unwrap();
         } else {
-            write!(self.f, "const ").unwrap();
+            write!(self.f, "static const ").unwrap();
         }
 
         match storage {
@@ -194,11 +189,12 @@ impl Emitter {
         if !self.header {
             write!(self.f, "\n#line {} \"{}\"\n", expr.loc.line(), expr.loc.file).unwrap();
         }
-        write!(self.f, "{} ", typeref.name).unwrap();
+        write!(self.f, "{} ", self.to_local_name(&typeref.name)).unwrap();
         if *ptr {
             write!(self.f, "* ").unwrap();
         }
-        write!(self.f, "{} __attribute__ ((visibility (\"hidden\"))) = {};\n", ast.name, expr.expr).unwrap();
+        write!(self.f, "{} = {};\n",
+            self.to_local_name(&Name::from(&ast.name)), expr.expr).unwrap();
     }
 
     pub fn emit_const(&mut self, ast: &ast::Local) {
@@ -211,11 +207,13 @@ impl Emitter {
             write!(self.f, "#line {} \"{}\"\n", expr.loc.line(), expr.loc.file).unwrap();
         }
 
-        write!(self.f, "#define {} (({}", ast.name, typeref.name).unwrap();
+        write!(self.f, "static const {} ", self.to_local_name(&typeref.name)).unwrap();
         if *ptr {
             write!(self.f, "* ").unwrap();
         }
-        write!(self.f, "){})\n", expr.expr.replace("\n", "\\\n")).unwrap();
+
+        write!(self.f, "{} = ", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        write!(self.f, "({});\n", expr.expr.replace("\n", "\\\n")).unwrap();
     }
 
     pub fn emit_struct(&mut self, ast: &ast::Local) {
@@ -231,13 +229,15 @@ impl Emitter {
 
         write!(self.f, "{{\n").unwrap();
         for field in fields {
-            write!(self.f, "#line {} \"{}\"\n", field.expr.loc.line(), field.expr.loc.file).unwrap();
+            if !self.header {
+                write!(self.f, "#line {} \"{}\"\n", field.expr.loc.line(), field.expr.loc.file).unwrap();
+            }
             write!(self.f, "   {} {}\n",
-                   &field.typeref.name, field.expr.expr,
+                   self.to_local_name(&field.typeref.name), field.expr.expr,
                    ).unwrap();
         }
 
-        write!(self.f, "}} {} ;\n", ast.name).unwrap();
+        write!(self.f, "}} {} ;\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
     }
 
 
@@ -256,7 +256,7 @@ impl Emitter {
                 write!(self.f, "const ").unwrap();
             }
 
-            write!(self.f, "{}", arg.typeref.name).unwrap();
+            write!(self.f, "{}", self.to_local_name(&arg.typeref.name)).unwrap();
 
             if arg.ptr {
                 write!(self.f, "* ").unwrap();
@@ -267,11 +267,10 @@ impl Emitter {
     }
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {
-        let (ret, args, body ) = match &ast.def {
+        let (ret, args, _body ) = match &ast.def {
             ast::Def::Function{ret, args, body} => (ret, args, body),
             _ => unreachable!(),
         };
-
 
         // declare the fqn
 
@@ -289,7 +288,7 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", &a.typeref.name).unwrap();
+                write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
                 if a.ptr {
                     write!(self.f, "* ").unwrap();
                 }
@@ -302,17 +301,10 @@ impl Emitter {
             ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
         }
 
-        if ast.name == "main" {
-            write!(self.f, "main (").unwrap();
-        } else  {
-            write!(self.f, "{} (", ast.name).unwrap();
-        }
+        write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
+
         self.function_args(args);
         write!(self.f, ");\n").unwrap();
-
-        if ast.name == "main" {
-            return;
-        };
 
         // declare the short local name
         // aliases are broken in clang, so we need to create an inline redirect
@@ -326,7 +318,7 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", &a.typeref.name).unwrap();
+                write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
                 if a.ptr {
                     write!(self.f, "* ").unwrap();
                 }
@@ -336,7 +328,7 @@ impl Emitter {
         write!(self.f, " __attribute__ ((always_inline, unused)) ").unwrap();
 
 
-        write!(self.f, "{} (", ast.name).unwrap();
+        write!(self.f, "{} (", self.to_local_name(&Name::from(&ast.name))).unwrap();
         self.function_args(args);
         write!(self.f, ")").unwrap();
 
@@ -345,7 +337,7 @@ impl Emitter {
             write!(self.f, "return ").unwrap();
         }
 
-        write!(self.f, "{}(", ast.name).unwrap();
+        write!(self.f, "{}(", Name::from(&ast.name).0[1..].join("_")).unwrap();
 
         let mut first = true;
         for arg in args {
@@ -360,55 +352,55 @@ impl Emitter {
         write!(self.f, ");}} \n").unwrap();
     }
 
-    /*
-    pub fn emit_def(&mut self, v: &flatten::FlatLocal) {
-        let (ret, args, body ) = match &v.ast.def {
+    pub fn emit_def(&mut self, ast: &ast::Local) {
+        let (ret, args, body ) = match &ast.def {
             ast::Def::Function{ret, args, body} => (ret, args, body),
             _ => unreachable!(),
         };
 
-        if let ArtifactType::Header = self.artifact {
-        } else {
-            write!(self.f, "#line {} \"{}\"\n", v.ast.loc.line(), v.ast.loc.file).unwrap();
+        if !self.header {
+            write!(self.f, "#line {} \"{}\"\n", ast.loc.line(), ast.loc.file).unwrap();
         }
 
-        match &v.ast.vis {
-            ast::Visibility::Object  => {
-                write!(self.f, "static ").unwrap();
-            },
-            _ => (),
-        };
+        if !ast.name.ends_with("::main") {
+            match &ast.vis {
+                ast::Visibility::Object  => {
+                    write!(self.f, "static ").unwrap();
+                },
+                _ => (),
+            };
+        }
 
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", &a.typeref.name).unwrap();
+                write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
                 if a.ptr {
                     write!(self.f, "* ").unwrap();
                 }
             }
         };
 
-        match &v.ast.vis {
-            ast::Visibility::Object => (),
-            ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
-            ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
+
+
+        if ast.name.ends_with("::main") {
+            write!(self.f, "main (").unwrap();
+        } else  {
+            match &ast.vis {
+                ast::Visibility::Object => (),
+                ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
+                ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
+            }
+            write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
         }
 
-        if v.ast.name == "main" {
-            write!(self.f, "{} (", v.ast.name).unwrap();
-        } else  {
-            write!(self.f, "{} (", v.fqn.join("_")).unwrap();
-        }
         self.function_args(args);
         write!(self.f, ")\n").unwrap();
 
-        if let ArtifactType::Header = self.artifact {
-        } else {
+        if !self.header {
             write!(self.f, "#line {} \"{}\"\n", body.loc.line(), body.loc.file).unwrap();
         }
 
         write!(self.f, "{}\n\n", body.expr).unwrap();
     }
-    */
 }

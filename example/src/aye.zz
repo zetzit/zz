@@ -1,15 +1,19 @@
-using libc::stdint;
+using libc::stdint::{uint32_t, int32_t, int8_t};
 
-fn yoo() -> int {
+pub fn yoo() -> int32_t {
     return 2;
 }
 
 
 pub struct bob {
-    stdint::uint32_t dibdoo;
+    lol dibdoo;
+}
+pub struct lol  {
+    int8_t dibdoo;
 }
 
 
 
 
-pub const int horst =3 ;
+
+pub const int8_t horst =3 ;

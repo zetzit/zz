@@ -12,10 +12,11 @@ pub enum ArtifactType {
     Header,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Artifact {
     #[serde(rename = "type")]
     pub name:   String,
+    pub main:   String,
     pub typ:    ArtifactType,
 }
 
@@ -60,6 +61,7 @@ pub fn load() -> (PathBuf, Config) {
         if search.join("./src/main.zz").exists() {
             a.push(Artifact{
                 name: c.project.name.clone(),
+                main: format!("{}::main", c.project.name),
                 typ:  ArtifactType::Exe,
             });
         }
@@ -67,6 +69,7 @@ pub fn load() -> (PathBuf, Config) {
         if search.join("./src/lib.zz").exists() {
             a.push(Artifact{
                 name: c.project.name.clone(),
+                main: format!("{}::lib", c.project.name),
                 typ:  ArtifactType::Lib,
             });
         }
@@ -82,6 +85,9 @@ pub fn load() -> (PathBuf, Config) {
                     c.artifacts.as_mut().unwrap().push(Artifact{
                         name: format!("tests::{}", path.file_stem().unwrap().to_string_lossy()),
                         typ:  ArtifactType::Test,
+                        main: format!("{}::tests::{}",
+                                      c.project.name.clone(),
+                                      path.file_stem().unwrap().to_string_lossy()),
                     });
                 }
             }

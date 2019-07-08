@@ -1,5 +1,6 @@
 using math;
-using libc::stdint::{ uint32_t };
+using libc::stdint::{ uint32_t,
+};
 using libc::stdio::{printf} ;
 
 using constants::{foo};
@@ -23,7 +24,7 @@ pub fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
 }
 
 fn horst() -> uint32_t {
-    printf("wee? %f\n", main_gimme_wee());
+    printf("wee? %f\n", main_gimme_wee(0));
     return ADD_IMPL(3, 3);
 }
 
