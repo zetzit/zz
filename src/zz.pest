@@ -8,7 +8,7 @@ key_pub     = { "export" }
 key_shared  = { "pub" }
 key_const   = { "const"   }
 key_packed  = { "packed"   }
-key_mut     = { "mutable" }
+key_mut     = { "mutable" | "mut" }
 key_ptr     = { "*" }
 
 string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }

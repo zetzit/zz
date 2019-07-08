@@ -1,22 +1,33 @@
 use super::ast;
 use super::name::Name;
 use super::loader;
-use super::parser;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::PathBuf;
 
+pub enum D {
+    Include(ast::Include),
+    Local(ast::Local),
+}
 
-
+#[derive(Default)]
+pub struct Module {
+    pub name:       Name,
+    pub sources:    HashSet<PathBuf>,
+    pub d:          Vec<D>,
+}
 
 
 struct Local {
     deps: Vec<Name>,
+    ast:  Option<ast::Local>,
 }
 
 #[derive(Default)]
 struct Locals (HashMap<Name, Local>);
 
 
-pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
+pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) -> Module {
     debug!("flatten {}", md.name);
 
     let mut collected = Locals::default();
@@ -38,6 +49,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 //TODO
                 collected.0.insert(name.clone(), Local{
                     deps: Vec::new(),
+                    ast:  None,
                 });
                 continue
             }
@@ -94,15 +106,32 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             ns.push(local.name.clone());
             collected.0.insert(ns, Local{
                 deps,
+                ast: Some(local.clone()),
             });
         }
     }
 
+    let mut flat    = Module::default();
+    flat.name       = md.name.clone();
+    flat.sources    = md.sources.clone();
+
+    for inc in &md.includes {
+        flat.d.push(D::Include(inc.clone()));
+    }
+
+
+    //TODO: dependency sort
     for (name, l) in &collected.0 {
         debug!("   {} ", name);
         for dep in &l.deps {
             debug!("      < {}", dep);
         }
+        if let Some(ast) = &l.ast {
+            flat.d.push(D::Local(ast.clone()));
+        }
     }
+
+
+    flat
 }
 

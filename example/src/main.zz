@@ -6,7 +6,7 @@ thread_local mutable float wee = 0.1;
 atomic mutable int bob = 932;
 
 pub fn gimme_wee(aye::bob* lol) -> float {
-    bob++;
+    bob += lol;
     return wee;
 }
 

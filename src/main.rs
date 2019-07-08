@@ -10,7 +10,7 @@ mod project;
 //mod make;
 mod loader;
 mod flatten;
-//mod emitter;
+mod emitter;
 mod abs;
 mod name;
 
@@ -128,13 +128,20 @@ fn build(tests: bool) {
         }
         modules.insert(name.clone(), md);
     }
+
+    let mut flat = Vec::new();
     for name in &names {
         let mut md = modules.remove(name).unwrap();
         match &mut md {
             loader::Module::C(_) => (),
-            loader::Module::ZZ(ast) => flatten::flatten(ast, &modules),
+            loader::Module::ZZ(ast) => flat.push(flatten::flatten(ast, &modules)),
         }
         modules.insert(name.clone(), md);
+    }
+
+    for module in flat {
+        let em = emitter::Emitter::new(module, false);
+        em.emit();
     }
 
     //for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
