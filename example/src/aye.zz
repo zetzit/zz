@@ -5,7 +5,7 @@ pub fn yoo() -> int32_t {
 }
 
 
-pub struct bob {
+export struct bob {
     int dibdoo;
 }
 

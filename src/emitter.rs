@@ -24,7 +24,9 @@ pub struct Emitter{
 impl Emitter {
     pub fn new(module: flatten::Module, header: bool) -> Self {
         let p = if header {
-            format!("target/include/{}.h", module.name)
+            let mut ns = module.name.0.clone();
+            ns.remove(0);
+            format!("target/include/{}.h", ns.join("_"))
         } else {
             format!("target/zz/{}.c", module.name)
         };
@@ -45,6 +47,12 @@ impl Emitter {
 
         if s.0[1] == "libc" {
             return s.0.last().unwrap().clone();
+        }
+
+        if self.header {
+            let mut s = s.clone();
+            s.0.remove(0);
+            return s.0.join("_");
         }
 
         let mut search  = s.clone();
@@ -85,6 +93,9 @@ impl Emitter {
             match v {
                 flatten::D::Include(_) => {},
                 flatten::D::Local(d) => {
+                    if self.header && d.vis != ast::Visibility::Export {
+                        continue
+                    }
                     match d.def {
                         ast::Def::Macro{..} => {
                             self.emit_macro(&d)
@@ -109,22 +120,23 @@ impl Emitter {
             }
         }
 
-        for v in &module.d {
-            if let flatten::D::Local(d)  = v {
-                if let ast::Def::Function{..} = d.def {
-                    let mut name = Name::from(&d.name);
-                    name.pop();
-                    if name == module.name {
-                        self.emit_def(&d);
+        if self.header {
+            write!(self.f, "\n#endif\n").unwrap();
+        } else {
+            for v in &module.d {
+                if let flatten::D::Local(d)  = v {
+                    if let ast::Def::Function{..} = d.def {
+                        let mut name = Name::from(&d.name);
+                        name.pop();
+                        if name == module.name {
+                            self.emit_def(&d);
+                        }
                     }
                 }
             }
         }
 
 
-        if self.header {
-            write!(self.f, "\n#endif\n").unwrap();
-        }
 
         CFile {
             name:       module.name,
@@ -308,9 +320,10 @@ impl Emitter {
         // declare the short local name
         // aliases are broken in clang, so we need to create an inline redirect
 
-        if !self.header {
-            write!(self.f, "#line {} \"{}\"\n", ast.loc.line(), ast.loc.file).unwrap();
+        if self.header {
+            return;
         }
+        write!(self.f, "#line {} \"{}\"\n", ast.loc.line(), ast.loc.file).unwrap();
 
         write!(self.f, "static inline ").unwrap();
 

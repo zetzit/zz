@@ -141,6 +141,9 @@ fn build(tests: bool) {
 
     let mut cfiles = HashMap::new();
     for module in flat {
+        let header  = emitter::Emitter::new(module.clone(), true);
+        let header  = header.emit();
+
         let em = emitter::Emitter::new(module, false);
         let cf = em.emit();
         cfiles.insert(cf.name.clone(), cf);
@@ -171,6 +174,9 @@ fn build(tests: bool) {
                 }
                 make.build(n);
             }
+        }
+
+        if let project::ArtifactType::Lib = artifact.typ {
         }
 
         for entry in std::fs::read_dir("./src").unwrap() {

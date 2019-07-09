@@ -148,7 +148,7 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
     std::process::exit(9);
 }
 
-fn check_abs_available(fqn: &Name, all_modules: &HashMap<Name, loader::Module>, loc: &ast::Location, selfname: &Name) {
+fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &HashMap<Name, loader::Module>, loc: &ast::Location, selfname: &Name) {
     assert!(fqn.is_absolute());
 
     let mut module_name = fqn.clone();
@@ -177,11 +177,21 @@ fn check_abs_available(fqn: &Name, all_modules: &HashMap<Name, loader::Module>, 
     for local2 in &module.locals {
         if local2.name == local_name {
             if local2.vis == ast::Visibility::Object {
-                error!("the type '{}' in '{}' is private \n{}",
+                error!("the type '{}' in '{}' is private \n{}\n{}",
                        local_name, module_name,
                        parser::make_error(&loc, "cannot use private type"),
+                       parser::make_error(&local2.loc, "add 'pub' to share this type"),
                        );
                 std::process::exit(9);
+            }
+            if this_vis == &ast::Visibility::Export && local2.vis != ast::Visibility::Export {
+                error!("the type '{}' in '{}' is not exported \n{}\n{}",
+                       local_name, module_name,
+                       parser::make_error(&loc, "cannot use an unexported type here"),
+                       parser::make_error(&local2.loc, "suggestion: export this type"),
+                       );
+                std::process::exit(9);
+
             }
             return;
         }
@@ -210,7 +220,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
             for local in &import.local {
                 let mut nn = fqn.clone();
                 nn.push(local.clone());
-                check_abs_available(&nn, all_modules, &import.loc, &md.name);
+                check_abs_available(&nn, &import.vis, all_modules, &import.loc, &md.name);
                 scope.insert(local.clone(), nn, &import.loc, false);
             }
         }
@@ -229,26 +239,26 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
         match &mut ast.def {
             ast::Def::Static{typeref,..} => {
                 scope.abs(typeref);
-                check_abs_available(&typeref.name, all_modules, &typeref.loc, &md.name);
+                check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
             }
             ast::Def::Const{typeref,..} => {
                 scope.abs(typeref);
-                check_abs_available(&typeref.name, all_modules, &typeref.loc, &md.name);
+                check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
             }
             ast::Def::Function{ret, args,..} => {
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typeref);
-                    check_abs_available(&ret.typeref.name, all_modules, &ret.typeref.loc, &md.name);
+                    check_abs_available(&ret.typeref.name, &ast.vis, all_modules, &ret.typeref.loc, &md.name);
                 }
                 for arg in args {
                     scope.abs(&mut arg.typeref);
-                    check_abs_available(&arg.typeref.name, all_modules, &arg.typeref.loc, &md.name);
+                    check_abs_available(&arg.typeref.name, &ast.vis, all_modules, &arg.typeref.loc, &md.name);
                 }
             }
             ast::Def::Struct{fields,..} => {
                 for field in fields {
                     scope.abs(&mut field.typeref);
-                    check_abs_available(&field.typeref.name, all_modules, &field.typeref.loc, &md.name);
+                    check_abs_available(&field.typeref.name, &ast.vis, all_modules, &field.typeref.loc, &md.name);
                 }
             }
             ast::Def::Macro{imports,..} => {

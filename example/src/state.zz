@@ -1,0 +1,14 @@
+using libc::stdint::{uint8_t};
+using libc::string;
+
+pub struct State {
+    uint8_t counter;
+}
+
+pub fn new(mut State* self) {
+    memset(self, 0, sizeof(State));
+}
+
+pub fn add(mut State* self, int i) {
+    self->counter += i;
+}
