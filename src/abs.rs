@@ -3,7 +3,6 @@
 use super::ast;
 use super::parser;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use super::name::Name;
 use super::loader;
 

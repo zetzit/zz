@@ -1,7 +1,6 @@
 use std::fs;
 use super::flatten;
 use super::ast;
-use super::project::ArtifactType;
 use std::io::Write;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -105,7 +104,7 @@ impl Emitter {
                             }
                         }
                     }
-                    write!(self.f, "\n");
+                    write!(self.f, "\n").unwrap();
                 }
             }
         }

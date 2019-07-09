@@ -1,11 +1,9 @@
 use super::project::{Project, Artifact};
-use super::ast;
 use std::process::Command;
 use fasthash::metro;
 use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
-use super::flatten;
 
 
 pub struct Step {

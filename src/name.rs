@@ -24,17 +24,6 @@ impl Name {
             false
         }
     }
-    pub fn join(&self, other: Self) -> Self {
-        if other.is_absolute() {
-            return other;
-        }
-        if self.is_absolute() {
-            let mut v = self.0.clone();
-            v.extend(other.0);
-            return Self(v);
-        }
-        panic!("cannot join paths if neither is absolute");
-    }
 }
 
 impl Hash for Name {

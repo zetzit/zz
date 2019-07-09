@@ -6,12 +6,8 @@ pub fn yoo() -> int32_t {
 
 
 pub struct bob {
-    lol dibdoo;
+    int dibdoo;
 }
-pub struct lol  {
-    int8_t dibdoo;
-}
-
 
 
 

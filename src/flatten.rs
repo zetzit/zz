@@ -1,7 +1,6 @@
 use super::ast;
 use super::name::Name;
 use super::loader;
-use super::parser;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -56,19 +55,14 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         incomming_imports.push((import, true));
     }
 
-    let mut dep_recursion_guard : HashMap<Name, usize> = HashMap::new();
+    let mut recursion_guard : HashSet<Name> = HashSet::new();
+
     while incomming.len() > 0 {
         for (name, loc) in std::mem::replace(&mut incomming, Vec::new()) {
-            debug!("  localizing {}", name);
-
-            *dep_recursion_guard.entry(name.clone()).or_insert(0) += 1;
-            if dep_recursion_guard[&name] > 20 {
-                error!("giving up resolving type '{}'\n{}",
-                       name,
-                       parser::make_error(&loc, "incomplete or recursive type"),
-                       );
-                std::process::exit(9);
+            if !recursion_guard.insert(name.clone())  {
+                continue;
             }
+            debug!("  localizing {}", name);
 
             assert!(name.is_absolute(), "is not absolute: {}", name);
             let mut module_name = name.clone();
@@ -267,7 +261,7 @@ fn sort_visit(sorted: &mut Vec<(Name,Local)>,
     if sorted_mark.contains(name) {
         return;
     }
-    let n = unsorted.remove(name).expect(&format!("ice: cyclic dependency in {}", name));
+    let n = unsorted.remove(name).expect(&format!("recursive type {} will never complete", name));
     for dep in &n.deps {
         sort_visit(sorted, sorted_mark, unsorted, dep);
     }

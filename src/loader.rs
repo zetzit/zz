@@ -1,11 +1,9 @@
 use super::ast;
 use super::parser;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use super::name::Name;
-use super::project::Config;
 
 
 pub enum Module {
