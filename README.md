@@ -4,10 +4,9 @@ Drunk Octopus
 ==============
 
 
-ZZ (drunk octopus) is a precompiler for C that deals with some of the pain that is C.
+ZZ (drunk octopus) is a dialect of C, inspired by rust
 
 It's main use case is embedded systems, where we still program C out of desperation, because nothing else actually works.
-
 You can also use it to build cross platform libraries. The build and linking concept is tailed to export a clean api with a namespace.
 
 
@@ -19,8 +18,31 @@ cargo run && ./target/exe
 ```
 
 
-### minimally invasive.
+### features
 
+ - make C less painful
+ - automatic headerfile generation
+ - automatic declaration ordering
+ - outputs to standard C with useful symbol names
+ - namespaces
+ - building
+ - testing
+
+## maybe-later-features
+
+ - advanced type system
+ - compile time assertions
+ - procedural macros
+ - monads (sounds worse than it is, trust me)
+
+### never-features
+
+ - smart pointers and runtime checks: ZZ is C. C is terrible but we would not be here if anyone knew how to make smart pointers free.
+ - borrowchecker: no idea how to implement without changing the language.
+ - emit binary directly: lots of work for no gain, reduces portability and ignores all the work that went into optimizing clang/gcc/etc.
+
+
+### minimally invasive.
 
 ZZ is C, and it only deviates from C when useful. sure, C syntax is shit,
 but the solution is not to make up another shit syntax that you'd have to learn for no reason.
@@ -49,10 +71,10 @@ If you want something else, you're probably not working on embedded, so why are 
 
 
 ```C
-import errors::error;
-import math::add;
+using errors;
+using math::add;
 
-fn some_helper(mutable error* err, mutable uint32_t* bob) -> uint32_t {
+fn some_helper(mutable errors::error* err, mutable uint32_t* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
         *bob = add(horst(), foo);
@@ -135,20 +157,18 @@ you can define a function that returns a pointer to the local static.
 thread_local and atomic are mapped directly to the C11 keywords.
 ZZ can use nicer keywords because there are no user defined names at the top level.
 
-#### visibility: private, export
+#### visibility: pub, export
 
-by default all declarations are visible to the entire module, but not exported in the final binary.
+by default all declarations are private to a module
 
 "export" can be used to make sure the declaration ends in the final result. that is in the binary and the export header.
 
-"private" markes a declaration as local to the current module/file. It cannot be used inside other modules and
-as such the compiler may optimize it.
-In most cases this is equivalent to the C 'static' keyword, but can be added to any declaration.
+"pub" marks a declaration as local to the project. it is usable in other zz modules, but not exported into the resulting binary
 
 
-#### mutability: const, mutable
+#### mutability: const, mut
 
-by default, everything is const. this is the opposite of C. the mutable keyword is used to make a global variable, or function argument mutable.
+by default, everything is const. this is the opposite of C. the mut keyword is used to make a global variable, or function argument mutable.
 
 
 
