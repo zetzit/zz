@@ -5,6 +5,9 @@ use super::parser;
 use std::collections::HashMap;
 use super::name::Name;
 use super::loader;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static ABORT: AtomicBool = AtomicBool::new(false);
 
 
 struct InScope {
@@ -67,11 +70,11 @@ impl Scope{
 
         match self.v.get(&lhs) {
             None => {
-                error!("undefined local name '{}' \n{}",
+                error!("undefined type '{}' \n{}",
                        t.name,
-                       parser::make_error(&t.loc, "first used in this scope"),
+                       parser::make_error(&t.loc, "used in this scope"),
                        );
-                std::process::exit(9);
+                ABORT.store(true, Ordering::Relaxed);
             },
             Some(v) => {
                 if rhs.len() != 0  && !v.is_module {
@@ -79,7 +82,7 @@ impl Scope{
                            t.name,
                            parser::make_error(&t.loc, format!("'{}' is not a module", lhs))
                            );
-                    std::process::exit(9);
+                    ABORT.store(true, Ordering::Relaxed);
                 }
 
                 if rhs.len() != 0 && v.name.0[1] == "libc" {
@@ -88,7 +91,7 @@ impl Scope{
                            parser::make_error(&t.loc, format!("'{}' is a c header", lhs)),
                            parser::make_error(&v.loc, format!("suggestion: add '{}' to this import", rhs.join("::")))
                            );
-                    std::process::exit(9);
+                    ABORT.store(true, Ordering::Relaxed);
                 }
 
                 if rhs.len() == 0 && v.is_module {
@@ -97,7 +100,7 @@ impl Scope{
                            parser::make_error(&t.loc, format!("cannot use module '{}' as a type", t.name)),
                            parser::make_error(&v.loc, format!("if you wanted to import '{}' as a type, use ::{{{}}} here", t.name, t.name)),
                            );
-                    std::process::exit(9);
+                    ABORT.store(true, Ordering::Relaxed);
                 }
 
                 let mut vv = v.name.clone();
@@ -149,7 +152,10 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
 }
 
 fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &HashMap<Name, loader::Module>, loc: &ast::Location, selfname: &Name) {
-    assert!(fqn.is_absolute());
+    if !fqn.is_absolute() {
+        ABORT.store(true, Ordering::Relaxed);
+        return;
+    }
 
     let mut module_name = fqn.clone();
     let local_name = module_name.pop().unwrap();
@@ -182,7 +188,7 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
                        parser::make_error(&loc, "cannot use private type"),
                        parser::make_error(&local2.loc, "add 'pub' to share this type"),
                        );
-                std::process::exit(9);
+                ABORT.store(true, Ordering::Relaxed);
             }
             if this_vis == &ast::Visibility::Export && local2.vis != ast::Visibility::Export {
                 error!("the type '{}' in '{}' is not exported \n{}\n{}",
@@ -190,8 +196,7 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
                        parser::make_error(&loc, "cannot use an unexported type here"),
                        parser::make_error(&local2.loc, "suggestion: export this type"),
                        );
-                std::process::exit(9);
-
+                ABORT.store(true, Ordering::Relaxed);
             }
             return;
         }
@@ -201,7 +206,7 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
            module_name, local_name,
            parser::make_error(&loc, "imported here"),
            );
-    std::process::exit(9);
+    ABORT.store(true, Ordering::Relaxed);
 
 }
 
@@ -269,4 +274,9 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
             }
         }
     }
+
+    if ABORT.load(Ordering::Relaxed) {
+        std::process::exit(9);
+    }
+
 }

@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 
-#[derive(Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum ArtifactType {
     Lib,
     Exe,

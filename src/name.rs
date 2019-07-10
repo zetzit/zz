@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Name (pub Vec<String>);
 
 

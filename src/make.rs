@@ -37,6 +37,8 @@ impl Make {
             }
         }
         cflags.push("-I".into());
+        cflags.push(".".into());
+        cflags.push("-I".into());
         cflags.push("./target/include/".into());
         cflags.push("-fvisibility=hidden".to_string());
 
@@ -165,7 +167,8 @@ impl Make {
         }
         self.lflags.push("-fvisibility=hidden".into());
 
-        info!("ld {}", self.artifact.name);
+        info!("ld [{:?}] {}", self.artifact.typ, self.artifact.name);
+        debug!("{:?}", self.lflags);
 
         let status = Command::new("clang")
             .args(&self.lflags)

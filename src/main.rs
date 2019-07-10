@@ -119,7 +119,8 @@ fn build(tests: bool) {
     loader::load(&mut modules, &project_name, &Path::new("./src"));
     loader::load(&mut modules, &project_tests_name, &Path::new("./tests"));
 
-    let names : HashSet<Name> = modules.keys().cloned().collect();
+    let mut names : Vec<Name> = modules.keys().cloned().collect();
+    names.sort_unstable();
     for name in &names {
         let mut md = modules.remove(name).unwrap();
         match &mut md {
@@ -150,6 +151,11 @@ fn build(tests: bool) {
     }
 
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
+        if let project::ArtifactType::Test = artifact.typ {
+            if !tests {
+                continue;
+            }
+        }
         let mut make = make::Make::new(project.project.clone(), artifact.clone());
 
         let mut main = Name::from(&artifact.main);
