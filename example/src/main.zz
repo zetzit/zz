@@ -1,6 +1,6 @@
 using identity::{some_helper};
 using aye;
-using errors;
+using error;
 
 thread_local mutable float wee = 0.1;
 
@@ -12,7 +12,7 @@ pub fn gimme_wee(aye::bob* lol) -> float {
 }
 
 export fn main() -> int {
-    errors_error err = {0};
+    error_Error err = {0};
     uint32_t bob;
 
     wee += 0.1;

@@ -70,7 +70,7 @@ impl Scope{
 
         match self.v.get(&lhs) {
             None => {
-                error!("undefined type '{}' \n{}",
+                error!("undefined name '{}' \n{}",
                        t.name,
                        parser::make_error(&t.loc, "used in this scope"),
                        );
@@ -264,6 +264,12 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                 for field in fields {
                     scope.abs(&mut field.typeref);
                     check_abs_available(&field.typeref.name, &ast.vis, all_modules, &field.typeref.loc, &md.name);
+                    if let Some(ref mut array) = &mut field.array {
+                        if let ast::Value::Name(ref mut name) = array {
+                            scope.abs(name);
+                            check_abs_available(&name.name, &ast.vis, all_modules, &name.loc, &md.name);
+                        }
+                    }
                 }
             }
             ast::Def::Macro{imports,..} => {

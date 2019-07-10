@@ -1,14 +1,16 @@
+using constants;
 
 fn usemeeee(Error* e) {
 }
 
 using libc::stdint::{uint8_t};
-using libc::memory::memset;
+using libc::memory::{memset};
 
 pub struct Error {
     uint8_t error;
-    char    description[255];
-    char    locations[255];
+    char    description[constants::foo];
+    char    locations[25];
+    void*   nothing;
 };
 
 

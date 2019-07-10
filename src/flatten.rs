@@ -119,6 +119,11 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 ast::Def::Struct{fields,..} => {
                     for field in fields {
                         deps.push(field.typeref.name.clone());
+                        if let Some(ref array) = &field.array {
+                            if let ast::Value::Name(ref name) = array {
+                                deps.push(name.name.clone());
+                            }
+                        }
                     }
                 }
                 ast::Def::Macro{imports,..} => {
@@ -152,7 +157,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     if import.name.0[1] == "libc" {
                         md.includes.push(ast::Include{
                             loc: import.loc.clone(),
-                            expr: format!("<{}.h>", import.name.0[2]),
+                            expr: format!("<{}.h>", import.name.0[2..].join("/")),
                         });
                         for local in &import.local {
                             let mut nn = import.name.clone();

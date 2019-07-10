@@ -139,86 +139,55 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             name = part.as_str().into();
                         }
                         Rule::ret_arg => {
-                            let mut name      = Vec::new();
-                            let mut ptr       = false;
-                            let mut typeloc   = None;
-
-                            for part in part.into_inner().next().unwrap().into_inner().next().unwrap().into_inner() {
-                                match part.as_rule() {
-                                    Rule::namespace => {
-                                        for nspart in part.into_inner() {
-                                            name.push(nspart.as_str().to_string());
-                                        }
-                                    },
-                                    Rule::key_ptr => {
-                                        ptr = true;
-                                    },
-                                    Rule::ident => {
-                                        name.push(part.as_str().to_string());
-                                        typeloc = Some(Location{
-                                            file: n.to_string_lossy().into(),
-                                            span: part.as_span(),
-                                        })
-                                    },
-                                    e => panic!("unexpected rule {:?} in return argument", e),
-                                }
-                            }
+                            let part = part.into_inner().next().unwrap().into_inner().next().unwrap();
+                            let loc = Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span().clone(),
+                            };
+                            let (name, ptr) =  parse_typ(part);
+                            let typeref = TypeUse{
+                                name,
+                                loc,
+                                ptr,
+                            };
 
                             ret = Some(AnonArg{
-                                typeref: TypeUse {
-                                    name : Name(name),
-                                    loc : typeloc.unwrap(),
-                                },
-                                ptr,
+                                typeref,
                             });
                         },
                         Rule::fn_args => {
                             for arg in part.into_inner() {
-                                let mut arg       = arg.into_inner();
-                                let types         = arg.next().unwrap();
-                                let name          = arg.next().unwrap().as_str().to_string();
                                 let mut muta      = false;
-                                let mut ptr       = false;
-                                let mut typeloc   = None;
-                                let mut typename  = Vec::new();
-
-                                for part in types.into_inner() {
+                                let mut name      = None;
+                                let mut typeref   = None;
+                                for part in arg.into_inner() {
                                     match part.as_rule() {
-                                        Rule::namespace => {
-                                            for nspart in part.into_inner() {
-                                                typename.push(nspart.as_str().to_string());
-                                            }
-                                        },
-                                        Rule::key_ptr => {
-                                            ptr = true;
-                                        },
-                                        Rule::ident => {
-                                            typename.push(part.as_str().to_string());
-                                            typeloc = Some(Location{
-                                                file: n.to_string_lossy().into(),
-                                                span: part.as_span(),
-                                            })
-                                        },
-                                        Rule::key_const => {
-                                            muta = false;
-                                        },
                                         Rule::key_mut => {
                                             muta = true;
                                         },
-                                        e => panic!("unexpected rule {:?} in function argument", e),
+                                        Rule::typ => {
+                                            let loc  = Location{
+                                                file: n.to_string_lossy().into(),
+                                                span: part.as_span(),
+                                            };
+                                            let (typename, ptr) =  parse_typ(part);
+                                            typeref = Some(TypeUse{
+                                                name: typename,
+                                                loc,
+                                                ptr,
+                                            });
+                                        },
+                                        Rule::var => {
+                                            name = Some(part.as_str().to_string());
+                                        }
+                                        e => panic!("unexpected rule {:?} in fn_args", e),
                                     }
                                 }
 
-                                let typeref = TypeUse{
-                                    name : Name(typename),
-                                    loc: typeloc.unwrap(),
-                                };
-
                                 args.push(NamedArg{
-                                    name,
-                                    typeref,
+                                    name: name.unwrap(),
+                                    typeref: typeref.unwrap(),
                                     muta,
-                                    ptr,
                                 });
                             }
                         },
@@ -282,28 +251,56 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             };
 
                             let mut field = part.into_inner();
+
                             let typespan = field.next().unwrap();
-                            let typeref  = typespan.as_str().split("::").map(|s|s.to_string()).collect();
-                            let expr     = field.next().unwrap();
-                            let expr     = CExpr{
-                                expr: expr.as_str().into(),
-                                loc:  Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: expr.as_span(),
-                                }
+                            let typeloc  = Location{
+                                file: n.to_string_lossy().into(),
+                                span: typespan.as_span(),
+                            };
+                            let (typename, ptr) =  parse_typ(typespan);
+                            let typeref = TypeUse{
+                                name: typename,
+                                loc: typeloc,
+                                ptr,
                             };
 
-                            let typeref = TypeUse{
-                                name : Name(typeref),
-                                loc : Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: typespan.as_span(),
-                                },
-                            };
+
+                            let expr     = field.next().unwrap().into_inner();
+                            let mut array = None;
+                            let mut name  = None;
+                            for part in expr {
+                                match part.as_rule() {
+                                    Rule::ident if name.is_none() => {
+                                        name = Some(part.as_str().to_string());
+                                    },
+                                    Rule::field_array if array.is_none() => {
+                                        let part = part.into_inner().next().unwrap();
+                                        match part.as_rule() {
+                                            Rule::name => {
+                                                array = Some(Value::Name(TypeUse{
+                                                    name: Name::from(part.as_str()),
+                                                    ptr: false,
+                                                    loc: Location{
+                                                        file: n.to_string_lossy().into(),
+                                                        span: part.as_span(),
+                                                    },
+                                                }));
+                                            }
+                                            Rule::int_literal => {
+                                                array = Some(Value::Literal(part.as_str().to_string()));
+                                            }
+                                            e => panic!("unexpected rule {:?} in field_array", e),
+                                        }
+                                    }
+                                    e => panic!("unexpected rule {:?} in field", e),
+                                }
+                            }
+
 
                             fields.push(Field{
                                 typeref,
-                                expr,
+                                array,
+                                name: name.expect("name never parsed in field"),
                                 loc,
                             });
 
@@ -379,7 +376,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut name    = None;
                 let mut expr    = None;
                 let mut muta    = false;
-                let mut ptr     = false;
                 let mut storage = Storage::Static;
 
                 for part in decl.into_inner() {
@@ -408,12 +404,12 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 file: n.to_string_lossy().into(),
                                 span: part.as_span().clone(),
                             };
-                            let (name, p) =  parse_typ(part);
+                            let (name, ptr) =  parse_typ(part);
                             typeref = Some(TypeUse{
                                 name,
                                 loc,
+                                ptr,
                             });
-                            ptr = p;
                         },
                         Rule::ident if name.is_none() => {
                             name  = Some(part.as_str().to_string());
@@ -436,7 +432,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     vis: Visibility::Object,
                     def: Def::Static {
                         storage,
-                        ptr,
                         muta,
                         typeref: typeref.unwrap(),
                         expr: expr.unwrap(),
@@ -451,7 +446,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut typeref = None;
                 let mut name    = None;
                 let mut expr    = None;
-                let mut ptr     = false;
                 let mut vis     = Visibility::Object;
 
                 for part in decl.into_inner() {
@@ -467,12 +461,12 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 file: n.to_string_lossy().into(),
                                 span: part.as_span().clone(),
                             };
-                            let (name, p) =  parse_typ(part);
+                            let (name, ptr) =  parse_typ(part);
                             typeref = Some(TypeUse{
                                 name,
                                 loc,
+                                ptr
                             });
-                            ptr = p;
                         },
                         Rule::ident if name.is_none() => {
                             name  = Some(part.as_str().into());
@@ -495,7 +489,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     loc,
                     def: Def::Const {
                         typeref: typeref.unwrap(),
-                        ptr,
                         expr: expr.unwrap(),
                     }
                 });
@@ -511,6 +504,13 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
 
 fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
+    match decl.as_rule() {
+        Rule::typ=> {
+        }
+        _ => {
+            panic!("parse_typ called with {:?}", decl);
+        }
+    };
     let mut name = Vec::new();
     let mut ptr  = false;
     for part in decl.into_inner() {

@@ -176,8 +176,8 @@ impl Emitter {
             write!(self.f, "#line {} \"{}\"\n", ast.loc.line(), ast.loc.file).unwrap();
         }
 
-        let (typeref, expr, muta, storage, ptr) = match &ast.def {
-            ast::Def::Static{typeref, expr, muta, storage, ptr} => (typeref, expr, muta, storage, ptr),
+        let (typeref, expr, muta, storage) = match &ast.def {
+            ast::Def::Static{typeref, expr, muta, storage} => (typeref, expr, muta, storage),
             _ => unreachable!(),
         };
 
@@ -201,7 +201,7 @@ impl Emitter {
             write!(self.f, "\n#line {} \"{}\"\n", expr.loc.line(), expr.loc.file).unwrap();
         }
         write!(self.f, "{} ", self.to_local_name(&typeref.name)).unwrap();
-        if *ptr {
+        if typeref.ptr {
             write!(self.f, "* ").unwrap();
         }
         write!(self.f, "{} = {};\n",
@@ -209,8 +209,8 @@ impl Emitter {
     }
 
     pub fn emit_const(&mut self, ast: &ast::Local) {
-        let (typeref, expr, ptr) = match &ast.def {
-            ast::Def::Const{typeref, expr, ptr} => (typeref, expr, ptr),
+        let (typeref, expr) = match &ast.def {
+            ast::Def::Const{typeref, expr} => (typeref, expr),
             _ => unreachable!(),
         };
 
@@ -219,7 +219,7 @@ impl Emitter {
         }
 
         write!(self.f, "static const {} ", self.to_local_name(&typeref.name)).unwrap();
-        if *ptr {
+        if typeref.ptr {
             write!(self.f, "* ").unwrap();
         }
 
@@ -241,11 +241,24 @@ impl Emitter {
         write!(self.f, "{{\n").unwrap();
         for field in fields {
             if !self.header {
-                write!(self.f, "#line {} \"{}\"\n", field.expr.loc.line(), field.expr.loc.file).unwrap();
+                write!(self.f, "#line {} \"{}\"\n", field.loc.line(), field.loc.file).unwrap();
             }
-            write!(self.f, "   {} {}\n",
-                   self.to_local_name(&field.typeref.name), field.expr.expr,
-                   ).unwrap();
+            write!(self.f, "   {}", self.to_local_name(&field.typeref.name)).unwrap();
+            if field.typeref.ptr {
+                write!(self.f, "* ").unwrap();
+            }
+            write!(self.f, " {}", field.name).unwrap();
+            if let Some(array) = &field.array {
+                match &array{
+                    ast::Value::Name(n) => {
+                        write!(self.f, "[{}]", self.to_local_name(&n.name)).unwrap();
+                    },
+                    ast::Value::Literal(l) => {
+                        write!(self.f, "[{}]", l).unwrap();
+                    },
+                }
+            }
+            write!(self.f, " ;\n").unwrap();
         }
 
         write!(self.f, "}} {} ;\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
@@ -269,7 +282,7 @@ impl Emitter {
 
             write!(self.f, "{}", self.to_local_name(&arg.typeref.name)).unwrap();
 
-            if arg.ptr {
+            if arg.typeref.ptr {
                 write!(self.f, "* ").unwrap();
             }
 
@@ -300,7 +313,7 @@ impl Emitter {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
-                if a.ptr {
+                if a.typeref.ptr {
                     write!(self.f, "* ").unwrap();
                 }
             }
@@ -331,7 +344,7 @@ impl Emitter {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
-                if a.ptr {
+                if a.typeref.ptr {
                     write!(self.f, "* ").unwrap();
                 }
             }
@@ -387,7 +400,7 @@ impl Emitter {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
                 write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
-                if a.ptr {
+                if a.typeref.ptr {
                     write!(self.f, "* ").unwrap();
                 }
             }

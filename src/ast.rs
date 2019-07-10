@@ -50,14 +50,12 @@ pub struct Import {
 pub enum Def {
     Static {
         typeref:    TypeUse,
-        ptr:        bool,
         expr:       CExpr,
         muta:       bool,
         storage:    Storage,
     },
     Const {
         typeref:    TypeUse,
-        ptr:        bool,
         expr:       CExpr,
     },
     Function {
@@ -96,6 +94,7 @@ pub struct Include {
 pub struct TypeUse {
     pub name:   Name,
     pub loc:    Location,
+    pub ptr:    bool,
 }
 
 #[derive(Default, Clone)]
@@ -111,7 +110,6 @@ pub struct Module {
 #[derive(Clone)]
 pub struct AnonArg {
     pub typeref:    TypeUse,
-    pub ptr:        bool,
 }
 
 #[derive(Clone)]
@@ -119,7 +117,6 @@ pub struct NamedArg {
     pub typeref:    TypeUse,
     pub name:       String,
     pub muta:       bool,
-    pub ptr:        bool,
 }
 
 #[derive(Clone)]
@@ -129,10 +126,16 @@ pub struct CExpr {
 }
 
 
+#[derive(Clone)]
+pub enum Value{
+    Literal(String),
+    Name(TypeUse),
+}
 
 #[derive(Clone)]
 pub struct Field {
-    pub typeref: TypeUse,
-    pub expr:    CExpr,
-    pub loc:     Location,
+    pub typeref:    TypeUse,
+    pub name:       String,
+    pub array:      Option<Value>,
+    pub loc:        Location,
 }

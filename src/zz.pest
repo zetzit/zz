@@ -14,19 +14,19 @@ key_ptr     = { "*" }
 string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 int_literal     = @{ digit+ }
 
-ident       = @{ (alpha | digit | "_")+ }
+ident       = @{ (alpha | "_") ~ (alpha | digit | "_")* }
 star        = @{ "*" }
 local       = { "{" ~ WHITESPACE* ~ ident ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ ident )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
 name        = ${ ident ~ ( "::" ~ (local | name))? }
 
 typ = ${
-    ((key_const | key_mut) ~ WHITESPACE+)? ~ namespace? ~ ident ~ key_ptr?
+    namespace? ~ ident ~ key_ptr?
 }
 
 var         = @{ident}
-named_arg   = {typ ~ var}
-anon_arg    = {typ}
+named_arg   = {(key_const | key_mut)? ~ typ ~ var}
+anon_arg    = {(key_const | key_mut)? ~ typ}
 
 fn_args     = {named_arg ~ ( "," ~ named_arg)* ~ ","? }
 ret_arg     = {"->" ~ anon_arg}
@@ -40,9 +40,9 @@ localpath   = @{"\"" ~ path ~ "\""}
 include     = { "#include" ~ (syspath | localpath) }
 
 
-struct_f    = @{ (!(";"| "/*")  ~ ANY)* ~ ";" }
-struct_t    = ${ namespace? ~ ident}
-field       = { struct_t ~ struct_f }
+field_array =  { "[" ~ (name | int_literal) ~ "]" }
+struct_f    = { ident ~ field_array? ~ ";" }
+field       = { typ ~ struct_f }
 struct_c    = _{"{" ~ field* ~ "}" }
 struct_d    = { (key_pub | key_shared | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
