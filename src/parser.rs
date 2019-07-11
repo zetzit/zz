@@ -162,6 +162,9 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 let mut typeref   = None;
                                 for part in arg.into_inner() {
                                     match part.as_rule() {
+                                        Rule::key_const  => {
+                                            muta = false;
+                                        },
                                         Rule::key_mut => {
                                             muta = true;
                                         },
