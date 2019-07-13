@@ -53,6 +53,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut bodyloc  = None;
                 let mut name = None;
                 let mut args = Vec::new();
+                let mut export_as = None;
                 let mut imports = Vec::new();
                 let mut body = None;
                 let mut vis = Visibility::Object;
@@ -61,8 +62,16 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
                         }
-                        Rule::key_pub => {
+                        Rule::exported => {
                             vis = Visibility::Export;
+                            for part in part.into_inner() {
+                                match part.as_rule() {
+                                    Rule::ident => {
+                                        export_as = Some(part.as_str().to_string());
+                                    },
+                                    e => panic!("unexpected rule {:?} in export", e),
+                                }
+                            }
                         }
                         Rule::ident if name.is_none() => {
                             name = part.as_str().into();
@@ -100,6 +109,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 }
 
                 module.locals.push(Local{
+                    export_as,
                     name: name.unwrap().to_string(),
                     vis,
                     loc,
@@ -122,6 +132,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut bodyloc  = None;
                 let decl = decl.into_inner();
                 let mut name = String::new();
+                let mut export_as = None;
                 let mut args = Vec::new();
                 let mut ret  = None;
                 let mut body = None;
@@ -132,8 +143,16 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
                         }
-                        Rule::key_pub => {
+                        Rule::exported => {
                             vis = Visibility::Export;
+                            for part in part.into_inner() {
+                                match part.as_rule() {
+                                    Rule::ident => {
+                                        export_as = Some(part.as_str().to_string());
+                                    },
+                                    e => panic!("unexpected rule {:?} in export", e),
+                                }
+                            }
                         }
                         Rule::ident => {
                             name = part.as_str().into();
@@ -207,6 +226,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                 module.locals.push(Local{
                     name,
+                    export_as,
                     vis,
                     loc,
                     def:Def::Function{
@@ -225,6 +245,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                 let mut vis    = Visibility::Object;
                 let mut name   = None;
+                let mut export_as = None;
                 let mut fields = Vec::new();
                 let mut loc    = None;
                 let mut packed = false;
@@ -237,8 +258,16 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
                         }
-                        Rule::key_pub => {
+                        Rule::exported => {
                             vis = Visibility::Export;
+                            for part in part.into_inner() {
+                                match part.as_rule() {
+                                    Rule::ident => {
+                                        export_as = Some(part.as_str().to_string());
+                                    },
+                                    e => panic!("unexpected rule {:?} in export", e),
+                                }
+                            }
                         }
                         Rule::ident => {
                             loc  = Some(Location{
@@ -318,6 +347,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                 module.locals.push(Local{
                     name: name.unwrap(),
+                    export_as,
                     vis,
                     loc: loc.unwrap(),
                     def: Def::Struct {
@@ -339,7 +369,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             decli = Some(part);
                             break;
                         },
-                        Rule::key_pub => {
+                        Rule::exported => {
                             vis = Visibility::Export;
                         }
                         e => panic!("unexpected rule {:?} in import ", e),
@@ -395,7 +425,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_mut => {
                             muta = true;
                         }
-                        Rule::key_shared | Rule::key_pub => {
+                        Rule::key_shared | Rule::exported => {
                             let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                 message: format!("cannot change visibility static variable"),
                             }, part.as_span());
@@ -430,6 +460,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     }
                 }
                 module.locals.push(Local{
+                    export_as: None,
                     name: name.unwrap(),
                     loc,
                     vis: Visibility::Object,
@@ -456,8 +487,15 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
                         }
-                        Rule::key_pub => {
+                        Rule::exported => {
                             vis = Visibility::Export;
+                            for part in part.into_inner() {
+                                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                    message: format!("cannot change export name of constant"),
+                                }, part.as_span());
+                                error!("{} : {}", n.to_string_lossy(), e);
+                                std::process::exit(9);
+                            }
                         }
                         Rule::typ if typeref.is_none() => {
                             let loc = Location{
@@ -487,6 +525,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     }
                 }
                 module.locals.push(Local{
+                    export_as: None,
                     name: name.unwrap(),
                     vis,
                     loc,
@@ -536,7 +575,7 @@ fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
 }
 
 
-fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<String>) {
+fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<(String, Option<String>)>) {
     let mut locals = Vec::new();
     let mut v = Vec::new();
     for part in decl.into_inner() {
@@ -547,8 +586,15 @@ fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<String>) {
             Rule::local => {
                 for p2 in part.into_inner() {
                     match p2.as_rule() {
-                        Rule::ident => {
-                            locals.push(p2.as_str().into());
+                        Rule::local_i => {
+                            let mut p2      = p2.into_inner();
+                            let name        = p2.next().unwrap().as_str().to_string();
+                            let import_as   = if let Some(p3) = p2.next() {
+                                Some(p3.as_str().to_string())
+                            } else {
+                                None
+                            };
+                            locals.push((name, import_as));
                         },
                         e => panic!("unexpected rule {:?} in local", e)
                     }

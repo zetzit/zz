@@ -1,10 +1,10 @@
-use serde::{Deserialize};
+use serde::{Serialize, Deserialize};
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArtifactType {
     Lib,
     Exe,
@@ -12,7 +12,7 @@ pub enum ArtifactType {
     Header,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Artifact {
     #[serde(rename = "type")]
     pub name:   String,
@@ -20,7 +20,7 @@ pub struct Artifact {
     pub typ:    ArtifactType,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Project {
     pub name:       String,
     pub cincludes:  Option<Vec<String>>,
@@ -28,10 +28,41 @@ pub struct Project {
     pub cflags:     Option<Vec<String>>,
     pub lflags:     Option<Vec<String>>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Config {
     pub project:    Project,
     pub artifacts:  Option<Vec<Artifact>>,
+}
+
+pub fn init() {
+    let c  = Config {
+        artifacts: None,
+        project: Project {
+            name: std::env::current_dir().unwrap().file_name().unwrap().to_string_lossy().into(),
+            ..Default::default()
+        }
+    };
+
+    if !std::env::current_dir().unwrap().join("zz.toml").exists() {
+        let s = toml::to_string(&c).unwrap();
+        let mut f = File::create("zz.toml").unwrap();
+        f.write_all(s.as_bytes()).unwrap();
+    }
+
+    std::fs::create_dir_all("./src/").expect("create src dir");
+    if !std::env::current_dir().unwrap().join("src/main.zz").exists() {
+        let mut f = File::create("./src/main.zz").unwrap();
+        write!(f, "\
+using libc::stdio::{{printf}};
+
+export fn main() -> int {{
+    printf(\"hello {}\\n\");
+    return 0;
+}}
+", c.project.name).unwrap();
+    }
+
+    println!("project '{}' created", c.project.name);
 }
 
 pub fn load() -> (PathBuf, Config) {
@@ -69,7 +100,7 @@ pub fn load() -> (PathBuf, Config) {
         if search.join("./src/lib.zz").exists() {
             a.push(Artifact{
                 name: c.project.name.clone(),
-                main: format!("{}::lib", c.project.name),
+                main: format!("{}", c.project.name),
                 typ:  ArtifactType::Lib,
             });
         }

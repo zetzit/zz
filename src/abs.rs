@@ -127,6 +127,7 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
             return n2;
         }
 
+        // root/current_module/../search
         let mut search = imported_from.clone();
         search.pop();
         search.0.extend(import.name.0.clone());
@@ -135,11 +136,19 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
             return search;
         }
 
-
+        // /search
         let mut search = import.name.clone();
         search.0.insert(0, String::new());
         if all_modules.contains_key(&search) {
             debug!("  import aabs {} => {}", import.name, search);
+            return search;
+        }
+
+        // /rott/current/search
+        let mut search = imported_from.clone();
+        search.0.extend(import.name.0.clone());
+        if all_modules.contains_key(&search) {
+            debug!("  import aabs/lib {} => {}", import.name, search);
             return search;
         }
     }
@@ -222,11 +231,18 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
         if import.local.len() == 0 {
             scope.insert(import.name.0.last().unwrap().clone(), fqn.clone(), &import.loc, true);
         } else {
-            for local in &import.local {
+            for (local, import_as) in &import.local {
                 let mut nn = fqn.clone();
                 nn.push(local.clone());
                 check_abs_available(&nn, &import.vis, all_modules, &import.loc, &md.name);
-                scope.insert(local.clone(), nn, &import.loc, false);
+
+                let localname = if let Some(n) = import_as {
+                    n.clone()
+                } else {
+                    local.clone()
+                };
+
+                scope.insert(localname, nn, &import.loc, false);
             }
         }
         import.name = fqn;

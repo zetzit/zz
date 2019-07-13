@@ -39,7 +39,7 @@ pub enum Visibility {
 #[derive(Clone, PartialEq)]
 pub struct Import {
     pub name:   Name,
-    pub local:  Vec<String>,
+    pub local:  Vec<(String, Option<String>)>,
     pub vis:    Visibility,
     pub loc:    Location,
 }
@@ -78,6 +78,7 @@ pub enum Def {
 #[derive(Clone)]
 pub struct Local {
     pub name:   String,
+    pub export_as: Option<String>,
     pub vis:    Visibility,
     pub loc:    Location,
     pub def:    Def,

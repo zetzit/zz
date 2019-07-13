@@ -5,7 +5,7 @@ using libc::stdio::{printf} ;
 
 using constants::{foo};
 using error::{Error};
-using constants::{ADD_IMPL};
+using constants::{conflict as constant_conflict, ADD_IMPL};
 
 using main;
 
@@ -24,12 +24,10 @@ pub fn some_helper(mutable Error* err, mutable uint32_t* bob) -> uint32_t {
 }
 
 fn horst() -> uint32_t {
+    constant_conflict();
     printf("wee? %f\n", main_gimme_wee(0));
     return ADD_IMPL(3, 3);
 }
-
-
-
 
 const int conflict = 1;
 

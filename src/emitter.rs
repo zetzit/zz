@@ -44,6 +44,9 @@ impl Emitter {
 
     fn to_local_name(&self, s: &Name) -> String {
         assert!(s.is_absolute());
+        if let Some(an) = self.module.aliases.get(&s) {
+            return an.clone();
+        }
 
         if s.0[1] == "libc" {
             return s.0.last().unwrap().clone();
@@ -333,6 +336,9 @@ impl Emitter {
         // declare the short local name
         // aliases are broken in clang, so we need to create an inline redirect
 
+        if self.to_local_name(&Name::from(&ast.name)) == Name::from(&ast.name).0[1..].join("_") {
+            return;
+        }
         if self.header {
             return;
         }

@@ -17,6 +17,7 @@ pub struct Module {
     pub sources:        HashSet<PathBuf>,
     pub d:              Vec<D>,
     pub short_names:    HashSet<Name>,
+    pub aliases:        HashMap<Name, String>,
     pub deps:           HashSet<Name>,
 }
 
@@ -159,7 +160,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                             loc: import.loc.clone(),
                             expr: format!("<{}.h>", import.name.0[2..].join("/")),
                         });
-                        for local in &import.local {
+                        for (local,_) in &import.local {
                             let mut nn = import.name.clone();
                             nn.push(local.clone());
                             flat.short_names.insert(nn);
@@ -175,7 +176,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         expr: format!("{:?}", path),
                     }));
                     flat.short_names.insert(import.name.clone());
-                    for local in &import.local {
+                    for (local,_) in &import.local {
                         let mut nn = import.name.clone();
                         nn.push(local.clone());
                         flat.short_names.insert(nn);
@@ -195,12 +196,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                             flat.short_names.insert(import.name.clone());
                         }
                     } else {
-                        for local in &import.local {
+                        for (local, import_as) in &import.local {
                             let mut nn = import.name.clone();
                             nn.push(local.clone());
                             incomming.push((nn.clone(), import.loc.clone()));
                             if short_names {
-                                flat.short_names.insert(nn);
+                                flat.short_names.insert(nn.clone());
+                            }
+                            if let Some(import_as) = import_as {
+                                flat.aliases.insert(nn, import_as.clone());
                             }
                         }
                     }
@@ -244,7 +248,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         } else {
             assert!(name.0[1] == "libc");
             let inc = ast::Include{
-                expr: format!("<{}.h>", name.0[2]),
+                expr: format!("<{}.h>", name.0[2..name.len()-1].join("/")),
                 loc:  l.in_scope_here.clone(),
             };
 

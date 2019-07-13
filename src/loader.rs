@@ -16,7 +16,7 @@ pub fn load(
     artifact_name: &Name,
     src:          &Path
 ) {
-    for entry in std::fs::read_dir(src).unwrap() {
+    for entry in std::fs::read_dir(src).expect(&format!("cannot open src directory {:?} ", src)) {
         let entry = entry.unwrap();
         let path  = entry.path();
         if path.is_file() {
@@ -30,7 +30,10 @@ pub fn load(
                 Some("zz") => {
                     let mut m = parser::parse(&path);
                     m.name = artifact_name.clone();
-                    m.name.push(path.file_stem().unwrap().to_string_lossy().to_string());
+                    let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+                    if stem != "lib" {
+                        m.name.push(stem);
+                    }
                     modules.insert(m.name.clone(), Module::ZZ(m));
                 },
                 _ => {},

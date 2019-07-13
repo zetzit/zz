@@ -4,7 +4,7 @@ COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 alpha       = { 'a'..'z' | 'A'..'Z' }
 digit       = { '0'..'9' }
 
-key_pub     = { "export" }
+exported    = { "export" }
 key_shared  = { "pub" }
 key_const   = { "const"   }
 key_packed  = { "packed"   }
@@ -16,7 +16,8 @@ int_literal     = @{ digit+ }
 
 ident       = @{ (alpha | "_") ~ (alpha | digit | "_")* }
 star        = @{ "*" }
-local       = { "{" ~ WHITESPACE* ~ ident ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ ident )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
+local_i     = {ident ~ ( WHITESPACE+  ~ "as" ~ WHITESPACE+ ~ ident)?}
+local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ local_i )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
 name        = ${ ident ~ ( "::" ~ (local | name))? }
 
@@ -30,10 +31,10 @@ anon_arg    = {(key_const | key_mut)? ~ typ}
 
 fn_args     = {named_arg ~ ( "," ~ named_arg)* ~ ","? }
 ret_arg     = {"->" ~ anon_arg}
-function    = { ( key_pub | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
+function    = { ( exported | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 
-import      = { key_pub? ~  "using" ~ name ~  ";"? }
+import      = { exported? ~  "using" ~ name ~  ";"? }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
@@ -44,17 +45,17 @@ field_array =  { "[" ~ (name | int_literal) ~ "]" }
 struct_f    = { ident ~ field_array? ~ ";" }
 field       = { typ ~ struct_f }
 struct_c    = _{"{" ~ field* ~ "}" }
-struct_d    = { (key_pub | key_shared | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
+struct_d    = { (exported | key_shared | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
 expression  = @{(!(";"| "/*")  ~ ANY)*}
-constant    = { ( key_pub | key_shared)? ~ "const"  ~ typ ~ ident ~ "=" ~ expression   ~ ";"}
+constant    = { ( exported | key_shared)? ~ "const"  ~ typ ~ ident ~ "=" ~ expression   ~ ";"}
 
 key_static  = {"static"}
 key_atomic  = {"atomic"}
 key_thread_local = {"thread_local"}
 
 istatic     = {
-    ( key_pub | key_shared)? ~
+    ( exported | key_shared)? ~
     (key_static | key_atomic | key_thread_local) ~
     (key_mut | key_const)? ~
     typ ~ ident ~ "=" ~ expression ~ ";"
@@ -65,7 +66,7 @@ comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
 vararg      = @{"..."}
 call_args   = {ident ~ ( "," ~ ( ident | vararg) )* }
 macroimports = { "using" ~ name }
-imacro      = { ( key_pub | key_shared)? ~ "macro" ~ macroimports* ~ ident ~ "(" ~ call_args? ~")" ~ block }
+imacro      = { ( exported | key_shared)? ~ "macro" ~ macroimports* ~ ident ~ "(" ~ call_args? ~")" ~ block }
 
 file        = { SOI ~ (struct_d
                         | function
