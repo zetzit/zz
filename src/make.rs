@@ -36,6 +36,7 @@ impl Make {
                 cflags.push(cinc.clone());
             }
         }
+        cflags.push("-fPIC".into());
         cflags.push("-I".into());
         cflags.push(".".into());
         cflags.push("-I".into());

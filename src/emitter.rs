@@ -190,6 +190,8 @@ impl Emitter {
             write!(self.f, "static const ").unwrap();
         }
 
+        write!(self.f, " __attribute__ ((unused)) ").unwrap();
+
         match storage {
             ast::Storage::Atomic => {
                 write!(self.f, "_Atomic ").unwrap();
@@ -221,7 +223,9 @@ impl Emitter {
             write!(self.f, "#line {} \"{}\"\n", expr.loc.line(), expr.loc.file).unwrap();
         }
 
-        write!(self.f, "static const {} ", self.to_local_name(&typeref.name)).unwrap();
+        write!(self.f, "static const ").unwrap();
+        write!(self.f, " __attribute__ ((unused)) ").unwrap();
+        write!(self.f, "{} ", self.to_local_name(&typeref.name)).unwrap();
         if typeref.ptr {
             write!(self.f, "* ").unwrap();
         }

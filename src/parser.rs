@@ -565,6 +565,9 @@ fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
             Rule::key_ptr => {
                 ptr = true;
             },
+            Rule::qident => {
+                name.push(part.into_inner().next().unwrap().as_str().to_string());
+            },
             Rule::ident => {
                 name.push(part.as_str().to_string());
             },
@@ -588,7 +591,16 @@ fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<(String, Option<S
                     match p2.as_rule() {
                         Rule::local_i => {
                             let mut p2      = p2.into_inner();
-                            let name        = p2.next().unwrap().as_str().to_string();
+                            let name        = p2.next().unwrap();
+                            let name = match name.as_rule() {
+                                Rule::ident => {
+                                    name.as_str().to_string()
+                                }
+                                Rule::qident => {
+                                    name.into_inner().next().unwrap().as_str().to_string()
+                                },
+                                _ => unreachable!(),
+                            };
                             let import_as   = if let Some(p3) = p2.next() {
                                 Some(p3.as_str().to_string())
                             } else {

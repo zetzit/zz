@@ -14,15 +14,17 @@ key_ptr     = { "*" }
 string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 int_literal     = @{ digit+ }
 
-ident       = @{ (alpha | "_") ~ (alpha | digit | "_")* }
+ident       = @{ ((alpha | "_") ~ (alpha | digit | "_")*)}
+qident_inner= ${( (!")" ~ ANY) )*}
+qident      = @{ "(" ~ qident_inner ~ ")" }
 star        = @{ "*" }
-local_i     = {ident ~ ( WHITESPACE+  ~ "as" ~ WHITESPACE+ ~ ident)?}
+local_i     = {(ident | qident) ~ ( WHITESPACE+  ~ "as" ~ WHITESPACE+ ~ (ident | qident))?}
 local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ local_i )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
 name        = ${ ident ~ ( "::" ~ (local | name))? }
 
 typ = ${
-    namespace? ~ ident ~ key_ptr?
+    namespace? ~ (ident | qident) ~ key_ptr?
 }
 
 var         = @{ident}
