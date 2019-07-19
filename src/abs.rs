@@ -119,6 +119,12 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
             debug!("  import abs {} => {}", import.name, import.name);
             return import.name.clone();
         }
+
+        // self
+        if &import.name == imported_from  {
+            debug!("  import self abs {}", import.name);
+            return import.name.clone();
+        }
     } else {
         if let Some("libc") = import.name.0.first().map(|s|s.as_str()) {
             let mut n2 = import.name.clone();
@@ -144,11 +150,31 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
             return search;
         }
 
-        // /rott/current/search
+        // /root/current/search
         let mut search = imported_from.clone();
         search.0.extend(import.name.0.clone());
         if all_modules.contains_key(&search) {
             debug!("  import aabs/lib {} => {}", import.name, search);
+            return search;
+        }
+
+        // self
+        let mut search = import.name.clone();
+        search.0.insert(0, String::new());
+        if &search == imported_from  {
+            debug!("  import self abs {} => {}", import.name, search);
+            return search;
+        }
+
+        // self literal
+        if let Some("self") = import.name.0.get(0).map(|s|s.as_ref()) {
+            let mut search2 = import.name.clone();
+            search2.0.remove(0);
+
+            let mut search = imported_from.clone();
+            search.0.extend(search2.0);
+
+            debug!("  import self {} => {}", import.name, search);
             return search;
         }
     }
@@ -242,7 +268,11 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                     local.clone()
                 };
 
-                scope.insert(localname, nn, &import.loc, false);
+                // if not self
+                if md.name.0[..] != nn.0[..md.name.len()] {
+                    // add to scope
+                    scope.insert(localname, nn, &import.loc, false);
+                }
             }
         }
         import.name = fqn;

@@ -155,6 +155,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             assert!(import.name.is_absolute(), "ice: not abs: {}", import.name);
             match all_modules.get(&import.name) {
                 None => {
+                    debug!("    < none {}", import.name);
                     if import.name.0[1] == "libc" {
                         md.includes.push(ast::Include{
                             loc: import.loc.clone(),
@@ -165,11 +166,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                             nn.push(local.clone());
                             flat.short_names.insert(nn);
                         }
+                    } else if import.name == md.name {
+                        // self import. do nothing
+                        debug!("  self {} ", md.name);
                     } else {
                         panic!("ice: unknown module {}", import.name);
                     }
                 },
                 Some(loader::Module::C(path)) => {
+                    debug!("    < C {}", import.name);
                     flat.sources.insert(path.clone());
                     flat.d.push(D::Include(ast::Include{
                         loc: import.loc.clone(),
@@ -183,6 +188,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     }
                 }
                 Some(loader::Module::ZZ(ast)) => {
+                    debug!("    < mod {}", import.name);
                     flat.deps.insert(ast.name.clone());
                     if import.local.len() == 0 {
                         for local in &ast.locals {
@@ -197,6 +203,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         }
                     } else {
                         for (local, import_as) in &import.local {
+                            debug!("      < {}", local);
                             let mut nn = import.name.clone();
                             nn.push(local.clone());
                             incomming.push((nn.clone(), import.loc.clone()));
@@ -238,10 +245,11 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     }
 
 
+    debug!("sorted");
     for (name, l) in sorted {
-        debug!("   {} ", name);
+        debug!(" {} ", name);
         for dep in &l.deps {
-            debug!("      < {}", dep);
+            debug!("    < {}", dep);
         }
         if let Some(ast) = &l.ast {
             flat.d.push(D::Local(ast.clone()));

@@ -1,0 +1,21 @@
+using fl;
+using libc::stdio;
+
+export fn main() -> int {
+    fl_pool(b, 8, 1000);
+
+    for (int i = 0; i < 10; i++) {
+        printf("alloc %d\n", i);
+        fl_new(b);
+    }
+
+    void *m1 = fl_new(b);
+    void *m2 = fl_new(b);
+    fl_delete(b, m1);
+    fl_delete(b, m2);
+    void *m3 = fl_new(b);
+    fl_delete(b, m3);
+
+    printf("hello fl\n");
+    return 0;
+}
