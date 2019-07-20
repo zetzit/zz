@@ -2,6 +2,8 @@ use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::collections::HashMap;
+use toml::Value;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,16 +24,25 @@ pub struct Artifact {
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Project {
+    pub version:    String,
     pub name:       String,
     pub cincludes:  Option<Vec<String>>,
     pub cobjects:   Option<Vec<String>>,
     pub cflags:     Option<Vec<String>>,
     pub lflags:     Option<Vec<String>>,
 }
+
+#[derive(Serialize, Deserialize)]
+pub enum Dependency {
+    V(String)
+}
+
+
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub project:    Project,
     pub artifacts:  Option<Vec<Artifact>>,
+    pub dependencies: Option<HashMap<String, Value>>,
 }
 
 pub fn init() {
@@ -39,8 +50,10 @@ pub fn init() {
         artifacts: None,
         project: Project {
             name: std::env::current_dir().unwrap().file_name().unwrap().to_string_lossy().into(),
+            version: "0.1.0".to_string(),
             ..Default::default()
-        }
+        },
+        dependencies: Some(HashMap::new()),
     };
 
     if !std::env::current_dir().unwrap().join("zz.toml").exists() {
@@ -86,6 +99,7 @@ pub fn load() -> (PathBuf, Config) {
     let mut s = String::new();
     f.read_to_string(&mut s).expect(&format!("cannot read {:?}", search));
     let mut c : Config = toml::from_str(&mut s).expect(&format!("cannot read {:?}", search));
+
 
     if c.artifacts.is_none() {
         let mut a = Vec::new();

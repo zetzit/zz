@@ -1,0 +1,89 @@
+using libc::stdint::{uint8_t};
+using libc::stdio::{printf};
+using libc::string::{memset};
+
+export struct Error {
+    uint8_t error;
+    char    description[255];
+    char    locations[255];
+};
+
+pub macro using libc::string using libc::stdio ECHECK() {
+    if (err->error != 0) {
+        snprintf(
+                (char*)&((err)->locations) + strlen((err)->locations),
+                sizeof((err)->locations) - strlen((err)->locations),
+                "\n  %s:%d", __FILE__, __LINE__);
+        goto exit ;
+    }
+}
+
+pub macro using libc::string using libc::stdio try(expr) {
+    expr;
+    if (err->error != 0) {
+        snprintf(
+                (char*)&((err)->locations) + strlen((err)->locations),
+                sizeof((err)->locations) - strlen((err)->locations),
+                "\n  %s:%d", __FILE__, __LINE__);
+        goto exit ;
+    }
+}
+
+pub macro using libc::sys::errno EFAIL(text) {
+    (err)->error = (err)->error || errno || EINVAL;
+    snprintf((err)->description, sizeof((err)->description), text);
+    memset((err)->locations, 0, sizeof((err)->locations));
+    ECHECK
+}
+
+pub macro using libc::sys::errno throw(text) {
+    (err)->error = (err)->error || errno || EINVAL;
+    snprintf((err)->description, sizeof((err)->description), text);
+    memset((err)->locations, 0, sizeof((err)->locations));
+    snprintf(
+            (char*)&((err)->locations) + strlen((err)->locations),
+            sizeof((err)->locations) - strlen((err)->locations),
+            "\n  %s:%d", __FILE__, __LINE__);
+    goto exit ;
+}
+
+pub macro using libc::sys::errno EFAILV(text, ...) {
+    (err)->error = (err)->error || errno || EINVAL;
+    snprintf((err)->description, sizeof((err)->description), text, __VA_ARGS__ );
+    memset((err)->locations, 0, sizeof((err)->locations));
+    ECHECK;
+}
+
+export macro using  libc::stdio using libc::string using libc::stdlib EABORT() {
+    if (err->error != 0) {
+        snprintf(
+                (char*)&((err)->locations) + strlen((err)->locations),
+                sizeof((err)->locations) - strlen((err)->locations),
+                "\n  %s:%d", __FILE__, __LINE__);
+        fprintf(stderr, "%s%s\n", err->description, err->locations);
+        abort();
+    }
+}
+
+pub macro check_noise_error(e) {
+    if ((e) != 0) {
+        char buf[255];
+        noise_strerror((e), buf, 255);
+        EFAILV("%s", buf);
+    }
+}
+
+pub macro HEXDUMP(v, len) {
+    for(int i=0; i < len; i++) {
+        printf(" %02x", ((uint8_t *)(v))[i]);
+        if (i % 32 == 31) {
+            putchar('\n');
+        }
+    }
+    putchar('\n');
+}
+
+export fn error_to_str(Error* err, mutable char* buf, int buflen) {
+    memset(buf, 0, buflen);
+    snprintf(buf, buflen, "%s%s", err->description, err->locations);
+}

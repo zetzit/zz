@@ -136,6 +136,19 @@ fn build(tests: bool) {
         loader::load(&mut modules, &project_tests_name, &Path::new("./tests"));
     }
 
+
+    if let Some(deps) = &project.dependencies {
+        for (name, dep) in deps {
+            match dep {
+                toml::Value::String(v) => {
+                    getdep(name, &mut modules);
+                },
+                _ => (),
+            }
+        }
+    }
+
+
     let mut names : Vec<Name> = modules.keys().cloned().collect();
     names.sort_unstable();
     for name in &names {
@@ -217,3 +230,40 @@ fn build(tests: bool) {
     };
 }
 
+fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
+
+    let mut searchpaths = Vec::new();
+    searchpaths.push(std::env::current_exe().expect("self path")
+        .canonicalize().expect("self path")
+        .parent().expect("self path")
+        .parent().expect("self path")
+        .parent().expect("self path")
+        .join("modules"));
+
+
+    let mut found = None;
+    for searchpath in &searchpaths {
+        let modpath = searchpath.join(name).join("zz.toml");;
+        if modpath.exists() {
+            found = Some(searchpath.join(name));
+        }
+    }
+
+    let found = match found {
+        Some(v) => v,
+        None => {
+            eprintln!("dependency \"{}\" not found in any of {:#?}", name, searchpaths);
+            std::process::exit(9);
+        }
+    };
+
+    let pp = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&found).unwrap();
+    let (_root, project)  = project::load();
+    let project_name     = Name(vec![String::new(), project.project.name.clone()]);
+    if std::path::Path::new("./src").exists() {
+        loader::load(modules, &project_name, &Path::new("./src"));
+    }
+    std::env::set_current_dir(pp).unwrap();
+
+}

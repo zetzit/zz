@@ -1,18 +1,11 @@
 using constants;
+using error::{Error};
 
 fn usemeeee(Error* e) {
 }
 
 using libc::stdint::{uint8_t};
 using libc::memory::{memset};
-
-pub struct Error {
-    uint8_t error;
-    char    description[constants::foo];
-    char    locations[25];
-    void*   nothing;
-};
-
 
 pub fn new(mutable Error* self) {
     memset(self, 0, sizeof(Error));

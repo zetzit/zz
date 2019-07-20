@@ -1,3 +1,8 @@
 [project]
-name="example"
-cincludes=["."]
+version   = "0.1"
+name      = "example"
+cincludes = ["."]
+
+[dependencies]
+fl    = "0.1"
+error = "*"
