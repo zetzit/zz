@@ -14,18 +14,18 @@ static mutable uint32_t counter = 1;
 
 
 pub fn some_helper(mutable Error* err, mutable uint32_t* bob) -> uint32_t {
-    counter++;
+    counter+=1;
     printf("lol\n");
     if (bob) {
-        *bob = add(horst(), foo);
-        printf("bob %d\n", *bob);
+        (*bob) = add(horst(), foo);
+        printf("bob %d\n", (*bob));
     }
     return ADD_IMPL(32, wuast);
 }
 
 fn horst() -> uint32_t {
     constant_conflict();
-    printf("wee? %f\n", main_gimme_wee(0));
+    printf("wee? %f\n", main::gimme_wee(0));
     return ADD_IMPL(3, 3);
 }
 

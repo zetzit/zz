@@ -45,23 +45,22 @@ pub struct Import {
 }
 
 
-
 #[derive(Clone)]
 pub enum Def {
     Static {
-        typeref:    TypeUse,
-        expr:       CExpr,
+        typeref:    NameUse,
+        expr:       Expression,
         muta:       bool,
         storage:    Storage,
     },
     Const {
-        typeref:    TypeUse,
-        expr:       CExpr,
+        typeref:    NameUse,
+        expr:       Expression,
     },
     Function {
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
-        body:       CExpr,
+        body:       Block,
     },
     Struct {
         fields:     Vec<Field>,
@@ -69,8 +68,7 @@ pub enum Def {
     },
     Macro {
         args:       Vec<String>,
-        body:       CExpr,
-        imports:    Vec<Import>,
+        body:       Block,
     }
 }
 
@@ -92,7 +90,7 @@ pub struct Include {
 }
 
 #[derive(Clone)]
-pub struct TypeUse {
+pub struct NameUse {
     pub name:   Name,
     pub loc:    Location,
     pub ptr:    bool,
@@ -110,33 +108,122 @@ pub struct Module {
 
 #[derive(Clone)]
 pub struct AnonArg {
-    pub typeref:    TypeUse,
+    pub typeref:    NameUse,
 }
 
 #[derive(Clone)]
 pub struct NamedArg {
-    pub typeref:    TypeUse,
+    pub typeref:    NameUse,
     pub name:       String,
     pub muta:       bool,
-}
-
-#[derive(Clone)]
-pub struct CExpr {
-    pub expr:   String,
-    pub loc:    Location,
 }
 
 
 #[derive(Clone)]
 pub enum Value{
     Literal(String),
-    Name(TypeUse),
+    Name(NameUse),
 }
 
 #[derive(Clone)]
 pub struct Field {
-    pub typeref:    TypeUse,
+    pub typeref:    NameUse,
     pub name:       String,
     pub array:      Option<Value>,
     pub loc:        Location,
+}
+
+
+#[derive(Clone)]
+pub enum Expression {
+    Name(NameUse),
+    MemberAccess {
+        loc:    Location,
+        lhs:    Box<Expression>,
+        op:     String,
+        rhs:    String,
+    },
+    ArrayAccess {
+        loc:    Location,
+        lhs:    Box<Expression>,
+        rhs:    Box<Expression>,
+    },
+    Literal {
+        loc:    Location,
+        v:      String,
+    },
+    Call {
+        loc:    Location,
+        name:   NameUse,
+        args:   Vec<Box<Expression>>,
+    },
+    InfixOperation {
+        lhs:    Box<Expression>,
+        rhs:    Vec<((String, Location), Box<Expression>)>,
+    },
+    Cast {
+        into: NameUse,
+        expr: Box<Expression>,
+    },
+    UnaryPost {
+        loc:    Location,
+        op:     String,
+        expr:   Box<Expression>,
+    },
+    UnaryPre {
+        loc:    Location,
+        op:     String,
+        expr:   Box<Expression>,
+    },
+}
+
+
+#[derive(Clone)]
+pub enum Statement {
+    Label{
+        loc:    Location,
+        label:  String
+    },
+    Goto{
+        loc:    Location,
+        label:  String
+    },
+    Assign {
+        loc: Location,
+        lhs: Expression,
+        op:  String,
+        rhs: Expression,
+    },
+    Expr {
+        loc:  Location,
+        expr: Expression,
+    },
+    Return {
+        loc:  Location,
+        expr: Expression,
+    },
+    Var {
+        loc:        Location,
+        typeref:    NameUse,
+        name:       Name,
+        array:      Option<Expression>,
+        assign:     Option<Expression>,
+    },
+    For {
+        e1:     Option<Box<Statement>>,
+        e2:     Option<Box<Statement>>,
+        e3:     Option<Box<Statement>>,
+        body:   Block,
+    },
+    Cond {
+        op:         String,
+        expr:       Option<Expression>,
+        body:       Block,
+    },
+    Block(Box<Block>),
+}
+
+#[derive(Clone)]
+pub struct Block {
+    pub statements: Vec<Statement>,
 }

@@ -11,27 +11,28 @@ struct Pool {
 }
 
 
-pub macro using fl::{Pool} SIZE(SLAB,COUNT) {
-    sizeof(fl_Pool) + SLAB * COUNT + COUNT/8 + 1
+pub fn size(size_t slab, size_t count) -> size_t {
+    return sizeof(Pool) + (slab * count) + (count / 8) + 1;
 }
-pub macro using fl::{Pool, init} MAKE (NAME, SLAB, COUNT) {
-    char NAME [sizeof(fl_Pool) + SLAB * COUNT + COUNT/8 + 1];
-    fl_init(NAME, SLAB, COUNT);
+
+pub macro MAKE (NAME, SLAB, COUNT) {
+    char NAME [size(SLAB,COUNT)];
+    init(NAME, SLAB, COUNT);
 }
 
 pub fn init(mut char* b, size_t slab, size_t count) {
-    memset(b, 0, sizeof(Pool) + slab * count+ count/8 + 1);
-    Pool *self = (Pool*)b;
+    memset(b, 0, sizeof(Pool) + slab * count + count / 8 + 1);
+    Pool* self = (Pool*)b;
 
     self->slab  = slab;
     self->count = count;
     self->free  = ((uint8_t*)b) + sizeof(Pool);
-    self->pool  = self->free + count/8 + 1;
+    self->pool  = self->free + count / 8 + 1;
 }
 
 pub fn alloc(mut char* b) -> void* {
-    Pool *self = (Pool*)b;
-    for (int i = 0; i < self->count; i++ ) {
+    Pool* self = (Pool*)b;
+    for (int i = 0; i < self->count; i+=1 ) {
         if ((self->free[i/8] & (1 << (i%8))) == 0) {
             self->free[i/8] |= (1 << (i%8));
             return self->pool + (i * self->slab);
@@ -41,12 +42,12 @@ pub fn alloc(mut char* b) -> void* {
 }
 
 pub fn release(mut char* b, void* mem) -> void* {
-    Pool *self = (Pool*)b;
+    Pool* self = (Pool*)b;
 
     size_t slot = ((uint8_t*)mem - self->pool) / self->slab;
 
     if (slot >= self->count || (self->pool + (self->slab * slot)) != mem) {
-        fprintf(stderr, "internal error: pointer passed to fl:free was never allocated from this fl pool\n");
+        fprintf(stderr, "internal error: pointer %x passed to fl:free was never allocated from this fl pool\n", mem);
         abort();
     }
 

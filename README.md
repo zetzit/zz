@@ -50,8 +50,6 @@ but the solution is not to make up another shit syntax that you'd have to learn 
 ### no headers
 
 it'll generate headers to make sure its still C and works with C code, but you'll never have to write headers again.
-basically a ZZ file is ZZ syntax at the top level and just plain C in the function bodies.
-the compiler does all the dull work with the function definitions, and lets you write plain C otherwise.
 
 ### modules/namespaces
 
@@ -84,14 +82,11 @@ fn some_helper(mutable errors::error* err, mutable uint32_t* bob) -> uint32_t {
 }
 
 
-export fn horst() -> uint32_t {
+export const fn horst() -> uint32_t {
     return 3;
 }
 
 ```
-
-it's inspired by rust, but keeps C's argument declaration order, because it would be confusing if the body still uses C style. 
-
 By default, arguments are const, unless declared mutable. You can declare them const, but it does nothing.
 
 note how horst() has been declared later than its use. Declaration order does no longer matter.
@@ -101,13 +96,12 @@ note how horst() has been declared later than its use. Declaration order does no
 #### top level declarations: fn, struct
 
 fn delares a function.
-the body is passed verbatim to the C compiler.
-
-struct does the same for structs.
+struct declares a struct.
+nothing fancy here.
 
 #### macro
 
-macro definitions are almost like C's #define but slightly more stable
+macro definitions are almost like C's #define but slightly less ugly
 
 ```C
 macro CHECK(e) {
@@ -117,21 +111,9 @@ macro CHECK(e) {
 }
 ```
 
-the macro can be multiple lines but is resctricted within the body {  }.
-this intentionally disables some insane use cases.
-
-
-because the macro body is not parsed, zz does not know what a macro depends on.
-you can specify additional modules that are imported when the macro is imported with a using attribute, like so:
-
-
-```C
-export macro using(c::stdio::printf) CHECK(e) {
-    if ((e) != 0) {
-        printf("oh noes!\n");
-    }
-}
-```
+any C syntax is allowed within the body, without having to do the ugly newline escape.
+But unlike C, a macro must close all brackets it opens.
+this intentionally disables some rather insane use cases.
 
 #### storage: const, static, atomic and thread_local
 

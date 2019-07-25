@@ -32,6 +32,125 @@ struct Local {
 struct Locals (HashMap<Name, Local>);
 
 
+fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
+    match stm {
+        ast::Statement::Goto{..} |  ast::Statement::Label{..} => {
+            Vec::new()
+        },
+        ast::Statement::Block(b2) => {
+            block_deps(b2)
+        },
+        ast::Statement::For{e1,e2,e3, body} => {
+            let mut deps = Vec::new();
+            if let Some(s) = e1 {
+                deps.extend(stm_deps(s));
+            }
+            if let Some(s) = e2 {
+                deps.extend(stm_deps(s));
+            }
+            if let Some(s) = e3 {
+                deps.extend(stm_deps(s));
+            }
+            deps.extend(block_deps(body));
+            deps
+        },
+        ast::Statement::Cond{expr, body, ..} => {
+            let mut deps = Vec::new();
+            for expr in expr {
+                deps.extend(expr_deps(expr));
+            }
+            deps.extend(block_deps(body));
+            deps
+        },
+        ast::Statement::Assign{lhs, rhs, ..}  => {
+            let mut deps = Vec::new();
+            deps.extend(expr_deps(lhs));
+            deps.extend(expr_deps(rhs));
+            deps
+        },
+        ast::Statement::Var{assign, typeref, array, ..}  => {
+            let mut deps = Vec::new();
+            if let Some(array) = &array {
+                deps.extend(expr_deps(array));
+            }
+            if let Some(assign) = &assign {
+                deps.extend(expr_deps(assign));
+            }
+            deps.push(typeref.name.clone());
+            deps
+        },
+        ast::Statement::Expr{expr, ..} => {
+            expr_deps(expr)
+        }
+        ast::Statement::Return {expr, ..} => {
+            expr_deps(expr)
+        }
+    }
+}
+
+fn block_deps(block: &ast::Block) -> Vec<Name> {
+    let mut deps = Vec::new();
+    for stm in &block.statements {
+        deps.extend(stm_deps(stm));
+    }
+    deps
+}
+
+
+fn expr_deps(expr: &ast::Expression) -> Vec<Name> {
+    match expr {
+        ast::Expression::Name(name)  => {
+            if name.name.len() > 2 {
+                vec![name.name.clone()]
+            } else {
+                Vec::new()
+            }
+        },
+        ast::Expression::Cast{expr, into} => {
+            let mut v = Vec::new();
+            v.push(into.name.clone());
+            v.extend(expr_deps(expr));
+            v
+        }
+        ast::Expression::Literal {..} => {
+            Vec::new()
+        }
+        ast::Expression::Call { name, args, ..} => {
+            let mut v = Vec::new();
+            if name.name.len() > 2 {
+                v.push(name.name.clone());
+            }
+            for arg in args {
+                v.extend(expr_deps(arg));
+            }
+            v
+        },
+        ast::Expression::UnaryPost{expr, ..} => {
+            expr_deps(expr)
+        }
+        ast::Expression::UnaryPre{expr, ..} => {
+            expr_deps(expr)
+        }
+        ast::Expression::MemberAccess {lhs, ..} => {
+            expr_deps(lhs)
+        }
+        ast::Expression::ArrayAccess {lhs, rhs,.. } => {
+            let mut v = Vec::new();
+            v.extend(expr_deps(lhs));
+            v.extend(expr_deps(rhs));
+            v
+        }
+        ast::Expression::InfixOperation {lhs, rhs,.. } => {
+            let mut v = Vec::new();
+            v.extend(expr_deps(lhs));
+            for (_, rhs) in rhs {
+                v.extend(expr_deps(rhs));
+            }
+            v
+        }
+    }
+}
+
 pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) -> Module {
     debug!("flatten {}", md.name);
 
@@ -103,19 +222,22 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
             let mut deps : Vec<Name> = Vec::new();
             match &local.def {
-                ast::Def::Static{typeref,..} => {
+                ast::Def::Static{typeref,expr,..} => {
                     deps.push(typeref.name.clone());
+                    deps.extend(expr_deps(expr));
                 }
-                ast::Def::Const{typeref,..} => {
+                ast::Def::Const{typeref,expr, ..} => {
                     deps.push(typeref.name.clone());
+                    deps.extend(expr_deps(expr));
                 }
-                ast::Def::Function{ret, args,..} => {
+                ast::Def::Function{ret, args,body, ..} => {
                     if let Some(ret) = ret {
                         deps.push(ret.typeref.name.clone());
                     }
                     for arg in args {
                         deps.push(arg.typeref.name.clone());
                     }
+                    deps.extend(block_deps(body));
                 }
                 ast::Def::Struct{fields,..} => {
                     for field in fields {
@@ -127,10 +249,8 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         }
                     }
                 }
-                ast::Def::Macro{imports,..} => {
-                    for import in imports {
-                        incomming_imports.push((import.clone(), false));
-                    }
+                ast::Def::Macro{body, ..} => {
+                    deps.extend(block_deps(body));
                 }
             }
 

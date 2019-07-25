@@ -40,7 +40,7 @@ impl Scope{
         });
     }
 
-    pub fn abs(&self, t: &mut ast::TypeUse) {
+    pub fn abs(&self, t: &mut ast::NameUse, inbody: bool) {
         if t.name.is_absolute() {
             return;
         }
@@ -70,11 +70,22 @@ impl Scope{
 
         match self.v.get(&lhs) {
             None => {
-                error!("undefined name '{}' \n{}",
-                       t.name,
-                       parser::make_error(&t.loc, "used in this scope"),
-                       );
-                ABORT.store(true, Ordering::Relaxed);
+                if inbody {
+                    if t.name.len() > 1 {
+                        error!("possibly undefined name '{}' \n{}",
+                              t.name,
+                              parser::make_error(&t.loc, "cannot use :: notation to reference names not tracked by zz"),
+                              );
+                        ABORT.store(true, Ordering::Relaxed);
+                    }
+                    t.name.0.insert(0, String::new());
+                } else {
+                    error!("undefined name '{}' \n{}",
+                           t.name,
+                           parser::make_error(&t.loc, "used in this scope"),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                }
             },
             Some(v) => {
                 if rhs.len() != 0  && !v.is_module {
@@ -192,8 +203,13 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
         return;
     }
 
+
     let mut module_name = fqn.clone();
     let local_name = module_name.pop().unwrap();
+
+    if module_name.len() < 2 {
+        return;
+    }
 
     if module_name.0[1] == "libc" {
         //TODO
@@ -205,9 +221,9 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
 
     let module = match all_modules.get(&module_name) {
         None => {
-            error!("ICE: cannot find module '{}' while checking '{}' \n{}",
+            error!("cannot find module '{}' while type checking module '{}' \n{}",
                    module_name, selfname,
-                   parser::make_error(&loc, "imported here"),
+                   parser::make_error(&loc, "expected to be in scope here"),
                    );
             std::process::exit(9);
         },
@@ -245,6 +261,120 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
 
 }
 
+
+fn abs_expr(
+    expr: &mut ast::Expression,
+    scope: &Scope,
+    inbody: bool,
+    all_modules: &HashMap<Name, loader::Module>,
+    self_md_name: &Name,
+    )
+{
+    match expr {
+        ast::Expression::UnaryPre{expr,..} => {
+            abs_expr(expr, scope, inbody, all_modules, self_md_name);
+        },
+        ast::Expression::UnaryPost{expr,..} => {
+            abs_expr(expr, scope, inbody, all_modules, self_md_name);
+        },
+        ast::Expression::Cast{expr, into} => {
+            abs_expr(expr, scope, inbody, all_modules, self_md_name);
+            scope.abs(into, inbody);
+        }
+        ast::Expression::MemberAccess{lhs,..}  => {
+            abs_expr(lhs, scope, inbody, all_modules, self_md_name);
+        }
+        ast::Expression::ArrayAccess{lhs,rhs,..}  => {
+            abs_expr(lhs, scope, inbody, all_modules, self_md_name);
+            abs_expr(rhs, scope, inbody, all_modules, self_md_name);
+        }
+        ast::Expression::Name(name)  => {
+            scope.abs(name, inbody);
+        },
+        ast::Expression::Literal {..} => {
+        }
+        ast::Expression::Call { ref mut name, args, ..} => {
+            scope.abs(name, inbody);
+            check_abs_available(&name.name, &ast::Visibility::Object, all_modules, &name.loc, self_md_name);
+            for arg in args {
+                abs_expr(arg, scope, inbody, all_modules, self_md_name);
+            }
+        },
+        ast::Expression::InfixOperation {lhs, rhs,.. } => {
+            abs_expr(lhs, scope, inbody, all_modules, self_md_name);
+            for (_, rhs) in rhs {
+                abs_expr(rhs, scope, inbody, all_modules, self_md_name);
+            }
+        }
+    }
+}
+
+fn abs_statement(
+    stm: &mut ast::Statement,
+    scope: &Scope,
+    inbody: bool,
+    all_modules: &HashMap<Name, loader::Module>,
+    self_md_name: &Name,
+    )
+{
+    match stm {
+        ast::Statement::Goto{..} |  ast::Statement::Label{..} => {
+        }
+        ast::Statement::Block(b2) => {
+            abs_block(b2, &scope, all_modules, self_md_name);
+        }
+        ast::Statement::For{e1,e2,e3, body} => {
+            abs_block(body, &scope, all_modules, self_md_name);
+            if let Some(s) = e1 {
+                abs_statement(s, scope, inbody, all_modules, self_md_name);
+            }
+            if let Some(s) = e2 {
+                abs_statement(s, scope, inbody, all_modules, self_md_name);
+            }
+            if let Some(s) = e3 {
+                abs_statement(s, scope, inbody, all_modules, self_md_name);
+            }
+        },
+        ast::Statement::Cond{expr, body, ..} => {
+            for expr in expr {
+                abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+            }
+            abs_block(body, &scope, all_modules, self_md_name);
+        },
+        ast::Statement::Assign{lhs, rhs, ..}  => {
+            abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
+            abs_expr(rhs, &scope, inbody, all_modules, self_md_name);
+        },
+        ast::Statement::Var{assign, typeref, array, ..}  => {
+            if let Some(assign) = assign {
+                abs_expr(assign, &scope, inbody, all_modules, self_md_name);
+            }
+            if let Some(array) = array {
+                abs_expr(array, &scope, inbody, all_modules, self_md_name);
+            }
+            scope.abs(typeref, false);
+            //check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
+        },
+        ast::Statement::Expr{expr, ..} => {
+            abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+        }
+        ast::Statement::Return {expr, ..} => {
+            abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+        }
+    }
+}
+
+fn abs_block(
+    block:   &mut ast::Block,
+    scope: &Scope,
+    all_modules: &HashMap<Name, loader::Module>,
+    self_md_name: &Name,
+    )
+{
+    for stm in &mut block.statements {
+        abs_statement(stm, scope, true, all_modules, self_md_name);
+    }
+}
 
 pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
     debug!("abs {}", md.name);
@@ -288,41 +418,41 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
     // round two, make all dependencies absolute
     for ast in &mut md.locals {
         match &mut ast.def {
-            ast::Def::Static{typeref,..} => {
-                scope.abs(typeref);
+            ast::Def::Static{typeref,expr,..} => {
+                abs_expr(expr, &scope, false, all_modules, &md.name);
+                scope.abs(typeref, false);
                 check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
             }
-            ast::Def::Const{typeref,..} => {
-                scope.abs(typeref);
+            ast::Def::Const{typeref,expr,..} => {
+                abs_expr(expr, &scope, false,all_modules, &md.name);
+                scope.abs(typeref, false);
                 check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
             }
-            ast::Def::Function{ret, args,..} => {
+            ast::Def::Function{ret, args, ref mut body, ..} => {
                 if let Some(ret) = ret {
-                    scope.abs(&mut ret.typeref);
+                    scope.abs(&mut ret.typeref, false);
                     check_abs_available(&ret.typeref.name, &ast.vis, all_modules, &ret.typeref.loc, &md.name);
                 }
                 for arg in args {
-                    scope.abs(&mut arg.typeref);
+                    scope.abs(&mut arg.typeref, false);
                     check_abs_available(&arg.typeref.name, &ast.vis, all_modules, &arg.typeref.loc, &md.name);
                 }
+                abs_block(body, &scope,all_modules, &md.name);
             }
             ast::Def::Struct{fields,..} => {
                 for field in fields {
-                    scope.abs(&mut field.typeref);
+                    scope.abs(&mut field.typeref, false);
                     check_abs_available(&field.typeref.name, &ast.vis, all_modules, &field.typeref.loc, &md.name);
                     if let Some(ref mut array) = &mut field.array {
                         if let ast::Value::Name(ref mut name) = array {
-                            scope.abs(name);
+                            scope.abs(name, false);
                             check_abs_available(&name.name, &ast.vis, all_modules, &name.loc, &md.name);
                         }
                     }
                 }
             }
-            ast::Def::Macro{imports,..} => {
-                for import in imports {
-                    let fqn  = abs_import(&md.name, &import, all_modules);
-                    import.name = fqn;
-                }
+            ast::Def::Macro{body, ..} => {
+                abs_block(body, &scope,all_modules, &md.name);
             }
         }
     }

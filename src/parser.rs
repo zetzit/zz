@@ -50,11 +50,9 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     span: decl.as_span(),
                 };
                 let decl = decl.into_inner();
-                let mut bodyloc  = None;
                 let mut name = None;
                 let mut args = Vec::new();
                 let mut export_as = None;
-                let mut imports = Vec::new();
                 let mut body = None;
                 let mut vis = Visibility::Object;
                 for part in decl {
@@ -76,33 +74,13 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::ident if name.is_none() => {
                             name = part.as_str().into();
                         }
-                        Rule::macroimports => {
-                            let loc = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            };
-                            let (name, local) = parse_name(part.into_inner().next().unwrap());
-
-                            let import = Import{
-                                loc,
-                                name,
-                                local,
-                                vis: Visibility::Object,
-                            };
-                            module.imports.push(import.clone());
-                            imports.push(import);
-                        }
-                        Rule::call_args => {
+                        Rule::macro_args => {
                             for arg in part.into_inner() {
                                 args.push(arg.as_str().into());
                             }
                         }
                         Rule::block if body.is_none() => {
-                            bodyloc = Some(Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            });
-                            body = Some(part.as_str().to_string());
+                            body = Some(parse_block(n, part));
                         },
                         e => panic!("unexpected rule {:?} in macro ", e),
                     }
@@ -115,11 +93,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     loc,
                     def:  Def::Macro{
                         args,
-                        body: CExpr{
-                            expr: body.unwrap(),
-                            loc:  bodyloc.unwrap(),
-                        },
-                        imports,
+                        body: body.unwrap(),
                     }
                 });
 
@@ -129,7 +103,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     file: n.to_string_lossy().into(),
                     span: decl.as_span(),
                 };
-                let mut bodyloc  = None;
                 let decl = decl.into_inner();
                 let mut name = String::new();
                 let mut export_as = None;
@@ -164,7 +137,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 span: part.as_span().clone(),
                             };
                             let (name, ptr) =  parse_typ(part);
-                            let typeref = TypeUse{
+                            let typeref = NameUse{
                                 name,
                                 loc,
                                 ptr,
@@ -193,7 +166,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                                 span: part.as_span(),
                                             };
                                             let (typename, ptr) =  parse_typ(part);
-                                            typeref = Some(TypeUse{
+                                            typeref = Some(NameUse{
                                                 name: typename,
                                                 loc,
                                                 ptr,
@@ -214,11 +187,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             }
                         },
                         Rule::block => {
-                            bodyloc = Some(Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            });
-                            body = Some(part.as_str().to_string());
+                            body = Some(parse_block(n, part));
                         },
                         e => panic!("unexpected rule {:?} in function", e),
                     }
@@ -232,10 +201,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     def:Def::Function{
                         ret,
                         args,
-                        body: CExpr{
-                            expr: body.unwrap(),
-                            loc:  bodyloc.unwrap(),
-                        },
+                        body: body.unwrap(),
                     }
                 });
             },
@@ -290,7 +256,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 span: typespan.as_span(),
                             };
                             let (typename, ptr) =  parse_typ(typespan);
-                            let typeref = TypeUse{
+                            let typeref = NameUse{
                                 name: typename,
                                 loc: typeloc,
                                 ptr,
@@ -309,7 +275,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                         let part = part.into_inner().next().unwrap();
                                         match part.as_rule() {
                                             Rule::name => {
-                                                array = Some(Value::Name(TypeUse{
+                                                array = Some(Value::Name(NameUse{
                                                     name: Name::from(part.as_str()),
                                                     ptr: false,
                                                     loc: Location{
@@ -438,7 +404,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 span: part.as_span().clone(),
                             };
                             let (name, ptr) =  parse_typ(part);
-                            typeref = Some(TypeUse{
+                            typeref = Some(NameUse{
                                 name,
                                 loc,
                                 ptr,
@@ -447,14 +413,8 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::ident if name.is_none() => {
                             name  = Some(part.as_str().to_string());
                         }
-                        Rule::expression if expr.is_none() => {
-                            expr = Some(CExpr{
-                                expr: part.as_str().into(),
-                                loc: Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: part.as_span(),
-                                }
-                            });
+                        Rule::expr if expr.is_none() => {
+                            expr = Some(parse_expr(n, part));
                         }
                         e => panic!("unexpected rule {:?} in static", e),
                     }
@@ -503,7 +463,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                 span: part.as_span().clone(),
                             };
                             let (name, ptr) =  parse_typ(part);
-                            typeref = Some(TypeUse{
+                            typeref = Some(NameUse{
                                 name,
                                 loc,
                                 ptr
@@ -512,14 +472,8 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::ident if name.is_none() => {
                             name  = Some(part.as_str().into());
                         }
-                        Rule::expression if expr.is_none() => {
-                            expr = Some(CExpr{
-                                expr: part.as_str().into(),
-                                loc: Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: part.as_span(),
-                                }
-                            });
+                        Rule::expr if expr.is_none() => {
+                            expr = Some(parse_expr(n, part));
                         }
                         e => panic!("unexpected rule {:?} in const", e),
                     }
@@ -542,6 +496,468 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     }
 
     Ok(module)
+}
+
+fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expression {
+    match decl.as_rule() {
+        Rule::expr  => { }
+        Rule::termis => { }
+        _ => { panic!("parse_expr called with {:?}", decl); }
+    };
+
+    let mut s_op = Some((String::new(), Location{
+        file: n.to_string_lossy().into(),
+        span: decl.as_span(),
+    }));
+    let mut s_r  = Vec::new();
+
+    let decl = decl.into_inner();
+    for expr in decl {
+        let loc = Location{
+            file: n.to_string_lossy().into(),
+            span: expr.as_span(),
+        };
+        match expr.as_rule() {
+            Rule::infix => {
+                s_op = Some((expr.as_str().to_string(), loc));
+            },
+            Rule::unarypre => {
+                let mut expr = expr.into_inner();
+                let part    = expr.next().unwrap();
+                let op      = part.as_str().to_string();
+                let part   = expr.next().unwrap();
+                let iexpr   = match part.as_rule() {
+                    Rule::name => {
+                        let loc = Location{
+                            file: n.to_string_lossy().into(),
+                            span: part.as_span(),
+                        };
+                        let (name, _) = parse_name(part);
+                        Expression::Name(NameUse{
+                            ptr: false,
+                            name,
+                            loc,
+                        })
+                    },
+                    Rule::termis => {
+                        parse_expr(n, part)
+                    }
+                    e => panic!("unexpected rule {:?} in unary pre lhs", e),
+                };
+
+
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::UnaryPre{
+                    expr: Box::new(iexpr),
+                    op,
+                    loc,
+                })));
+            },
+            Rule::unarypost => {
+                let mut expr = expr.into_inner();
+                let part   = expr.next().unwrap();
+                let iexpr   = match part.as_rule() {
+                    Rule::name => {
+                        let loc = Location{
+                            file: n.to_string_lossy().into(),
+                            span: part.as_span(),
+                        };
+                        let (name, _) = parse_name(part);
+                        Expression::Name(NameUse{
+                            ptr: false,
+                            name,
+                            loc,
+                        })
+                    },
+                    Rule::termis => {
+                        parse_expr(n, part)
+                    }
+                    e => panic!("unexpected rule {:?} in unary post lhs", e),
+                };
+
+                let part    = expr.next().unwrap();
+                let op      = part.as_str().to_string();
+
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::UnaryPost{
+                    expr: Box::new(iexpr),
+                    op,
+                    loc,
+                })));
+            },
+            Rule::cast => {
+                let mut expr = expr.into_inner();
+                let part  = expr.next().unwrap();
+                let typloc = Location{
+                    file: n.to_string_lossy().into(),
+                    span: part.as_span(),
+                };
+                let (name , ptr) = parse_typ(part);
+                let into = NameUse{
+                    loc: typloc,
+                    name,
+                    ptr,
+                };
+                let part  = expr.next().unwrap();
+                let expr = parse_expr(n, part);
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::Cast{
+                    into,
+                    expr: Box::new(expr),
+                })));
+            },
+            Rule::ptr_access | Rule::member_access | Rule::array_access => {
+                let op = match expr.as_rule() {
+                    Rule::ptr_access => "->",
+                    Rule::member_access => ".",
+                    Rule::array_access => "[",
+                    _ => unreachable!(),
+                }.to_string();
+                let mut expr = expr.into_inner();
+
+                let lhs;
+                let e1  = expr.next().unwrap();
+                match e1.as_rule() {
+                    Rule::name => {
+                        let loc = Location{
+                            file: n.to_string_lossy().into(),
+                            span: e1.as_span(),
+                        };
+                        let (name, _) = parse_name(e1);
+                        lhs = Some(Expression::Name(NameUse{
+                            ptr: false,
+                            name,
+                            loc,
+                        }));
+                    },
+                    Rule::termis | Rule::expr  => {
+                        lhs = Some(parse_expr(n, e1));
+                    }
+                    e => panic!("unexpected rule {:?} in access lhs", e),
+                }
+
+                if op == "[" {
+                    let e2  = expr.next().unwrap();
+                    match e2.as_rule() {
+                        Rule::array => (),
+                        _ => { panic!("unexpected rule {:?} in array expr", e2); }
+                    };
+                    let e2 = e2.into_inner().next().unwrap();
+                    let rhs = parse_expr(n, e2);
+                    s_r.push((s_op.take().unwrap(), Box::new(Expression::ArrayAccess{
+                        lhs: Box::new(lhs.unwrap()),
+                        rhs: Box::new(rhs),
+                        loc,
+                    })));
+                } else {
+                    let e2  = expr.next().unwrap();
+                    let rhs = e2.as_str().to_string();
+                    s_r.push((s_op.take().unwrap(), Box::new(Expression::MemberAccess{
+                        lhs: Box::new(lhs.unwrap()),
+                        rhs,
+                        op,
+                        loc,
+                    })));
+                }
+            },
+            Rule::name => {
+                let (name, _) = parse_name(expr);
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::Name(NameUse{
+                    ptr: false,
+                    name,
+                    loc,
+                }))));
+            },
+            Rule::number_literal | Rule::string_literal | Rule::char_literal => {
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::Literal {
+                    v: expr.as_str().to_string(),
+                    loc,
+                })));
+            },
+            Rule::expr => {
+                s_r.push((s_op.take().unwrap(), Box::new(parse_expr(n, expr))));
+            },
+            Rule::deref | Rule::takeref => {
+                let op = match expr.as_rule() {
+                    Rule::deref   => "*",
+                    Rule::takeref => "&",
+                    _ => unreachable!(),
+                }.to_string();
+
+                let part = expr.into_inner().next().unwrap();
+                let expr = match part.as_rule() {
+                    Rule::name => {
+                        let loc = Location{
+                            file: n.to_string_lossy().into(),
+                            span: part.as_span(),
+                        };
+                        let (name, _) = parse_name(part);
+                        Expression::Name(NameUse{
+                            ptr: false,
+                            name,
+                            loc,
+                        })
+                    },
+                    Rule::termis => {
+                        parse_expr(n, part)
+                    }
+                    e => panic!("unexpected rule {:?} in deref lhs", e),
+                };
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::UnaryPre{
+                    op,
+                    loc,
+                    expr: Box::new(expr),
+                })));
+            },
+            Rule::call => {
+                let mut expr = expr.into_inner();
+                let (name, _) = parse_name(expr.next().unwrap());
+                let args = match expr.next() {
+                    Some(args) => {
+                        args.into_inner().into_iter().map(|arg|{
+                            Box::new(parse_expr(n, arg))
+                        }).collect()
+                    },
+                    None => {
+                        Vec::new()
+                    }
+                };
+
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::Call{
+                    loc: loc.clone(),
+                    name: NameUse{
+                        name,
+                        loc,
+                        ptr: false,
+                    },
+                    args,
+                })));
+            },
+            e => panic!("unexpected rule {:?} in expr", e),
+        }
+    }
+
+
+
+    let lhs = s_r.remove(0).1;
+    if s_r.len() == 0 {
+        return *lhs;
+    }
+
+    return Expression::InfixOperation {
+        lhs,
+        rhs: s_r,
+    }
+}
+
+fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule>) -> Statement  {
+    let loc = Location{
+        file: n.to_string_lossy().into(),
+        span: stm.as_span(),
+    };
+    match stm.as_rule() {
+        Rule::label => {
+            let mut stm = stm.into_inner();
+            let label   = stm.next().unwrap().as_str().to_string();
+            Statement::Label{
+                loc,
+                label,
+            }
+        },
+        Rule::goto_stm => {
+            let mut stm = stm.into_inner();
+            let label   = stm.next().unwrap().as_str().to_string();
+            Statement::Goto{
+                loc,
+                label,
+            }
+        },
+        Rule::block => {
+            Statement::Block(Box::new(parse_block(n, stm)))
+        },
+        Rule::return_stm  => {
+            let mut stm = stm.into_inner();
+            let key  = stm.next().unwrap();
+            match key.as_rule() {
+                Rule::key_return => { }
+                a => { panic!("expected key_return instead of {:?}", a );}
+            };
+            let expr = stm.next().unwrap();
+            let expr = parse_expr(n, expr);
+            Statement::Return{
+                expr,
+                loc: loc.clone(),
+            }
+        },
+        Rule::expr => {
+            let expr = parse_expr(n, stm);
+            Statement::Expr{
+                expr,
+                loc: loc.clone(),
+            }
+        }
+        Rule::if_stm => {
+            let mut stm = stm.into_inner();
+            let part    = stm.next().unwrap();
+            let expr    = parse_expr(n, part);
+            let part    = stm.next().unwrap();
+            let body    = parse_block(n, part);
+            Statement::Cond{
+                op: "if".to_string(),
+                expr: Some(expr),
+                body,
+            }
+        }
+        Rule::elseif_stm => {
+            let mut stm = stm.into_inner();
+            let part    = stm.next().unwrap();
+            let expr    = parse_expr(n, part);
+            let part    = stm.next().unwrap();
+            let body    = parse_block(n, part);
+            Statement::Cond{
+                op: "else if".to_string(),
+                expr: Some(expr),
+                body,
+            }
+        }
+        Rule::else_stm => {
+            let mut stm = stm.into_inner();
+            let part    = stm.next().unwrap();
+            let body    = parse_block(n, part);
+            Statement::Cond{
+                op: "else".to_string(),
+                expr: None,
+                body,
+            }
+        }
+        Rule::for_stm => {
+
+
+
+            let stm = stm.into_inner();
+
+            let mut expr1 = None;
+            let mut expr2 = None;
+            let mut expr3 = None;
+            let mut block = None;
+
+            let mut cur = 1;
+
+            for part in stm {
+                match part.as_rule() {
+                    Rule::semicolon => {
+                        cur += 1;
+                    },
+                    Rule::block if cur == 3 && block.is_none() => {
+                        block = Some(parse_block(n, part));
+                    },
+                    _ if cur == 1 => {
+                        expr1 = Some(Box::new(parse_statement(n, part)));
+                    },
+                    _ if cur == 2 => {
+                        expr2 = Some(Box::new(parse_statement(n, part)));
+                    },
+                    _ if cur == 3 => {
+                        expr3 = Some(Box::new(parse_statement(n, part)));
+                    },
+                    e => panic!("unexpected rule {:?} in for ", e),
+                }
+            }
+
+            Statement::For{
+                e1:     expr1,
+                e2:     expr2,
+                e3:     expr3,
+                body:   block.unwrap(),
+            }
+        }
+        Rule::vardecl => {
+            let stm = stm.into_inner();
+            let mut typeref = None;
+            let mut name    = None;
+            let mut assign  = None;
+            let mut array   = None;
+
+            for part in stm {
+                match part.as_rule() {
+                    Rule::typ => {
+                        let typloc = Location{
+                            file: n.to_string_lossy().into(),
+                            span: part.as_span(),
+                        };
+                        let (name , ptr) = parse_typ(part);
+                        typeref = Some(NameUse{
+                            loc: typloc,
+                            name,
+                            ptr,
+                        });
+                    },
+                    Rule::name => {
+                        name = Some(parse_name(part).0);
+                    }
+                    Rule::array=> {
+                        let part = part.into_inner().next().unwrap();
+                        array = Some(parse_expr(n, part));
+                    }
+                    Rule::expr => {
+                        assign = Some(parse_expr(n, part));
+                    }
+                    e => panic!("unexpected rule {:?} in vardecl", e),
+
+                }
+            }
+
+            Statement::Var{
+                loc:        loc.clone(),
+                name:       name.unwrap(),
+                typeref:    typeref.unwrap(),
+                array,
+                assign,
+            }
+        }
+        Rule::assign => {
+            let stm = stm.into_inner();
+            let mut lhs     = None;
+            let mut rhs     = None;
+            let mut op      = None;
+
+            for part in stm {
+                match part.as_rule() {
+                    Rule::termis if lhs.is_none() => {
+                        lhs = Some(parse_expr(n, part));
+                    }
+                    Rule::assignop => {
+                        op = Some(part.as_str().to_string());
+                    }
+                    Rule::expr if rhs.is_none() => {
+                        rhs = Some(parse_expr(n, part));
+                    }
+                    e => panic!("unexpected rule {:?} in assign", e),
+
+                }
+            }
+
+            Statement::Assign{
+                loc:    loc.clone(),
+                lhs:    lhs.unwrap(),
+                rhs:    rhs.unwrap(),
+                op:     op.unwrap(),
+            }
+        }
+        e => panic!("unexpected rule {:?} in block", e),
+    }
+}
+
+fn parse_block(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Block {
+    match decl.as_rule() {
+        Rule::block => { }
+        _ => { panic!("parse_block called with {:?}", decl); }
+    };
+
+    let mut statements = Vec::new();
+    for stm in decl.into_inner() {
+        statements.push(parse_statement(n, stm));
+    }
+    Block{
+        statements,
+    }
 }
 
 

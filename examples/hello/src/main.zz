@@ -1,11 +1,12 @@
 using identity::{some_helper};
+using libc::stdint::{uint32_t};
 using aye;
 using error;
 using fl;
 
 thread_local mutable float wee = 0.1;
-
-atomic mutable int bob = 932;
+atomic mutable uint32_t bargh = 932;
+static mutable uint32_t bob = 932;
 
 pub fn gimme_wee(aye::bob* lol) -> float {
     bob += (int)lol;
@@ -13,7 +14,7 @@ pub fn gimme_wee(aye::bob* lol) -> float {
 }
 
 export fn main() -> int {
-    error_Error err = {0};
+    error::Error err;
     uint32_t bob;
 
     wee += 0.1;
@@ -24,15 +25,18 @@ export fn main() -> int {
 }
 
 
+fn boop() {
+}
+
 
 export fn flsomething() {
-    fl_MAKE(b, 8, 1000);
+    fl::MAKE(b, 8, 1000);
 
-    for (int i = 0; i < 10; i++) {
-        fl_alloc(b);
+    for (int i = 0; i < 10; i+=1) {
+        fl::alloc(b);
     }
 }
 
 
-using libc::stdbool::{bool};
+using libc::stdbool::{bool, false};
 static bool horst = false;

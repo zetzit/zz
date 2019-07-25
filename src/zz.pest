@@ -1,8 +1,36 @@
 WHITESPACE  = _{ " " | NEWLINE}
-COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+COMMENT     = _{
+    ("/*" ~ (!"*/" ~ ANY)* ~ "*/") |
+    ("//" ~ (!NEWLINE ~ ANY)* ~ NEWLINE)
+}
+
+
+// literals
 
 alpha       = { 'a'..'z' | 'A'..'Z' }
 digit       = { '0'..'9' }
+
+string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
+char_literal    = @{ "'" ~ ( "''" | (!"'" ~ ANY) )* ~ "'" }
+number_literal  = @{ int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)? }
+int_literal     = @{ ("+" | "-")? ~ digit+ }
+cblock          = @{ "{" ~ ((!("}" | "{") ~ ANY) | cblock )* ~ "}" }
+
+// keywords
+
+keyword    = {
+    exported    |
+    key_shared  |
+    key_const   |
+    key_packed  |
+    key_mut     |
+    key_ptr     |
+    key_for     |
+    key_if      |
+    key_else    |
+    key_return  |
+    key_goto
+}
 
 exported    = { "export" }
 key_shared  = { "pub" }
@@ -10,11 +38,15 @@ key_const   = { "const"   }
 key_packed  = { "packed"   }
 key_mut     = { "mutable" | "mut" }
 key_ptr     = { "*" }
+key_for     = { "for"}
+key_if      = { "if" }
+key_else    = { "else" }
+key_return  = { "return" }
+key_goto    = { "goto" }
 
-string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
-int_literal     = @{ digit+ }
+// type identifiers
 
-ident       = @{ ((alpha | "_") ~ (alpha | digit | "_")*)}
+ident       = @{!(keyword ~ !alpha) ~ ((alpha | "_") ~ (alpha | digit | "_")*)}
 qident_inner= ${( (!")" ~ ANY) )*}
 qident      = @{ "(" ~ qident_inner ~ ")" }
 star        = @{ "*" }
@@ -27,6 +59,8 @@ typ = ${
     namespace? ~ (ident | qident) ~ key_ptr?
 }
 
+// declarations
+
 var         = @{ident}
 named_arg   = {(key_const | key_mut)? ~ typ ~ var}
 anon_arg    = {(key_const | key_mut)? ~ typ}
@@ -34,7 +68,6 @@ anon_arg    = {(key_const | key_mut)? ~ typ}
 fn_args     = {named_arg ~ ( "," ~ named_arg)* ~ ","? }
 ret_arg     = {"->" ~ anon_arg}
 function    = { ( exported | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
-block       = @{ "{" ~ ((!("}" | "{") ~ ANY) | block )* ~ "}" }
 
 import      = { exported? ~  "using" ~ name ~  ";"? }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
@@ -49,8 +82,7 @@ field       = { typ ~ struct_f }
 struct_c    = _{"{" ~ field* ~ "}" }
 struct_d    = { (exported | key_shared | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
-expression  = @{(!(";"| "/*")  ~ ANY)*}
-constant    = { ( exported | key_shared)? ~ "const"  ~ typ ~ ident ~ "=" ~ expression   ~ ";"}
+constant    = { ( exported | key_shared)? ~ "const"  ~ typ ~ ident ~ "=" ~ expr ~ ";"}
 
 key_static  = {"static"}
 key_atomic  = {"atomic"}
@@ -60,15 +92,107 @@ istatic     = {
     ( exported | key_shared)? ~
     (key_static | key_atomic | key_thread_local) ~
     (key_mut | key_const)? ~
-    typ ~ ident ~ "=" ~ expression ~ ";"
+    typ ~ ident ~ "=" ~ expr ~ ";"
 }
 
 comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
 
-vararg      = @{"..."}
-call_args   = {ident ~ ( "," ~ ( ident | vararg) )* }
-macroimports = { "using" ~ name }
-imacro      = { ( exported | key_shared)? ~ "macro" ~ macroimports* ~ ident ~ "(" ~ call_args? ~")" ~ block }
+vararg          = @{"..."}
+macro_args      = {ident ~ ( "," ~ ( ident | vararg) )* }
+imacro          = { ( exported | key_shared)? ~ "macro" ~ ident ~ "(" ~ macro_args? ~")" ~ block }
+
+
+
+
+// statements
+
+infix = {
+    moreeq | lesseq |
+    equals | nequals |
+    shiftleft | shiftright |
+    add | subtract | multiply | divide | power | boolor |
+    booland | lessthan | morethan | modulo
+    }
+    equals      = { "=="  }
+    nequals     = { "!="  }
+    add         = { "+"  }
+    subtract    = { "-"  }
+    multiply    = { "*"  }
+    divide      = { "/"  }
+    power       = { "^"  }
+    booland     = { "&"  }
+    boolor      = { "||" }
+    moreeq      = { ">="  }
+    lesseq      = { "<="  }
+    lessthan    = { "<"  }
+    morethan    = { ">"  }
+    shiftleft   = { "<<"  }
+    shiftright  = { ">>"  }
+    modulo      = { "%"  }
+
+preop   = { "!!" | "!" | "~" | "++" | "--" }
+postop  = { "++" | "--" }
+
+term    = _{
+    call | number_literal | char_literal | string_literal | member_access |
+    unarypost | unarypre | ptr_access | array_access | takeref | deref | cast | name | "(" ~ expr ~ ")"
+}
+expr    = { term ~ (infix ~ term) * }
+termis  = { term }
+
+unarypost       = { ( name | "(" ~ expr ~ ")") ~ postop}
+unarypre        = { preop  ~ termis}
+deref           = { "*"  ~ termis}
+takeref         = { "&"  ~ termis}
+
+member_access   = { (name | "(" ~ expr ~ ")") ~ "." ~ termis}
+ptr_access      = { (name | "(" ~ expr ~ ")") ~ "->" ~ termis}
+array_access    = { (name | "(" ~ expr ~ ")") ~ array }
+cast            = { "(" ~ typ ~ ")" ~ termis }
+
+assignop    = { "!=" | "~=" | "|=" | "&=" | "+=" | "-=" | "="}
+assign      = { termis ~ assignop ~ expr}
+call        = { ( name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")" }
+call_args   = { expr ~ ( "," ~ expr )* }
+
+array       = { "[" ~ expr ~ "]" }
+vardecl     = { typ ~ name ~ array? ~ ( "=" ~ expr )? }
+
+semicolon   = { ";" }
+for_stm     = { "for" ~ "(" ~ expr_stm? ~ semicolon ~ expr_stm? ~ semicolon ~ expr_stm? ~ ")" ~ block }
+if_stm      = { "if"  ~ "(" ~ expr  ~ ")" ~ block }
+elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
+else_stm    = { "else" ~  block }
+return_stm  = { key_return ~ expr_stm }
+goto_stm    = { "goto" ~ ident }
+label       = { ident ~ ":" ~ "\n" }
+
+expr_stm = _{
+    vardecl |
+    assign |
+    expr
+}
+
+statement = _{
+    for_stm     |
+    if_stm      |
+    else_stm    |
+    elseif_stm  |
+    label       |
+    (goto_stm  ~ ";")   |
+    (return_stm ~ ";")  |
+    (expr_stm ~ ";")
+}
+
+block = { "{" ~ (statement)* ~ expr_stm? ~ "}" }
+
+
+
+
+
+
+// file
+
 
 file        = { SOI ~ (struct_d
                         | function

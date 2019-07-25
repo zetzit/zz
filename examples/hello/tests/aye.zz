@@ -1,6 +1,6 @@
 using example::aye;
 
 export fn main() -> int {
-    aye_yoo();
+    aye::yoo();
     return 0;
 }

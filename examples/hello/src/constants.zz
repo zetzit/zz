@@ -1,16 +1,17 @@
 pub const int foo = 3 * 6;
+using libc::math::{floor};
+using libc::memory::{memset};
 
-
-pub macro using libc::math::{floor} ADD_IMPL (a,b)
+pub macro ADD_IMPL (a,b)
 {
     floor(a +
         b)
 }
 
-
 using aye;
 
 export fn conflict() -> aye::bob {
-    aye_bob r = {0};
+    aye::bob r;
+    memset(&r, 0, sizeof(aye::bob));
     return r;
 }
