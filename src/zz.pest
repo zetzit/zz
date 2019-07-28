@@ -77,11 +77,17 @@ syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
 include     = { "#include" ~ (syspath | localpath) }
 
+pp          = { ppif | ppelse | ppelif | ppendif }
+ppif        = ${ "#if" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
+ppelif      = ${ "#elif" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
+ppelse      = ${ "#else" ~ WHITESPACE+ }
+ppendif     = ${ "#endif" ~ WHITESPACE+}
+
 
 field_array =  { "[" ~ (name | int_literal | hex_literal) ~ "]" }
 struct_f    = { ident ~ field_array? ~ ";" }
 field       = { typ ~ struct_f }
-struct_c    = _{"{" ~ field* ~ "}" }
+struct_c    = _{"{" ~ (pp | field)* ~ "}" }
 struct_d    = { (exported | key_shared | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ typ ~ ident ~ "=" ~ expr ~ ";"}
@@ -142,25 +148,25 @@ term    = _{
     unarypost | unarypre | ptr_access | array_access | takeref | deref | cast | name | "(" ~ expr ~ ")"
 }
 expr    = { term ~ (infix ~ term) * }
-termis  = { term }
+termish  = !{ term }
 
 unarypost       = { ( name | "(" ~ expr ~ ")") ~ postop}
-unarypre        = { preop  ~ termis}
-deref           = { "*"  ~ termis}
-takeref         = { "&"  ~ termis}
+unarypre        = { preop  ~ termish}
+deref           = { "*"  ~ termish}
+takeref         = { "&"  ~ termish}
 
-member_access   = { (name | "(" ~ expr ~ ")") ~ "." ~ termis}
-ptr_access      = { (name | "(" ~ expr ~ ")") ~ "->" ~ termis}
+member_access   = { (name | "(" ~ expr ~ ")") ~ "." ~ termish}
+ptr_access      = { (name | "(" ~ expr ~ ")") ~ "->" ~ termish}
 array_access    = { (name | "(" ~ expr ~ ")") ~ array }
-cast            = { "(" ~ typ ~ ")" ~ termis }
+cast            = { "(" ~ typ ~ ")" ~ termish }
 
 struct_init_field_name = _{ "." ~ ident }
-struct_init_field = { struct_init_field_name ~ "=" ~ termis }
+struct_init_field = { struct_init_field_name ~ "=" ~ termish }
 struct_init     = { name ~ "{" ~  struct_init_field? ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
-array_init      = { "{" ~ termis ~ ("," ~ termis)* ~ ","?  ~ "}" }
+array_init      = { "{" ~ termish ~ ("," ~ termish)* ~ ","?  ~ "}" }
 
 assignop    = { "!=" | "~=" | "|=" | "&=" | "+=" | "-=" | "="}
-assign      = { termis ~ assignop ~ expr}
+assign      = { termish ~ assignop ~ expr}
 call        = { ( name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")" }
 call_args   = { expr ~ ( "," ~ expr )* }
 
@@ -183,6 +189,7 @@ expr_stm = _{
 }
 
 statement = _{
+    pp          |
     for_stm     |
     if_stm      |
     else_stm    |
@@ -208,6 +215,7 @@ file        = { SOI ~ (struct_d
                         | import
                         | constant
                         | include
+                        | pp
                         | comment
                         | imacro
                         | istatic

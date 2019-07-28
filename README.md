@@ -14,7 +14,7 @@ You can also use it to build cross platform libraries. The build and linking con
 
 ```bash
 cd example
-cargo run && ./target/exe
+cargo run run
 ```
 
 
@@ -37,6 +37,7 @@ cargo run && ./target/exe
 
 ### never-features
 
+ - stdlib: ZZ is a C dialect, so libc works fine. If in doubt use musl. For additional functionality, we have modules.
  - smart pointers and runtime checks: ZZ is C. C is terrible but we would not be here if anyone knew how to make smart pointers free.
  - borrowchecker: no idea how to implement without changing the language.
  - emit binary directly: lots of work for no gain, reduces portability and ignores all the work that went into optimizing clang/gcc/etc.
@@ -53,16 +54,16 @@ it'll generate headers to make sure its still C and works with C code, but you'l
 
 ### modules/namespaces
 
-alot of ZZ is inspired by rust, so it just copies the exact same namespacing concept from rust.
+alot of ZZ is inspired by rust, so it just copies the exact same namespacing concept from rust,
+except all symbols are C standard, without mangling.
 
-a function named "bob" in the file "foo.zz" in the project "yo" will be exported as C symbol "yo_foo_bob",
-but an import "yo::foo::bob" will bring it back in scope as just "bob"
+an export fn foo in module bar will be exported as C symbol project_bar_foo.
 
 ### default build system
 
 all build systems for C are garbage, because there are no conventions, and people want weird features.
-ZZ doesn't have any features. It builds a binary for a target from ZZ source files.
-If you want something else, you're probably not working on embedded, so why are you here?
+ZZ will never do things like find local libraries from your linux distro.
+If you want something like that, you're probably not working on embedded systems anyway and are better served just using a higher level language.
 
 
 ### how it looks
@@ -70,9 +71,13 @@ If you want something else, you're probably not working on embedded, so why are 
 
 ```C
 using errors;
-using math::add;
+using libc::stdint::{uint32_t as u32};
 
-fn some_helper(mutable errors::error* err, mutable uint32_t* bob) -> uint32_t {
+struct Beep {
+    u32 a;
+}
+
+fn some_helper(mut errors::error* err, mut uint32_t* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
         *bob = add(horst(), foo);
@@ -80,7 +85,6 @@ fn some_helper(mutable errors::error* err, mutable uint32_t* bob) -> uint32_t {
     }
     return 32;
 }
-
 
 export const fn horst() -> uint32_t {
     return 3;
@@ -119,7 +123,7 @@ this intentionally disables some rather insane use cases.
 
 const and static work exactly like in rust, but with C syntax.
 
-```
+```C
 export const uint32_t foo = 3;
 static mutable float blarg = 2.0/0.3;
 thread_local mutable bool bob = true;
@@ -170,13 +174,49 @@ fn main() {
         .a = 2,
     };
 }
-
-
 ```
 
+#### conditional compilation / preprocessor
 
+Like in rust, the prepro is not a string processor, but rather executed on the AST  **after** parsing.
+This makes it behave very different than C, even if the syntax is the same as C.
 
+The right hand side of #if is evaluated immediately and can only access preprocessor scope.
 
+```C
+struct A {
+    int a;
+#if def("TEST")
+    uint proc;
+#elif def("MAYBE")
+    int proc;
+#else
+    void* proc;
+#endif
+}
+```
 
+Every branch of an #if / #else must contain a completed statement,
+and can only appear where a statment would be valid,
+so this is not possible:
+
+```C
+pub fn foo(
+#if os("unix")
+)
+#endif
+```
+
+note that even code that is disabled by conditions must still be valid syntax. It can however not be type checked,
+
+#### a note on pointer syntax
+
+in ZZ, the star "\*" is always on the left side, i.e. attached to the type. There cannot be a space between type and star.
+
+```C
+    void* foo;
+```
+
+the reason is parser complexity. If you hate this, feel free to submit a PR that makes the parser tolerate different styles.
 
 

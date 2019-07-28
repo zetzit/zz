@@ -1,12 +1,28 @@
 using libc::stdint::{uint8_t};
 using libc::string;
 
+
 pub struct State {
+#if def("debug")
+    #if 0
+        uint19_t invalid;
+    #elif 0
+    #else
+        uint8_t yalla;
+    #endif
+#endif
     uint8_t counter;
 }
 
+#if 0
+    const int lol = 3;
+#endif
+
 pub fn new(mut State* self) {
     memset(self, 0, sizeof(State));
+#if 0
+    return nothing;
+#endif
 }
 
 pub fn add(mut State* self, int i) {

@@ -13,6 +13,7 @@ mod flatten;
 mod emitter;
 mod abs;
 mod name;
+mod pp;
 
 use std::path::Path;
 use clap::{App, Arg, SubCommand};

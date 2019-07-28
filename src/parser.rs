@@ -3,6 +3,7 @@ use super::ast::*;
 use super::name::Name;
 use std::path::Path;
 use std::io::{Read};
+use super::pp::PP;
 
 #[derive(Parser)]
 #[grammar = "zz.pest"]
@@ -42,7 +43,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     let mut file = ZZParser::parse(Rule::file, Box::leak(Box::new(file)))?;
 
 
-    for decl in file.next().unwrap().into_inner() {
+    for decl in PP::new(n, file.next().unwrap().into_inner()) {
         match decl.as_rule() {
             Rule::imacro => {
                 let loc = Location{
@@ -216,7 +217,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut loc    = None;
                 let mut packed = false;
 
-                for part in decl {
+                for part in PP::new(n, decl) {
                     match part.as_rule() {
                         Rule::key_packed => {
                             packed = true;
@@ -498,10 +499,10 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     Ok(module)
 }
 
-fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expression {
+pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expression {
     match decl.as_rule() {
         Rule::expr  => { }
-        Rule::termis => { }
+        Rule::termish => { }
         _ => { panic!("parse_expr called with {:?}", decl); }
     };
 
@@ -539,7 +540,7 @@ fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expressio
                             loc,
                         })
                     },
-                    Rule::termis => {
+                    Rule::termish => {
                         parse_expr(n, part)
                     }
                     e => panic!("unexpected rule {:?} in unary pre lhs", e),
@@ -568,7 +569,7 @@ fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expressio
                             loc,
                         })
                     },
-                    Rule::termis => {
+                    Rule::termish => {
                         parse_expr(n, part)
                     }
                     e => panic!("unexpected rule {:?} in unary post lhs", e),
@@ -627,7 +628,7 @@ fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expressio
                             loc,
                         }));
                     },
-                    Rule::termis | Rule::expr  => {
+                    Rule::termish | Rule::expr  => {
                         lhs = Some(parse_expr(n, e1));
                     }
                     e => panic!("unexpected rule {:?} in access lhs", e),
@@ -695,7 +696,7 @@ fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expressio
                             loc,
                         })
                     },
-                    Rule::termis => {
+                    Rule::termish => {
                         parse_expr(n, part)
                     }
                     e => panic!("unexpected rule {:?} in deref lhs", e),
@@ -735,7 +736,7 @@ fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expressio
                 let expr = expr.into_inner();
                 for part in expr {
                     match part.as_rule()  {
-                        Rule::termis => {
+                        Rule::termish => {
                             let expr = parse_expr(n, part);
                             fields.push(Box::new(expr));
                         }
@@ -800,7 +801,7 @@ fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expressio
     }
 }
 
-fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule>) -> Statement  {
+pub(crate) fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule>) -> Statement  {
     let loc = Location{
         file: n.to_string_lossy().into(),
         span: stm.as_span(),
@@ -976,7 +977,7 @@ fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule>) -> State
 
             for part in stm {
                 match part.as_rule() {
-                    Rule::termis if lhs.is_none() => {
+                    Rule::termish if lhs.is_none() => {
                         lhs = Some(parse_expr(n, part));
                     }
                     Rule::assignop => {
@@ -1001,14 +1002,14 @@ fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule>) -> State
     }
 }
 
-fn parse_block(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Block {
+pub(crate) fn parse_block(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Block {
     match decl.as_rule() {
         Rule::block => { }
         _ => { panic!("parse_block called with {:?}", decl); }
     };
 
     let mut statements = Vec::new();
-    for stm in decl.into_inner() {
+    for stm in PP::new(n, decl.into_inner()) {
         statements.push(parse_statement(n, stm));
     }
     Block{
@@ -1017,7 +1018,7 @@ fn parse_block(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Block {
 }
 
 
-fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
+pub(crate) fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
     match decl.as_rule() {
         Rule::typ=> {
         }
@@ -1050,7 +1051,7 @@ fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
 }
 
 
-fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<(String, Option<String>)>) {
+pub(crate) fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<(String, Option<String>)>) {
     let mut locals = Vec::new();
     let mut v = Vec::new();
     for part in decl.into_inner() {
