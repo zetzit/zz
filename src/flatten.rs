@@ -83,7 +83,11 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
             expr_deps(expr)
         }
         ast::Statement::Return {expr, ..} => {
-            expr_deps(expr)
+            if let Some(expr) = expr {
+                expr_deps(expr)
+            } else {
+                Vec::new()
+            }
         }
     }
 }
@@ -99,6 +103,21 @@ fn block_deps(block: &ast::Block) -> Vec<Name> {
 
 fn expr_deps(expr: &ast::Expression) -> Vec<Name> {
     match expr {
+        ast::Expression::ArrayInit{fields,..}  => {
+            let mut v = Vec::new();
+            for expr in fields {
+                v.extend(expr_deps(expr));
+            }
+            v
+        },
+        ast::Expression::StructInit{typeref, fields,..}  => {
+            let mut v = Vec::new();
+            v.push(typeref.name.clone());
+            for (_, expr) in fields {
+                v.extend(expr_deps(expr));
+            }
+            v
+        },
         ast::Expression::Name(name)  => {
             if name.name.len() > 2 {
                 vec![name.name.clone()]

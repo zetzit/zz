@@ -9,11 +9,13 @@ COMMENT     = _{
 
 alpha       = { 'a'..'z' | 'A'..'Z' }
 digit       = { '0'..'9' }
+hexdigit    = { '0'..'9' | 'a'..'f' }
 
 string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 char_literal    = @{ "'" ~ ( "''" | (!"'" ~ ANY) )* ~ "'" }
-number_literal  = @{ int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)? }
+number_literal  = @{ hex_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
 int_literal     = @{ ("+" | "-")? ~ digit+ }
+hex_literal     = @{ "0x"  ~ hexdigit+ }
 cblock          = @{ "{" ~ ((!("}" | "{") ~ ANY) | cblock )* ~ "}" }
 
 // keywords
@@ -76,7 +78,7 @@ localpath   = @{"\"" ~ path ~ "\""}
 include     = { "#include" ~ (syspath | localpath) }
 
 
-field_array =  { "[" ~ (name | int_literal) ~ "]" }
+field_array =  { "[" ~ (name | int_literal | hex_literal) ~ "]" }
 struct_f    = { ident ~ field_array? ~ ";" }
 field       = { typ ~ struct_f }
 struct_c    = _{"{" ~ field* ~ "}" }
@@ -111,30 +113,32 @@ infix = {
     equals | nequals |
     shiftleft | shiftright |
     add | subtract | multiply | divide | power | boolor |
-    booland | lessthan | morethan | modulo
+    booland | lessthan | morethan | modulo | bitand | bitor
     }
-    equals      = { "=="  }
-    nequals     = { "!="  }
+    equals      = { "==" }
+    nequals     = { "!=" }
     add         = { "+"  }
     subtract    = { "-"  }
     multiply    = { "*"  }
     divide      = { "/"  }
     power       = { "^"  }
-    booland     = { "&"  }
+    booland     = { "&&" }
     boolor      = { "||" }
-    moreeq      = { ">="  }
-    lesseq      = { "<="  }
+    moreeq      = { ">=" }
+    lesseq      = { "<=" }
     lessthan    = { "<"  }
     morethan    = { ">"  }
-    shiftleft   = { "<<"  }
-    shiftright  = { ">>"  }
+    shiftleft   = { "<<" }
+    shiftright  = { ">>" }
     modulo      = { "%"  }
+    bitand      = { "&"  }
+    bitor       = { "|"  }
 
 preop   = { "!!" | "!" | "~" | "++" | "--" }
 postop  = { "++" | "--" }
 
 term    = _{
-    call | number_literal | char_literal | string_literal | member_access |
+    call | number_literal | char_literal | string_literal | struct_init | array_init | member_access |
     unarypost | unarypre | ptr_access | array_access | takeref | deref | cast | name | "(" ~ expr ~ ")"
 }
 expr    = { term ~ (infix ~ term) * }
@@ -150,6 +154,11 @@ ptr_access      = { (name | "(" ~ expr ~ ")") ~ "->" ~ termis}
 array_access    = { (name | "(" ~ expr ~ ")") ~ array }
 cast            = { "(" ~ typ ~ ")" ~ termis }
 
+struct_init_field_name = _{ "." ~ ident }
+struct_init_field = { struct_init_field_name ~ "=" ~ termis }
+struct_init     = { name ~ "{" ~  struct_init_field? ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
+array_init      = { "{" ~ termis ~ ("," ~ termis)* ~ ","?  ~ "}" }
+
 assignop    = { "!=" | "~=" | "|=" | "&=" | "+=" | "-=" | "="}
 assign      = { termis ~ assignop ~ expr}
 call        = { ( name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")" }
@@ -163,9 +172,9 @@ for_stm     = { "for" ~ "(" ~ expr_stm? ~ semicolon ~ expr_stm? ~ semicolon ~ ex
 if_stm      = { "if"  ~ "(" ~ expr  ~ ")" ~ block }
 elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
 else_stm    = { "else" ~  block }
-return_stm  = { key_return ~ expr_stm }
+return_stm  = { key_return ~ expr_stm? }
 goto_stm    = { "goto" ~ ident }
-label       = { ident ~ ":" ~ "\n" }
+label       = ${ ident ~ ":"}
 
 expr_stm = _{
     vardecl |
@@ -178,10 +187,10 @@ statement = _{
     if_stm      |
     else_stm    |
     elseif_stm  |
-    label       |
     (goto_stm  ~ ";")   |
     (return_stm ~ ";")  |
-    (expr_stm ~ ";")
+    (expr_stm ~ ";") |
+    label
 }
 
 block = { "{" ~ (statement)* ~ expr_stm? ~ "}" }

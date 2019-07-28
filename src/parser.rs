@@ -730,6 +730,59 @@ fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expressio
                     args,
                 })));
             },
+            Rule::array_init => {
+                let mut fields = Vec::new();
+                let expr = expr.into_inner();
+                for part in expr {
+                    match part.as_rule()  {
+                        Rule::termis => {
+                            let expr = parse_expr(n, part);
+                            fields.push(Box::new(expr));
+                        }
+                        e => panic!("unexpected rule {:?} in struct init", e),
+                    }
+
+                }
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::ArrayInit{
+                    loc,
+                    fields,
+                })));
+            }
+            Rule::struct_init => {
+                let mut expr = expr.into_inner();
+                let part  = expr.next().unwrap();
+                let typloc = Location{
+                    file: n.to_string_lossy().into(),
+                    span: part.as_span(),
+                };
+                let (name , _) = parse_name(part);
+                let typeref = NameUse{
+                    loc: typloc,
+                    name,
+                    ptr: false,
+                };
+
+
+                let mut fields = Vec::new();
+                for part in expr {
+                    match part.as_rule()  {
+                        Rule::struct_init_field => {
+                            let mut part = part.into_inner();
+                            let name = part.next().unwrap().as_str().to_string();
+                            let expr = parse_expr(n, part.next().unwrap());
+                            fields.push((name, Box::new(expr)));
+                        }
+                        e => panic!("unexpected rule {:?} in struct init", e),
+                    }
+
+                }
+
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::StructInit{
+                    loc,
+                    typeref,
+                    fields,
+                })));
+            }
             e => panic!("unexpected rule {:?} in expr", e),
         }
     }
@@ -779,8 +832,11 @@ fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule>) -> State
                 Rule::key_return => { }
                 a => { panic!("expected key_return instead of {:?}", a );}
             };
-            let expr = stm.next().unwrap();
-            let expr = parse_expr(n, expr);
+            let expr = if let Some(expr) = stm.next() {
+                Some(parse_expr(n, expr))
+            } else {
+                None
+            };
             Statement::Return{
                 expr,
                 loc: loc.clone(),

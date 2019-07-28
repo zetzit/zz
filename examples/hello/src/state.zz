@@ -11,4 +11,7 @@ pub fn new(mut State* self) {
 
 pub fn add(mut State* self, int i) {
     self->counter += i;
+    goto exit;
+exit:
+    return;
 }

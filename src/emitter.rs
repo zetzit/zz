@@ -537,7 +537,9 @@ impl Emitter {
             ast::Statement::Return{expr, loc}  => {
                 self.emit_loc(&loc);
                 write!(self.f, "  return ").unwrap();
-                self.emit_expr(expr);
+                if let Some(expr) = expr {
+                    self.emit_expr(expr);
+                }
             }
         }
     }
@@ -571,6 +573,26 @@ impl Emitter {
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
+            ast::Expression::ArrayInit{fields,loc} => {
+                self.emit_loc(&loc);
+                write!(self.f, "{{").unwrap();
+                for field in fields {
+                    self.emit_expr(field);
+                    write!(self.f, ",").unwrap();
+                }
+                write!(self.f, "}}").unwrap();
+            },
+            ast::Expression::StructInit{typeref, fields,loc} => {
+                self.emit_loc(&loc);
+                write!(self.f, "    ({}", self.to_local_name(&typeref.name)).unwrap();
+                write!(self.f, "){{").unwrap();
+                for (name, field) in fields {
+                    write!(self.f, ".{} = ", name).unwrap();
+                    self.emit_expr(field);
+                    write!(self.f, ",").unwrap();
+                }
+                write!(self.f, "}}").unwrap();
+            },
             ast::Expression::UnaryPost{expr, loc, op} => {
                 write!(self.f, "(").unwrap();
                 self.emit_loc(&loc);

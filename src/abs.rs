@@ -271,6 +271,17 @@ fn abs_expr(
     )
 {
     match expr {
+        ast::Expression::ArrayInit{fields,..} => {
+            for expr in fields {
+                abs_expr(expr, scope, inbody, all_modules, self_md_name);
+            }
+        },
+        ast::Expression::StructInit{typeref, fields,..} => {
+            scope.abs(typeref, inbody);
+            for (_, expr) in fields {
+                abs_expr(expr, scope, inbody, all_modules, self_md_name);
+            }
+        },
         ast::Expression::UnaryPre{expr,..} => {
             abs_expr(expr, scope, inbody, all_modules, self_md_name);
         },
@@ -359,7 +370,9 @@ fn abs_statement(
             abs_expr(expr, &scope, inbody, all_modules, self_md_name);
         }
         ast::Statement::Return {expr, ..} => {
-            abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+            if let Some(expr) = expr {
+                abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+            }
         }
     }
 }

@@ -12,4 +12,4 @@ export struct bob {
 
 
 
-pub const int8_t horst =3 ;
+pub const int8_t horst = 0x3f ;

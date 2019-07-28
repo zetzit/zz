@@ -6,7 +6,15 @@ using fl;
 
 thread_local mutable float wee = 0.1;
 atomic mutable uint32_t bargh = 932;
+
+struct Bob {
+    char a;
+    char b;
+};
 static mutable uint32_t bob = 932;
+static mutable Bob stbob = Bob{
+    .a = 2,
+};
 
 pub fn gimme_wee(aye::bob* lol) -> float {
     bob += (int)lol;
@@ -30,6 +38,9 @@ fn boop() {
 
 
 export fn flsomething() {
+
+    printf("static struct initialization Bob should be 2,0: %d,%d\n", stbob.a, stbob.b);
+
     fl::MAKE(b, 8, 1000);
 
     for (int i = 0; i < 10; i+=1) {

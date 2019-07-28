@@ -175,6 +175,15 @@ pub enum Expression {
         op:     String,
         expr:   Box<Expression>,
     },
+    StructInit {
+        loc:        Location,
+        typeref:    NameUse,
+        fields:     Vec<(String,Box<Expression>)>,
+    },
+    ArrayInit {
+        loc:        Location,
+        fields:     Vec<Box<Expression>>,
+    }
 }
 
 
@@ -200,7 +209,7 @@ pub enum Statement {
     },
     Return {
         loc:  Location,
-        expr: Expression,
+        expr: Option<Expression>,
     },
     Var {
         loc:        Location,
