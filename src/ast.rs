@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::fmt;
 use super::name::Name;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Location {
     pub file:   String,
     pub span:   pest::Span<'static>,
@@ -48,13 +49,13 @@ pub struct Import {
 #[derive(Clone)]
 pub enum Def {
     Static {
-        typeref:    NameUse,
+        tags:       HashMap<String, Location>,
+        typed:      Typed,
         expr:       Expression,
-        muta:       bool,
         storage:    Storage,
     },
     Const {
-        typeref:    NameUse,
+        typed:      Typed,
         expr:       Expression,
     },
     Function {
@@ -75,11 +76,11 @@ pub enum Def {
 
 #[derive(Clone)]
 pub struct Local {
-    pub name:   String,
-    pub export_as: Option<String>,
-    pub vis:    Visibility,
-    pub loc:    Location,
-    pub def:    Def,
+    pub name:       String,
+    pub export_as:  Option<String>,
+    pub vis:        Visibility,
+    pub loc:        Location,
+    pub def:        Def,
 }
 
 
@@ -89,11 +90,16 @@ pub struct Include {
     pub loc:    Location,
 }
 
-#[derive(Clone)]
-pub struct NameUse {
+#[derive(Clone, Debug)]
+pub struct Pointer {
+    pub tags:       HashMap<String, Location>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Typed {
     pub name:   Name,
     pub loc:    Location,
-    pub ptr:    bool,
+    pub ptr:    Vec<Pointer>,
 }
 
 #[derive(Default, Clone)]
@@ -108,35 +114,31 @@ pub struct Module {
 
 #[derive(Clone)]
 pub struct AnonArg {
-    pub typeref:    NameUse,
+    pub typed:    Typed,
 }
 
 #[derive(Clone)]
 pub struct NamedArg {
-    pub typeref:    NameUse,
+    pub typed:      Typed,
     pub name:       String,
-    pub muta:       bool,
-}
-
-
-#[derive(Clone)]
-pub enum Value{
-    Literal(String),
-    Name(NameUse),
-}
-
-#[derive(Clone)]
-pub struct Field {
-    pub typeref:    NameUse,
-    pub name:       String,
-    pub array:      Option<Value>,
+    pub tags:       HashMap<String, Location>,
     pub loc:        Location,
 }
 
 
 #[derive(Clone)]
+pub struct Field {
+    pub typed:      Typed,
+    pub name:       String,
+    pub array:      Option<Expression>,
+    pub tags:       HashMap<String, Location>,
+    pub loc:        Location,
+}
+
+
+#[derive(Clone, Debug)]
 pub enum Expression {
-    Name(NameUse),
+    Name(Typed),
     MemberAccess {
         loc:    Location,
         lhs:    Box<Expression>,
@@ -154,16 +156,18 @@ pub enum Expression {
     },
     Call {
         loc:    Location,
-        name:   NameUse,
+        name:   Typed,
         args:   Vec<Box<Expression>>,
     },
     InfixOperation {
+        loc:    Location,
         lhs:    Box<Expression>,
         rhs:    Vec<((String, Location), Box<Expression>)>,
     },
     Cast {
-        into: NameUse,
-        expr: Box<Expression>,
+        loc:    Location,
+        into:   Typed,
+        expr:   Box<Expression>,
     },
     UnaryPost {
         loc:    Location,
@@ -177,7 +181,7 @@ pub enum Expression {
     },
     StructInit {
         loc:        Location,
-        typeref:    NameUse,
+        typed:      Typed,
         fields:     Vec<(String,Box<Expression>)>,
     },
     ArrayInit {
@@ -186,43 +190,67 @@ pub enum Expression {
     }
 }
 
+impl Expression {
+    pub fn loc(&self) -> &Location {
+        match self {
+            Expression::Name(name)              => &name.loc,
+            Expression::MemberAccess {loc,..}   => loc,
+            Expression::ArrayAccess {loc,..}    => loc,
+            Expression::Literal {loc,..}        => loc,
+            Expression::Call {loc,..}           => loc,
+            Expression::InfixOperation {loc,..} => loc,
+            Expression::Cast {loc,..}           => loc,
+            Expression::UnaryPost {loc,..}      => loc,
+            Expression::UnaryPre {loc,..}       => loc,
+            Expression::StructInit {loc,..}     => loc,
+            Expression::ArrayInit {loc,..}      => loc,
+        }
+    }
+}
+
 
 #[derive(Clone)]
 pub enum Statement {
+    Mark{
+        lhs:        Expression,
+        loc:        Location,
+        mark:       String,
+    },
     Label{
-        loc:    Location,
-        label:  String
+        loc:        Location,
+        label:      String
     },
     Goto{
-        loc:    Location,
-        label:  String
+        loc:        Location,
+        label:      String
     },
     Assign {
-        loc: Location,
-        lhs: Expression,
-        op:  String,
-        rhs: Expression,
+        loc:        Location,
+        lhs:        Expression,
+        op:         String,
+        rhs:        Expression,
     },
     Expr {
-        loc:  Location,
-        expr: Expression,
+        loc:        Location,
+        expr:       Expression,
     },
     Return {
-        loc:  Location,
-        expr: Option<Expression>,
+        loc:        Location,
+        expr:       Option<Expression>,
     },
     Var {
         loc:        Location,
-        typeref:    NameUse,
-        name:       Name,
+        typed:      Typed,
+        tags:       HashMap<String, Location>,
+        name:       String,
         array:      Option<Expression>,
         assign:     Option<Expression>,
     },
     For {
-        e1:     Option<Box<Statement>>,
-        e2:     Option<Box<Statement>>,
-        e3:     Option<Box<Statement>>,
-        body:   Block,
+        e1:         Option<Box<Statement>>,
+        e2:         Option<Box<Statement>>,
+        e3:         Option<Box<Statement>>,
+        body:       Block,
     },
     Cond {
         op:         String,
@@ -234,5 +262,6 @@ pub enum Statement {
 
 #[derive(Clone)]
 pub struct Block {
+    pub end:        Location,
     pub statements: Vec<Statement>,
 }

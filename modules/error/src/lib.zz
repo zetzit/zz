@@ -11,7 +11,7 @@ export struct Error {
 pub macro ECHECK() {
     if (err->error != 0) {
         snprintf(
-                (char*)&((err)->locations) + strlen((err)->locations),
+                (char*)(&((err)->locations)) + strlen((err)->locations),
                 sizeof((err)->locations) - strlen((err)->locations),
                 "\n  %s:%d", __FILE__, __LINE__);
         goto exit ;
@@ -83,7 +83,7 @@ pub macro HEXDUMP(v, len) {
     putchar('\n');
 }
 
-export fn error_to_str(Error* err, mutable char* buf, int buflen) {
+export fn error_to_str(Error* err, char mut* buf, int buflen) {
     memset(buf, 0, buflen);
     snprintf(buf, buflen, "%s%s", err->description, err->locations);
 }

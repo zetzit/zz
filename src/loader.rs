@@ -34,6 +34,7 @@ pub fn load(
                     if stem != "lib" {
                         m.name.push(stem);
                     }
+                    debug!("loaded {:?} as {}", path, m.name);
                     modules.insert(m.name.clone(), Module::ZZ(m));
                 },
                 _ => {},

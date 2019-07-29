@@ -65,6 +65,10 @@ impl Emitter {
     }
 
     fn to_local_name(&self, s: &Name) -> String {
+        if !s.is_absolute() {
+            return s.0.join("_");
+        }
+
         assert!(s.is_absolute(), "ICE not abs: '{}'", s);
         if let Some(an) = self.module.aliases.get(&s) {
             return an.clone();
@@ -201,12 +205,12 @@ impl Emitter {
 
         self.emit_loc(&ast.loc);
 
-        let (typeref, expr, muta, storage) = match &ast.def {
-            ast::Def::Static{typeref, expr, muta, storage} => (typeref, expr, muta, storage),
+        let (typed, expr, tags, storage) = match &ast.def {
+            ast::Def::Static{typed, expr, tags, storage} => (typed, expr, tags, storage),
             _ => unreachable!(),
         };
 
-        if *muta {
+        if tags.contains_key("mutable") {
             write!(self.f, "static ").unwrap();
         } else {
             write!(self.f, "static const ").unwrap();
@@ -224,18 +228,17 @@ impl Emitter {
             ast::Storage::Static  => (),
         }
 
-        write!(self.f, "{} ", self.to_local_name(&typeref.name)).unwrap();
-        if typeref.ptr {
-            write!(self.f, "* ").unwrap();
-        }
+        write!(self.f, "{} ", self.to_local_name(&typed.name)).unwrap();
+        self.emit_pointer(&typed.ptr);
+
         write!(self.f, "{} = ", self.to_local_name(&Name::from(&ast.name))).unwrap();
         self.emit_expr(&expr);
         write!(self.f, ";\n").unwrap();
     }
 
     pub fn emit_const(&mut self, ast: &ast::Local) {
-        let (typeref, expr) = match &ast.def {
-            ast::Def::Const{typeref, expr} => (typeref, expr),
+        let (typed, expr) = match &ast.def {
+            ast::Def::Const{typed, expr} => (typed, expr),
             _ => unreachable!(),
         };
 
@@ -243,10 +246,8 @@ impl Emitter {
 
         write!(self.f, "static const ").unwrap();
         write!(self.f, " __attribute__ ((unused)) ").unwrap();
-        write!(self.f, "{} ", self.to_local_name(&typeref.name)).unwrap();
-        if typeref.ptr {
-            write!(self.f, "* ").unwrap();
-        }
+        write!(self.f, "{} ", self.to_local_name(&typed.name)).unwrap();
+        self.emit_pointer(&typed.ptr);
 
         write!(self.f, "{} = ", self.to_local_name(&Name::from(&ast.name))).unwrap();
 
@@ -266,20 +267,13 @@ impl Emitter {
         write!(self.f, "{{\n").unwrap();
         for field in fields {
             self.emit_loc(&field.loc);
-            write!(self.f, "   {}", self.to_local_name(&field.typeref.name)).unwrap();
-            if field.typeref.ptr {
-                write!(self.f, "* ").unwrap();
-            }
+            write!(self.f, "   {}", self.to_local_name(&field.typed.name)).unwrap();
+            self.emit_pointer(&field.typed.ptr);
             write!(self.f, " {}", field.name).unwrap();
             if let Some(array) = &field.array {
-                match &array{
-                    ast::Value::Name(n) => {
-                        write!(self.f, "[{}]", self.to_local_name(&n.name)).unwrap();
-                    },
-                    ast::Value::Literal(l) => {
-                        write!(self.f, "[{}]", l).unwrap();
-                    },
-                }
+                write!(self.f, "[").unwrap();
+                self.emit_expr(array);
+                write!(self.f, "]").unwrap();
             }
             write!(self.f, " ;\n").unwrap();
         }
@@ -299,14 +293,12 @@ impl Emitter {
                 write!(self.f, ", ").unwrap();
             }
 
-            if !arg.muta {
-                write!(self.f, "const ").unwrap();
-            }
 
-            write!(self.f, "{}", self.to_local_name(&arg.typeref.name)).unwrap();
+            write!(self.f, "{}", self.to_local_name(&arg.typed.name)).unwrap();
 
-            if arg.typeref.ptr {
-                write!(self.f, "* ").unwrap();
+            self.emit_pointer(&arg.typed.ptr);
+            if !arg.tags.contains_key("mutable") {
+                write!(self.f, " const ").unwrap();
             }
 
             write!(self.f, " {}", arg.name).unwrap();
@@ -333,10 +325,8 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
-                if a.typeref.ptr {
-                    write!(self.f, "* ").unwrap();
-                }
+                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                self.emit_pointer(&a.typed.ptr);
             }
         };
 
@@ -367,10 +357,8 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
-                if a.typeref.ptr {
-                    write!(self.f, "* ").unwrap();
-                }
+                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                self.emit_pointer(&a.typed.ptr);
             }
         };
 
@@ -421,10 +409,8 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", self.to_local_name(&a.typeref.name)).unwrap();
-                if a.typeref.ptr {
-                    write!(self.f, "* ").unwrap();
-                }
+                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                self.emit_pointer(&a.typed.ptr);
             }
         };
 
@@ -449,6 +435,7 @@ impl Emitter {
 
     fn emit_statement(&mut self, stm: &ast::Statement) {
         match stm {
+            ast::Statement::Mark{..} => {},
             ast::Statement::Goto{loc, label} => {
                 self.emit_loc(&loc);
                 write!(self.f, "goto {}", label).unwrap();
@@ -511,13 +498,17 @@ impl Emitter {
                 write!(self.f, "  {} ", op).unwrap();
                 self.emit_expr(rhs);
             }
-            ast::Statement::Var{assign, loc, typeref, name, array}  => {
+            ast::Statement::Var{assign, loc, typed, name, array, tags}  => {
                 self.emit_loc(&loc);
-                write!(self.f, "  {}", self.to_local_name(&typeref.name)).unwrap();
-                if typeref.ptr {
-                    write!(self.f, "*").unwrap();
+                write!(self.f, "  {}", self.to_local_name(&typed.name)).unwrap();
+
+                self.emit_pointer(&typed.ptr);
+
+                if !tags.contains_key("mutable") {
+                    write!(self.f, " const ").unwrap();
                 }
-                write!(self.f, "  {} ", name).unwrap();
+
+                write!(self.f, " {} ", name).unwrap();
                 if let Some(array) = &array {
                     write!(self.f, " [ ").unwrap();
                     self.emit_expr(array);
@@ -571,6 +562,15 @@ impl Emitter {
         }
     }
 
+    fn emit_pointer(&mut self, v: &Vec<ast::Pointer>) {
+        for ptr in v {
+            if !ptr.tags.contains_key("mutable") && !ptr.tags.contains_key("mut") {
+                write!(self.f, " const ").unwrap();
+            }
+            write!(self.f, "* ").unwrap();
+        }
+    }
+
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
             ast::Expression::ArrayInit{fields,loc} => {
@@ -582,9 +582,9 @@ impl Emitter {
                 }
                 write!(self.f, "}}").unwrap();
             },
-            ast::Expression::StructInit{typeref, fields,loc} => {
+            ast::Expression::StructInit{typed, fields,loc} => {
                 self.emit_loc(&loc);
-                write!(self.f, "    ({}", self.to_local_name(&typeref.name)).unwrap();
+                write!(self.f, "    ({}", self.to_local_name(&typed.name)).unwrap();
                 write!(self.f, "){{").unwrap();
                 for (name, field) in fields {
                     write!(self.f, ".{} = ", name).unwrap();
@@ -606,11 +606,9 @@ impl Emitter {
                 self.emit_expr(expr);
                 write!(self.f, ")").unwrap();
             },
-            ast::Expression::Cast{into,expr} => {
+            ast::Expression::Cast{into,expr,..} => {
                 write!(self.f, "    ({}", self.to_local_name(&into.name)).unwrap();
-                if into.ptr {
-                    write!(self.f, "*").unwrap();
-                }
+                self.emit_pointer(&into.ptr);
                 write!(self.f, ")").unwrap();
                 self.emit_expr(expr);
             },
@@ -637,7 +635,7 @@ impl Emitter {
                 }
                 write!(self.f, "    )").unwrap();
             },
-            ast::Expression::InfixOperation {lhs, rhs} => {
+            ast::Expression::InfixOperation {lhs, rhs,..} => {
                 write!(self.f, "(").unwrap();
                 self.emit_expr(lhs);
                 for ((op, loc), rhs) in rhs {

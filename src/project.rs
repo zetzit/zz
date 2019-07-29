@@ -78,7 +78,7 @@ export fn main() -> int {{
     println!("project '{}' created", c.project.name);
 }
 
-pub fn load() -> (PathBuf, Config) {
+pub fn load_cwd() -> (PathBuf, Config) {
     let mut search = std::env::current_dir().unwrap();
     loop {
         if !search.join("zz.toml").exists() {
@@ -94,6 +94,10 @@ pub fn load() -> (PathBuf, Config) {
             break
         }
     }
+    load(&search)
+}
+
+pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
 
     let mut f = File::open(&search.join("zz.toml")).expect(&format!("cannot open {:?}", search));
     let mut s = String::new();
@@ -139,5 +143,5 @@ pub fn load() -> (PathBuf, Config) {
         }
     }
 
-    (search.clone(), c)
+    (search.into(), c)
 }

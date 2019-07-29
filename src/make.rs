@@ -114,6 +114,7 @@ impl Make {
         let mut args = self.cflags.clone();
         args.push("-Werror=implicit-function-declaration".to_string());
         args.push("-Werror=incompatible-pointer-types".to_string());
+        args.push("-Werror=return-type".to_string());
         args.push("-Wpedantic".to_string());
         args.push("-Wall".to_string());
         args.push("-c".to_string());

@@ -1,4 +1,5 @@
 use pest::Parser;
+use std::collections::HashMap;
 use super::ast::*;
 use super::name::Name;
 use std::path::Path;
@@ -38,9 +39,10 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     module.name.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
 
     let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
-    let mut file = String::new();
-    f.read_to_string(&mut file).expect(&format!("read {:?}", n));
-    let mut file = ZZParser::parse(Rule::file, Box::leak(Box::new(file)))?;
+    let mut file_str = String::new();
+    f.read_to_string(&mut file_str).expect(&format!("read {:?}", n));
+    let file_str = Box::leak(Box::new(file_str));
+    let mut file = ZZParser::parse(Rule::file, file_str)?;
 
 
     for decl in PP::new(n, file.next().unwrap().into_inner()) {
@@ -81,7 +83,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             }
                         }
                         Rule::block if body.is_none() => {
-                            body = Some(parse_block(n, part));
+                            body = Some(parse_block((file_str, n), part));
                         },
                         e => panic!("unexpected rule {:?} in macro ", e),
                     }
@@ -132,63 +134,31 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             name = part.as_str().into();
                         }
                         Rule::ret_arg => {
-                            let part = part.into_inner().next().unwrap().into_inner().next().unwrap();
-                            let loc = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span().clone(),
-                            };
-                            let (name, ptr) =  parse_typ(part);
-                            let typeref = NameUse{
-                                name,
-                                loc,
-                                ptr,
-                            };
-
+                            let part = part.into_inner().next().unwrap();
                             ret = Some(AnonArg{
-                                typeref,
+                                typed: parse_anon_type((file_str, n), part),
                             });
                         },
                         Rule::fn_args => {
                             for arg in part.into_inner() {
-                                let mut muta      = false;
-                                let mut name      = None;
-                                let mut typeref   = None;
-                                for part in arg.into_inner() {
-                                    match part.as_rule() {
-                                        Rule::key_const  => {
-                                            muta = false;
-                                        },
-                                        Rule::key_mut => {
-                                            muta = true;
-                                        },
-                                        Rule::typ => {
-                                            let loc  = Location{
-                                                file: n.to_string_lossy().into(),
-                                                span: part.as_span(),
-                                            };
-                                            let (typename, ptr) =  parse_typ(part);
-                                            typeref = Some(NameUse{
-                                                name: typename,
-                                                loc,
-                                                ptr,
-                                            });
-                                        },
-                                        Rule::var => {
-                                            name = Some(part.as_str().to_string());
-                                        }
-                                        e => panic!("unexpected rule {:?} in fn_args", e),
-                                    }
-                                }
+
+                                let argloc  = Location{
+                                    file: n.to_string_lossy().into(),
+                                    span: arg.as_span(),
+                                };
+
+                                let TypedName{typed, name, tags} = parse_named_type((file_str, n), arg);
 
                                 args.push(NamedArg{
-                                    name: name.unwrap(),
-                                    typeref: typeref.unwrap(),
-                                    muta,
+                                    name,
+                                    typed,
+                                    tags,
+                                    loc: argloc,
                                 });
                             }
                         },
                         Rule::block => {
-                            body = Some(parse_block(n, part));
+                            body = Some(parse_block((file_str, n), part));
                         },
                         e => panic!("unexpected rule {:?} in function", e),
                     }
@@ -243,68 +213,34 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             });
                             name= Some(part.as_str().into());
                         }
-                        Rule::field => {
+                        Rule::struct_f => {
+
                             let loc  = Location{
                                 file: n.to_string_lossy().into(),
                                 span: part.as_span(),
                             };
 
-                            let mut field = part.into_inner();
 
-                            let typespan = field.next().unwrap();
-                            let typeloc  = Location{
-                                file: n.to_string_lossy().into(),
-                                span: typespan.as_span(),
-                            };
-                            let (typename, ptr) =  parse_typ(typespan);
-                            let typeref = NameUse{
-                                name: typename,
-                                loc: typeloc,
-                                ptr,
-                            };
+                            let mut part = part.into_inner();
 
+                            let TypedName{typed, name, tags} = parse_named_type((file_str, n), part.next().unwrap());
 
-                            let expr     = field.next().unwrap().into_inner();
-                            let mut array = None;
-                            let mut name  = None;
-                            for part in expr {
-                                match part.as_rule() {
-                                    Rule::ident if name.is_none() => {
-                                        name = Some(part.as_str().to_string());
-                                    },
-                                    Rule::field_array if array.is_none() => {
-                                        let part = part.into_inner().next().unwrap();
-                                        match part.as_rule() {
-                                            Rule::name => {
-                                                array = Some(Value::Name(NameUse{
-                                                    name: Name::from(part.as_str()),
-                                                    ptr: false,
-                                                    loc: Location{
-                                                        file: n.to_string_lossy().into(),
-                                                        span: part.as_span(),
-                                                    },
-                                                }));
-                                            }
-                                            Rule::int_literal => {
-                                                array = Some(Value::Literal(part.as_str().to_string()));
-                                            }
-                                            e => panic!("unexpected rule {:?} in field_array", e),
-                                        }
-                                    }
-                                    e => panic!("unexpected rule {:?} in field", e),
+                            let array = match part.next() {
+                                None => None,
+                                Some(array) => {
+                                    let expr = array.into_inner().next().unwrap();
+                                    Some(parse_expr((file_str, n), expr))
                                 }
-                            }
+                            };
 
 
                             fields.push(Field{
-                                typeref,
+                                typed,
                                 array,
-                                name: name.expect("name never parsed in field"),
+                                tags,
+                                name,
                                 loc,
                             });
-
-                            //});
-                            //body = Some(part.as_str().into());
                         }
                         e => panic!("unexpected rule {:?} in struct ", e),
                     }
@@ -332,7 +268,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut decli = None;
                 for part in decl.into_inner() {
                     match part.as_rule() {
-                        Rule::name => {
+                        Rule::importname => {
                             decli = Some(part);
                             break;
                         },
@@ -344,7 +280,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 };
                 let decl = decli.unwrap();
 
-                let (name, local) = parse_name(decl);
+                let (name, local) = parse_importname(decl);
 
                 module.imports.push(Import{
                     name,
@@ -367,16 +303,16 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 });
             },
             Rule::comment => {},
-            Rule::istatic => {
-                let loc     = Location{
+            Rule::istatic | Rule::constant => {
+                let rule = decl.as_rule();
+                let loc  = Location{
                     file: n.to_string_lossy().into(),
                     span: decl.as_span(),
                 };
-                let mut typeref = None;
-                let mut name    = None;
-                let mut expr    = None;
-                let mut muta    = false;
                 let mut storage = Storage::Static;
+                let mut vis     = Visibility::Object;
+                let mut typed   = None;
+                let mut expr    = None;
 
                 for part in decl.into_inner() {
                     match part.as_rule() {
@@ -389,106 +325,76 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         Rule::key_atomic => {
                             storage = Storage::Atomic;
                         }
-                        Rule::key_mut => {
-                            muta = true;
+                        Rule::key_shared =>  {
+                            if let Rule::istatic = rule {
+                                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                    message: format!("cannot change visibility of static variable"),
+                                }, part.as_span());
+                                error!("{} : {}", n.to_string_lossy(), e);
+                                std::process::exit(9);
+                            } else {
+                                vis = Visibility::Shared;
+                            }
                         }
-                        Rule::key_shared | Rule::exported => {
-                            let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                                message: format!("cannot change visibility static variable"),
-                            }, part.as_span());
-                            error!("{} : {}", n.to_string_lossy(), e);
-                            std::process::exit(9);
-                        }
-                        Rule::typ if typeref.is_none() => {
-                            let loc = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span().clone(),
-                            };
-                            let (name, ptr) =  parse_typ(part);
-                            typeref = Some(NameUse{
-                                name,
-                                loc,
-                                ptr,
-                            });
+                        Rule::exported => {
+                            if let Rule::istatic = rule {
+                                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+                                    message: format!("cannot change visibility of static variable"),
+                                }, part.as_span());
+                                error!("{} : {}", n.to_string_lossy(), e);
+                                std::process::exit(9);
+                            } else {
+                                vis = Visibility::Export;
+                            }
                         },
-                        Rule::ident if name.is_none() => {
-                            name  = Some(part.as_str().to_string());
-                        }
+                        Rule::named_type => {
+                            typed = Some(parse_named_type((file_str, n), part));
+                        },
                         Rule::expr if expr.is_none() => {
-                            expr = Some(parse_expr(n, part));
+                            expr = Some(parse_expr((file_str, n), part));
                         }
                         e => panic!("unexpected rule {:?} in static", e),
                     }
                 }
-                module.locals.push(Local{
-                    export_as: None,
-                    name: name.unwrap(),
-                    loc,
-                    vis: Visibility::Object,
-                    def: Def::Static {
-                        storage,
-                        muta,
-                        typeref: typeref.unwrap(),
-                        expr: expr.unwrap(),
-                    }
-                });
-            },
-            Rule::constant => {
-                let loc     = Location{
-                    file: n.to_string_lossy().into(),
-                    span: decl.as_span(),
-                };
-                let mut typeref = None;
-                let mut name    = None;
-                let mut expr    = None;
-                let mut vis     = Visibility::Object;
 
-                for part in decl.into_inner() {
-                    match part.as_rule() {
-                        Rule::key_shared => {
-                            vis = Visibility::Shared;
+                let TypedName{typed, name, tags} = typed.unwrap();
+                match rule {
+
+                    Rule::constant => {
+                        for (_,loc) in &tags {
+                            error!("syntax error\n{}",
+                                   make_error(&loc, "tags not allowed here (yet)"),
+                                   );
+                            std::process::exit(9);
                         }
-                        Rule::exported => {
-                            vis = Visibility::Export;
-                            for part in part.into_inner() {
-                                let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-                                    message: format!("cannot change export name of constant"),
-                                }, part.as_span());
-                                error!("{} : {}", n.to_string_lossy(), e);
-                                std::process::exit(9);
+
+                        module.locals.push(Local{
+                            export_as: None,
+                            name: name,
+                            loc,
+                            vis,
+                            def: Def::Const {
+                                typed,
+                                expr: expr.unwrap(),
                             }
-                        }
-                        Rule::typ if typeref.is_none() => {
-                            let loc = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span().clone(),
-                            };
-                            let (name, ptr) =  parse_typ(part);
-                            typeref = Some(NameUse{
-                                name,
-                                loc,
-                                ptr
-                            });
-                        },
-                        Rule::ident if name.is_none() => {
-                            name  = Some(part.as_str().into());
-                        }
-                        Rule::expr if expr.is_none() => {
-                            expr = Some(parse_expr(n, part));
-                        }
-                        e => panic!("unexpected rule {:?} in const", e),
-                    }
+                        });
+                    },
+                    Rule::istatic => {
+                        module.locals.push(Local{
+                            export_as: None,
+                            name: name,
+                            loc,
+                            vis: Visibility::Object,
+                            def: Def::Static {
+                                tags,
+                                storage,
+                                typed,
+                                expr: expr.unwrap(),
+                            }
+                        });
+                    },
+                    _ => unreachable!(),
                 }
-                module.locals.push(Local{
-                    export_as: None,
-                    name: name.unwrap(),
-                    vis,
-                    loc,
-                    def: Def::Const {
-                        typeref: typeref.unwrap(),
-                        expr: expr.unwrap(),
-                    }
-                });
             },
             e => panic!("unexpected rule {:?} in file", e),
 
@@ -499,15 +405,16 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     Ok(module)
 }
 
-pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Expression {
+pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Expression {
     match decl.as_rule() {
+        Rule::lhs   => { }
         Rule::expr  => { }
         Rule::termish => { }
         _ => { panic!("parse_expr called with {:?}", decl); }
     };
 
     let mut s_op = Some((String::new(), Location{
-        file: n.to_string_lossy().into(),
+        file: n.1.to_string_lossy().into(),
         span: decl.as_span(),
     }));
     let mut s_r  = Vec::new();
@@ -515,7 +422,7 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
     let decl = decl.into_inner();
     for expr in decl {
         let loc = Location{
-            file: n.to_string_lossy().into(),
+            file: n.1.to_string_lossy().into(),
             span: expr.as_span(),
         };
         match expr.as_rule() {
@@ -528,14 +435,14 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
                 let op      = part.as_str().to_string();
                 let part   = expr.next().unwrap();
                 let iexpr   = match part.as_rule() {
-                    Rule::name => {
+                    Rule::type_name => {
                         let loc = Location{
-                            file: n.to_string_lossy().into(),
+                            file: n.1.to_string_lossy().into(),
                             span: part.as_span(),
                         };
-                        let (name, _) = parse_name(part);
-                        Expression::Name(NameUse{
-                            ptr: false,
+                        let name = Name::from(part.as_str());
+                        Expression::Name(Typed{
+                            ptr: Vec::new(),
                             name,
                             loc,
                         })
@@ -557,14 +464,14 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
                 let mut expr = expr.into_inner();
                 let part   = expr.next().unwrap();
                 let iexpr   = match part.as_rule() {
-                    Rule::name => {
+                    Rule::type_name => {
                         let loc = Location{
-                            file: n.to_string_lossy().into(),
+                            file: n.1.to_string_lossy().into(),
                             span: part.as_span(),
                         };
-                        let (name, _) = parse_name(part);
-                        Expression::Name(NameUse{
-                            ptr: false,
+                        let name = Name::from(part.as_str());
+                        Expression::Name(Typed{
+                            ptr: Vec::new(),
                             name,
                             loc,
                         })
@@ -585,21 +492,17 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
                 })));
             },
             Rule::cast => {
+                let exprloc = Location{
+                    file: n.1.to_string_lossy().into(),
+                    span: expr.as_span(),
+                };
                 let mut expr = expr.into_inner();
                 let part  = expr.next().unwrap();
-                let typloc = Location{
-                    file: n.to_string_lossy().into(),
-                    span: part.as_span(),
-                };
-                let (name , ptr) = parse_typ(part);
-                let into = NameUse{
-                    loc: typloc,
-                    name,
-                    ptr,
-                };
+                let into = parse_anon_type(n, part);
                 let part  = expr.next().unwrap();
                 let expr = parse_expr(n, part);
                 s_r.push((s_op.take().unwrap(), Box::new(Expression::Cast{
+                    loc: exprloc,
                     into,
                     expr: Box::new(expr),
                 })));
@@ -616,14 +519,14 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
                 let lhs;
                 let e1  = expr.next().unwrap();
                 match e1.as_rule() {
-                    Rule::name => {
+                    Rule::type_name => {
                         let loc = Location{
-                            file: n.to_string_lossy().into(),
+                            file: n.1.to_string_lossy().into(),
                             span: e1.as_span(),
                         };
-                        let (name, _) = parse_name(e1);
-                        lhs = Some(Expression::Name(NameUse{
-                            ptr: false,
+                        let name = Name::from(e1.as_str());
+                        lhs = Some(Expression::Name(Typed{
+                            ptr: Vec::new(),
                             name,
                             loc,
                         }));
@@ -658,10 +561,10 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
                     })));
                 }
             },
-            Rule::name => {
-                let (name, _) = parse_name(expr);
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::Name(NameUse{
-                    ptr: false,
+            Rule::type_name => {
+                let name = Name::from(expr.as_str());
+                s_r.push((s_op.take().unwrap(), Box::new(Expression::Name(Typed{
+                    ptr: Vec::new(),
                     name,
                     loc,
                 }))));
@@ -684,14 +587,14 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
 
                 let part = expr.into_inner().next().unwrap();
                 let expr = match part.as_rule() {
-                    Rule::name => {
+                    Rule::type_name => {
                         let loc = Location{
-                            file: n.to_string_lossy().into(),
+                            file: n.1.to_string_lossy().into(),
                             span: part.as_span(),
                         };
-                        let (name, _) = parse_name(part);
-                        Expression::Name(NameUse{
-                            ptr: false,
+                        let name = Name::from(part.as_str());
+                        Expression::Name(Typed{
+                            ptr: Vec::new(),
                             name,
                             loc,
                         })
@@ -709,7 +612,12 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
             },
             Rule::call => {
                 let mut expr = expr.into_inner();
-                let (name, _) = parse_name(expr.next().unwrap());
+                let name = expr.next().unwrap();
+                let nameloc = Location{
+                    file: n.1.to_string_lossy().into(),
+                    span: name.as_span(),
+                };
+                let name = Name::from(name.as_str());
                 let args = match expr.next() {
                     Some(args) => {
                         args.into_inner().into_iter().map(|arg|{
@@ -722,11 +630,11 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
                 };
 
                 s_r.push((s_op.take().unwrap(), Box::new(Expression::Call{
-                    loc: loc.clone(),
-                    name: NameUse{
+                    loc: loc,
+                    name: Typed{
                         name,
-                        loc,
-                        ptr: false,
+                        loc: nameloc,
+                        ptr: Vec::new(),
                     },
                     args,
                 })));
@@ -753,16 +661,11 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
                 let mut expr = expr.into_inner();
                 let part  = expr.next().unwrap();
                 let typloc = Location{
-                    file: n.to_string_lossy().into(),
+                    file: n.1.to_string_lossy().into(),
                     span: part.as_span(),
                 };
-                let (name , _) = parse_name(part);
-                let typeref = NameUse{
-                    loc: typloc,
-                    name,
-                    ptr: false,
-                };
 
+                let typed = parse_anon_type(n, part);
 
                 let mut fields = Vec::new();
                 for part in expr {
@@ -780,7 +683,7 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
 
                 s_r.push((s_op.take().unwrap(), Box::new(Expression::StructInit{
                     loc,
-                    typeref,
+                    typed,
                     fields,
                 })));
             }
@@ -790,23 +693,41 @@ pub(crate) fn parse_expr(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -
 
 
 
-    let lhs = s_r.remove(0).1;
+    let ((_,loc), lhs) = s_r.remove(0);
     if s_r.len() == 0 {
         return *lhs;
     }
 
     return Expression::InfixOperation {
+        loc,
         lhs,
         rhs: s_r,
     }
 }
 
-pub(crate) fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule>) -> Statement  {
+pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pair<'static, Rule>) -> Statement  {
     let loc = Location{
-        file: n.to_string_lossy().into(),
+        file: n.1.to_string_lossy().into(),
         span: stm.as_span(),
     };
     match stm.as_rule() {
+        Rule::mark_stm => {
+            let mut stm = stm.into_inner();
+            let part    = stm.next().unwrap();
+            let lhs     = parse_expr(n, part);
+            let part    = stm.next().unwrap();
+            let loc = Location{
+                file: n.1.to_string_lossy().into(),
+                span: part.as_span(),
+            };
+            let mark    = part.as_str().to_string();
+
+            Statement::Mark{
+                loc,
+                lhs,
+                mark,
+            }
+        },
         Rule::label => {
             let mut stm = stm.into_inner();
             let label   = stm.next().unwrap().as_str().to_string();
@@ -927,44 +848,32 @@ pub(crate) fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule
         }
         Rule::vardecl => {
             let stm = stm.into_inner();
-            let mut typeref = None;
-            let mut name    = None;
+            let mut typed   = None;
             let mut assign  = None;
             let mut array   = None;
 
             for part in stm {
                 match part.as_rule() {
-                    Rule::typ => {
-                        let typloc = Location{
-                            file: n.to_string_lossy().into(),
-                            span: part.as_span(),
-                        };
-                        let (name , ptr) = parse_typ(part);
-                        typeref = Some(NameUse{
-                            loc: typloc,
-                            name,
-                            ptr,
-                        });
+                    Rule::named_type => {
+                        typed = Some(parse_named_type(n, part));
                     },
-                    Rule::name => {
-                        name = Some(parse_name(part).0);
-                    }
-                    Rule::array=> {
-                        let part = part.into_inner().next().unwrap();
-                        array = Some(parse_expr(n, part));
-                    }
                     Rule::expr => {
                         assign = Some(parse_expr(n, part));
                     }
+                    Rule::array => {
+                        array = Some(parse_expr(n, part.into_inner().next().unwrap()));
+                    }
                     e => panic!("unexpected rule {:?} in vardecl", e),
-
                 }
             }
 
+            let TypedName{typed, name, tags} = typed.unwrap();
+
             Statement::Var{
-                loc:        loc.clone(),
-                name:       name.unwrap(),
-                typeref:    typeref.unwrap(),
+                loc: loc.clone(),
+                typed,
+                name,
+                tags,
                 array,
                 assign,
             }
@@ -977,7 +886,7 @@ pub(crate) fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule
 
             for part in stm {
                 match part.as_rule() {
-                    Rule::termish if lhs.is_none() => {
+                    Rule::lhs if lhs.is_none() => {
                         lhs = Some(parse_expr(n, part));
                     }
                     Rule::assignop => {
@@ -987,7 +896,6 @@ pub(crate) fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule
                         rhs = Some(parse_expr(n, part));
                     }
                     e => panic!("unexpected rule {:?} in assign", e),
-
                 }
             }
 
@@ -1002,56 +910,157 @@ pub(crate) fn parse_statement(n: &Path, stm: pest::iterators::Pair<'static, Rule
     }
 }
 
-pub(crate) fn parse_block(n: &Path, decl: pest::iterators::Pair<'static, Rule>) -> Block {
+pub(crate) fn parse_block(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Block {
     match decl.as_rule() {
         Rule::block => { }
         _ => { panic!("parse_block called with {:?}", decl); }
     };
 
+    let end = Location{
+        file: n.1.to_string_lossy().into(),
+        span: pest::Span::new(n.0, decl.as_span().end(), decl.as_span().end()).unwrap(),
+    };
+
     let mut statements = Vec::new();
-    for stm in PP::new(n, decl.into_inner()) {
+    for stm in PP::new(n.1, decl.into_inner()) {
         statements.push(parse_statement(n, stm));
     }
     Block{
         statements,
+        end,
     }
 }
 
 
-pub(crate) fn parse_typ(decl: pest::iterators::Pair<Rule>) -> (Name, bool) {
+// typed is parsed left to right
+
+#[derive(Debug)]
+pub(crate) struct TypedName {
+    name:   String,
+    typed:  Typed,
+    tags:   HashMap<String, Location>,
+}
+
+pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> TypedName {
     match decl.as_rule() {
-        Rule::typ=> {
+        Rule::named_type => { }
+        _ => { panic!("parse_named_type called with {:?}", decl); }
+    };
+
+    let loc = Location{
+        file: n.1.to_string_lossy().into(),
+        span: decl.as_span(),
+    };
+    //the actual type name is always on the left hand side
+    let mut decl = decl.into_inner();
+    let typename = Name::from(decl.next().unwrap().as_str());
+
+    // the local variable name is on the right;
+    let mut decl : Vec<pest::iterators::Pair<'static, Rule>> = decl.collect();
+    let name_part = decl.pop().unwrap();
+    let name = match name_part.as_rule() {
+        Rule::ident => {
+            name_part.as_str().to_string()
         }
         _ => {
-            panic!("parse_typ called with {:?}", decl);
+            let loc = Location{
+                file: n.1.to_string_lossy().into(),
+                span: name_part.as_span(),
+            };
+            error!("syntax error\n{}",
+                   make_error(&loc, "expected a name"),
+                   );
+            std::process::exit(9);
         }
     };
-    let mut name = Vec::new();
-    let mut ptr  = false;
-    for part in decl.into_inner() {
+
+    let mut tags : HashMap<String, Location> = HashMap::new();
+    let mut ptr = Vec::new();
+
+    for part in decl {
+        let loc = Location{
+            file: n.1.to_string_lossy().into(),
+            span: part.as_span(),
+        };
         match part.as_rule() {
-            Rule::namespace => {
-                for nspart in part.into_inner() {
-                    name.push(nspart.as_str().to_string());
-                }
-            },
-            Rule::key_ptr => {
-                ptr = true;
-            },
-            Rule::qident => {
-                name.push(part.into_inner().next().unwrap().as_str().to_string());
+            Rule::ptr => {
+                ptr.push(Pointer{
+                    tags: std::mem::replace(&mut tags, HashMap::new()),
+                });
+            }
+            Rule::key_mut  => {
+                tags.insert("mutable".to_string(), loc);
             },
             Rule::ident => {
-                name.push(part.as_str().to_string());
-            },
-            e => panic!("unexpected rule {:?} in typ", e),
+                tags.insert(part.as_str().into(), loc);
+            }
+            e => panic!("unexpected rule {:?} in named_type ", e),
         }
     }
-    (Name(name), ptr)
+
+    TypedName {
+        name,
+        typed: Typed {
+            name: typename,
+            loc: loc.clone(),
+            ptr,
+        },
+        tags,
+    }
+}
+
+pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Typed {
+    match decl.as_rule() {
+        Rule::anon_type => { }
+        _ => { panic!("parse_anon_type called with {:?}", decl); }
+    };
+
+    let loc = Location{
+        file: n.1.to_string_lossy().into(),
+        span: decl.as_span(),
+    };
+    //the actual type name is always on the left hand side
+    let mut decl = decl.into_inner();
+    let name = Name::from(decl.next().unwrap().as_str());
+
+    let mut tags : HashMap<String, Location> = HashMap::new();
+    let mut ptr = Vec::new();
+
+    for part in decl {
+        let loc = Location{
+            file: n.1.to_string_lossy().into(),
+            span: part.as_span(),
+        };
+        match part.as_rule() {
+            Rule::ptr => {
+                ptr.push(Pointer{
+                    tags: std::mem::replace(&mut tags, HashMap::new()),
+                });
+            }
+            Rule::key_mut  => {
+                tags.insert("mutable".to_string(), loc);
+            },
+            Rule::ident => {
+                tags.insert(part.as_str().into(), loc);
+            }
+            e => panic!("unexpected rule {:?} in anon_type", e),
+        }
+    }
+
+    for (_ , loc) in tags {
+        error!("syntax error\n{}",
+               make_error(&loc, "anonymous type cannot have storage tags (yet)"),
+               );
+        std::process::exit(9);
+    }
+
+    Typed {
+        name, loc, ptr,
+    }
 }
 
 
-pub(crate) fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<(String, Option<String>)>) {
+pub(crate) fn parse_importname(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<(String, Option<String>)>) {
     let mut locals = Vec::new();
     let mut v = Vec::new();
     for part in decl.into_inner() {
@@ -1085,8 +1094,8 @@ pub(crate) fn parse_name(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<(Strin
                     }
                 }
             },
-            Rule::name => {
-                let (name, locals2) = parse_name(part);
+            Rule::type_name | Rule::importname => {
+                let (name, locals2) = parse_importname(part);
                 v.extend(name.0);
                 locals.extend(locals2);
             }

@@ -77,9 +77,10 @@ struct Beep {
     u32 a;
 }
 
-fn some_helper(mut errors::error* err, mut uint32_t* bob) -> uint32_t {
+fn some_helper(errors::error* err, mut uint32_t* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
+        bob is safe;
         *bob = add(horst(), foo);
         printf("bob %d\n", *bob);
     }
@@ -220,3 +221,25 @@ in ZZ, the star "\*" is always on the left side, i.e. attached to the type. Ther
 the reason is parser complexity. If you hate this, feel free to submit a PR that makes the parser tolerate different styles.
 
 
+#### annotations
+
+ZZ has type annotations.
+They are boolean values that are attached to types and local names used throughout compilation and type checking,
+but they will never be emitted into the C interface.
+
+examples of built-in predicares are "mutable", "initialized" and "safe"
+
+A variable that is not marked as "initialized", cannot be used in most contexts, except as left hand side in an assignment.
+
+A pointer that is not safe, cannot be dereferenced.
+
+Because automatic annotation is still in early stage, you will do manual annotation alot using the 'is' keyword.
+
+```C
+fn bla(mut A* a) {
+    if (a != 0) {
+        a is safe;
+        a->a = 3;
+    }
+}
+```

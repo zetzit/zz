@@ -11,7 +11,7 @@ pub macro ADD_IMPL (a,b)
 using aye;
 
 export fn conflict() -> aye::bob {
-    aye::bob r;
+    aye::bob mut r;
     memset(&r, 0, sizeof(aye::bob));
     return r;
 }

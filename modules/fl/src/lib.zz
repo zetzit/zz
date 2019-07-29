@@ -4,10 +4,10 @@ using libc::string::{memset};
 using libc::stdio;
 
 struct Pool {
-    size_t      slab;
-    size_t      count;
-    uint8_t*    free;
-    uint8_t*    pool;
+    size_t          slab;
+    size_t          count;
+    uint8_t mut*    free;
+    uint8_t mut*    pool;
 }
 
 
@@ -16,23 +16,23 @@ pub fn size(size_t slab, size_t count) -> size_t {
 }
 
 pub macro MAKE (NAME, SLAB, COUNT) {
-    char NAME [size(SLAB,COUNT)];
+    char mut NAME [size(SLAB,COUNT)];
     init(NAME, SLAB, COUNT);
 }
 
-pub fn init(mut char* b, size_t slab, size_t count) {
+pub fn init(char mut* b, size_t slab, size_t count) {
     memset(b, 0, sizeof(Pool) + slab * count + count / 8 + 1);
-    Pool* self = (Pool*)b;
+    Pool mut* self = (Pool mut*)b;
 
     self->slab  = slab;
     self->count = count;
-    self->free  = ((uint8_t*)b) + sizeof(Pool);
+    self->free  = ((uint8_t mut*)b) + sizeof(Pool);
     self->pool  = self->free + count / 8 + 1;
 }
 
-pub fn alloc(mut char* b) -> void* {
-    Pool* self = (Pool*)b;
-    for (int i = 0; i < self->count; i+=1 ) {
+pub fn alloc(char mut* b) -> void* {
+    Pool mut* self = (Pool mut*)b;
+    for (int mut i = 0; i < self->count; i+=1 ) {
         if ((self->free[i/8] & (1 << (i%8))) == 0) {
             self->free[i/8] |= (1 << (i%8));
             return self->pool + (i * self->slab);
@@ -41,8 +41,8 @@ pub fn alloc(mut char* b) -> void* {
     return 0;
 }
 
-pub fn release(mut char* b, void* mem) -> void* {
-    Pool* self = (Pool*)b;
+pub fn release(char mut* b, void* mem) -> void* {
+    Pool* self = (Pool mut*)b;
 
     size_t slot = ((uint8_t*)mem - self->pool) / self->slab;
 
@@ -55,5 +55,6 @@ pub fn release(mut char* b, void* mem) -> void* {
 
     return 0;
 }
+
 
 

@@ -26,11 +26,11 @@ keyword    = {
     key_const   |
     key_packed  |
     key_mut     |
-    key_ptr     |
     key_for     |
     key_if      |
     key_else    |
     key_return  |
+    key_mark    |
     key_goto
 }
 
@@ -39,11 +39,11 @@ key_shared  = { "pub" }
 key_const   = { "const"   }
 key_packed  = { "packed"   }
 key_mut     = { "mutable" | "mut" }
-key_ptr     = { "*" }
 key_for     = { "for"}
 key_if      = { "if" }
 key_else    = { "else" }
 key_return  = { "return" }
+key_mark    = { "is" }
 key_goto    = { "goto" }
 
 // type identifiers
@@ -55,23 +55,23 @@ star        = @{ "*" }
 local_i     = {(ident | qident) ~ ( WHITESPACE+  ~ "as" ~ WHITESPACE+ ~ (ident | qident))?}
 local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ local_i )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
-name        = ${ ident ~ ( "::" ~ (local | name))? }
 
-typ = ${
-    namespace? ~ (ident | qident) ~ key_ptr?
-}
+type_name   = ${ namespace? ~ ident }
+ptr         = !{"*"}
+type_part   = _{ (ident | ptr | key_mut) }
+anon_type   = !{ type_name ~ type_part* }
+named_type  = !{ type_name ~ named_typei}
+named_typei = _{ type_part  ~ named_typei | ident }
+
 
 // declarations
 
-var         = @{ident}
-named_arg   = {(key_const | key_mut)? ~ typ ~ var}
-anon_arg    = {(key_const | key_mut)? ~ typ}
-
-fn_args     = {named_arg ~ ( "," ~ named_arg)* ~ ","? }
-ret_arg     = {"->" ~ anon_arg}
+fn_args     = { named_type ~ ( "," ~ named_type )* ~ ","? }
+ret_arg     = {"->" ~ anon_type }
 function    = { ( exported | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 
-import      = { exported? ~  "using" ~ name ~  ";"? }
+importname  = ${ ident ~ ( "::" ~ (local | importname))? }
+import      = { exported? ~  "using" ~ importname ~  ";"? }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
@@ -84,23 +84,20 @@ ppelse      = ${ "#else" ~ WHITESPACE+ }
 ppendif     = ${ "#endif" ~ WHITESPACE+}
 
 
-field_array =  { "[" ~ (name | int_literal | hex_literal) ~ "]" }
-struct_f    = { ident ~ field_array? ~ ";" }
-field       = { typ ~ struct_f }
-struct_c    = _{"{" ~ (pp | field)* ~ "}" }
+struct_f    = { named_type  ~ array? ~ ";" }
+struct_c    = _{"{" ~ (pp | struct_f )* ~ "}" }
 struct_d    = { (exported | key_shared | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
 
-constant    = { ( exported | key_shared)? ~ "const"  ~ typ ~ ident ~ "=" ~ expr ~ ";"}
+constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
 
 key_static  = {"static"}
 key_atomic  = {"atomic"}
 key_thread_local = {"thread_local"}
 
 istatic     = {
-    ( exported | key_shared)? ~
+    (exported | key_shared)? ~
     (key_static | key_atomic | key_thread_local) ~
-    (key_mut | key_const)? ~
-    typ ~ ident ~ "=" ~ expr ~ ";"
+    named_type ~ "=" ~ expr ~ ";"
 }
 
 comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
@@ -145,33 +142,36 @@ postop  = { "++" | "--" }
 
 term    = _{
     call | number_literal | char_literal | string_literal | struct_init | array_init | member_access |
-    unarypost | unarypre | ptr_access | array_access | takeref | deref | cast | name | "(" ~ expr ~ ")"
+    unarypost | unarypre | ptr_access | array_access | takeref | deref | cast | type_name | "(" ~ expr ~ ")"
 }
 expr    = { term ~ (infix ~ term) * }
 termish  = !{ term }
 
-unarypost       = { ( name | "(" ~ expr ~ ")") ~ postop}
+unarypost       = { ( type_name | "(" ~ expr ~ ")") ~ postop}
 unarypre        = { preop  ~ termish}
 deref           = { "*"  ~ termish}
 takeref         = { "&"  ~ termish}
 
-member_access   = { (name | "(" ~ expr ~ ")") ~ "." ~ termish}
-ptr_access      = { (name | "(" ~ expr ~ ")") ~ "->" ~ termish}
-array_access    = { (name | "(" ~ expr ~ ")") ~ array }
-cast            = { "(" ~ typ ~ ")" ~ termish }
+member_access   = { (type_name | "(" ~ expr ~ ")") ~ "." ~ termish}
+ptr_access      = { (type_name | "(" ~ expr ~ ")") ~ "->" ~ termish}
+array_access    = { (type_name | "(" ~ expr ~ ")") ~ array }
+cast            = { "(" ~ anon_type ~ ")" ~ termish }
 
 struct_init_field_name = _{ "." ~ ident }
 struct_init_field = { struct_init_field_name ~ "=" ~ termish }
-struct_init     = { name ~ "{" ~  struct_init_field? ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
+struct_init     = { anon_type ~ "{" ~  struct_init_field? ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
 array_init      = { "{" ~ termish ~ ("," ~ termish)* ~ ","?  ~ "}" }
 
 assignop    = { "!=" | "~=" | "|=" | "&=" | "+=" | "-=" | "="}
-assign      = { termish ~ assignop ~ expr}
-call        = { ( name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")" }
+lhs         = {
+    member_access | unarypost | unarypre | ptr_access | array_access | deref | type_name | "(" ~ expr ~ ")"
+}
+assign      = { lhs ~ assignop ~ expr}
+call        = { ( type_name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")" }
 call_args   = { expr ~ ( "," ~ expr )* }
 
 array       = { "[" ~ expr ~ "]" }
-vardecl     = { typ ~ name ~ array? ~ ( "=" ~ expr )? }
+vardecl     = { named_type  ~ array? ~ ( "=" ~ expr )? }
 
 semicolon   = { ";" }
 for_stm     = { "for" ~ "(" ~ expr_stm? ~ semicolon ~ expr_stm? ~ semicolon ~ expr_stm? ~ ")" ~ block }
@@ -181,6 +181,7 @@ else_stm    = { "else" ~  block }
 return_stm  = { key_return ~ expr_stm? }
 goto_stm    = { "goto" ~ ident }
 label       = ${ ident ~ ":"}
+mark_stm    = { lhs ~ "is" ~ ident }
 
 expr_stm = _{
     vardecl |
@@ -194,6 +195,8 @@ statement = _{
     if_stm      |
     else_stm    |
     elseif_stm  |
+    block       |
+    (mark_stm  ~ ";")  |
     (goto_stm  ~ ";")   |
     (return_stm ~ ";")  |
     (expr_stm ~ ";") |

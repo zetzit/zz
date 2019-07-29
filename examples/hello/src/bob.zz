@@ -7,6 +7,6 @@ fn usemeeee(Error* e) {
 using libc::stdint::{uint8_t};
 using libc::memory::{memset};
 
-pub fn new(mutable Error* self) {
+pub fn new(Error mut* self) {
     memset(self, 0, sizeof(Error));
 }

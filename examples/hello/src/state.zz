@@ -1,5 +1,6 @@
 using libc::stdint::{uint8_t};
 using libc::string;
+using libc::string::{memset};
 
 
 pub struct State {
@@ -18,14 +19,14 @@ pub struct State {
     const int lol = 3;
 #endif
 
-pub fn new(mut State* self) {
+pub fn new(State mut* self) {
     memset(self, 0, sizeof(State));
 #if 0
     return nothing;
 #endif
 }
 
-pub fn add(mut State* self, int i) {
+pub fn add(State mut* self, int i) {
     self->counter += i;
     goto exit;
 exit:

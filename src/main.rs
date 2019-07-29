@@ -14,6 +14,7 @@ mod emitter;
 mod abs;
 mod name;
 mod pp;
+mod lifetimes;
 
 use std::path::Path;
 use clap::{App, Arg, SubCommand};
@@ -48,7 +49,7 @@ fn main() {
             project::init();
         },
         ("clean", Some(_submatches)) => {
-            let (root, _) = project::load();
+            let (root, _) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
             if std::path::Path::new("./target").exists() {
                 std::fs::remove_dir_all("target").unwrap();
@@ -56,7 +57,7 @@ fn main() {
         },
         ("test", Some(submatches)) => {
             build(true);
-            let (root, mut project) = project::load();
+            let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
@@ -84,7 +85,7 @@ fn main() {
         }
         ("run", Some(_submatches)) => {
             build(false);
-            let (root, mut project) = project::load();
+            let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
             let mut exes = Vec::new();
@@ -119,7 +120,7 @@ fn main() {
 
 fn build(tests: bool) {
 
-    let (root, mut project) = project::load();
+    let (root, mut project) = project::load_cwd();
     std::env::set_current_dir(root).unwrap();
 
     std::fs::create_dir_all("./target/c/").expect("create target dir");
@@ -156,7 +157,9 @@ fn build(tests: bool) {
         let mut md = modules.remove(name).unwrap();
         match &mut md {
             loader::Module::C(_) => (),
-            loader::Module::ZZ(ast) => abs::abs(ast, &modules),
+            loader::Module::ZZ(ast) => {
+                abs::abs(ast, &modules);
+            }
         }
         modules.insert(name.clone(), md);
     }
@@ -166,13 +169,16 @@ fn build(tests: bool) {
         let mut md = modules.remove(name).unwrap();
         match &mut md {
             loader::Module::C(_) => (),
-            loader::Module::ZZ(ast) => flat.push(flatten::flatten(ast, &modules)),
+            loader::Module::ZZ(ast) => {
+                flat.push(flatten::flatten(ast, &modules));
+            }
         }
         modules.insert(name.clone(), md);
     }
 
     let mut cfiles = HashMap::new();
-    for module in flat {
+    for mut module in flat {
+        lifetimes::check(&mut module);
         let header  = emitter::Emitter::new(module.clone(), true);
         let header  = header.emit();
 
@@ -259,12 +265,12 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
     };
 
     let pp = std::env::current_dir().unwrap();
-    std::env::set_current_dir(&found).unwrap();
-    let (_root, project)  = project::load();
+    //std::env::set_current_dir(&found).unwrap();
+    let (_root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
-    if std::path::Path::new("./src").exists() {
-        loader::load(modules, &project_name, &Path::new("./src"));
+    if found.join("./src").exists() {
+        loader::load(modules, &project_name, &found.join("./src"));
     }
-    std::env::set_current_dir(pp).unwrap();
+    //std::env::set_current_dir(pp).unwrap();
 
 }

@@ -40,7 +40,7 @@ impl Scope{
         });
     }
 
-    pub fn abs(&self, t: &mut ast::NameUse, inbody: bool) {
+    pub fn abs(&self, t: &mut ast::Typed , inbody: bool) {
         if t.name.is_absolute() {
             return;
         }
@@ -78,7 +78,6 @@ impl Scope{
                               );
                         ABORT.store(true, Ordering::Relaxed);
                     }
-                    t.name.0.insert(0, String::new());
                 } else {
                     error!("undefined name '{}' \n{}",
                            t.name,
@@ -198,7 +197,7 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
 }
 
 fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &HashMap<Name, loader::Module>, loc: &ast::Location, selfname: &Name) {
-    if !fqn.is_absolute() {
+    if !fqn.is_absolute() && fqn.len() > 1 {
         ABORT.store(true, Ordering::Relaxed);
         return;
     }
@@ -276,8 +275,8 @@ fn abs_expr(
                 abs_expr(expr, scope, inbody, all_modules, self_md_name);
             }
         },
-        ast::Expression::StructInit{typeref, fields,..} => {
-            scope.abs(typeref, inbody);
+        ast::Expression::StructInit{typed, fields,..} => {
+            scope.abs(typed, inbody);
             for (_, expr) in fields {
                 abs_expr(expr, scope, inbody, all_modules, self_md_name);
             }
@@ -288,7 +287,7 @@ fn abs_expr(
         ast::Expression::UnaryPost{expr,..} => {
             abs_expr(expr, scope, inbody, all_modules, self_md_name);
         },
-        ast::Expression::Cast{expr, into} => {
+        ast::Expression::Cast{expr, into,..} => {
             abs_expr(expr, scope, inbody, all_modules, self_md_name);
             scope.abs(into, inbody);
         }
@@ -329,6 +328,9 @@ fn abs_statement(
     )
 {
     match stm {
+        ast::Statement::Mark{lhs,..} => {
+            abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
+        },
         ast::Statement::Goto{..} |  ast::Statement::Label{..} => {
         }
         ast::Statement::Block(b2) => {
@@ -356,15 +358,15 @@ fn abs_statement(
             abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, &scope, inbody, all_modules, self_md_name);
         },
-        ast::Statement::Var{assign, typeref, array, ..}  => {
+        ast::Statement::Var{assign, typed, array, ..}  => {
             if let Some(assign) = assign {
                 abs_expr(assign, &scope, inbody, all_modules, self_md_name);
             }
             if let Some(array) = array {
                 abs_expr(array, &scope, inbody, all_modules, self_md_name);
             }
-            scope.abs(typeref, false);
-            //check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
+            scope.abs(typed, false);
+            //check_abs_available(&typed.name, &ast.vis, all_modules, &typed.loc, &md.name);
         },
         ast::Statement::Expr{expr, ..} => {
             abs_expr(expr, &scope, inbody, all_modules, self_md_name);
@@ -431,36 +433,33 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
     // round two, make all dependencies absolute
     for ast in &mut md.locals {
         match &mut ast.def {
-            ast::Def::Static{typeref,expr,..} => {
+            ast::Def::Static{typed,expr,..} => {
                 abs_expr(expr, &scope, false, all_modules, &md.name);
-                scope.abs(typeref, false);
-                check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
+                scope.abs(typed, false);
+                check_abs_available(&typed.name, &ast.vis, all_modules, &typed.loc, &md.name);
             }
-            ast::Def::Const{typeref,expr,..} => {
+            ast::Def::Const{typed, expr,..} => {
                 abs_expr(expr, &scope, false,all_modules, &md.name);
-                scope.abs(typeref, false);
-                check_abs_available(&typeref.name, &ast.vis, all_modules, &typeref.loc, &md.name);
+                scope.abs(typed, false);
+                check_abs_available(&typed.name, &ast.vis, all_modules, &typed.loc, &md.name);
             }
             ast::Def::Function{ret, args, ref mut body, ..} => {
                 if let Some(ret) = ret {
-                    scope.abs(&mut ret.typeref, false);
-                    check_abs_available(&ret.typeref.name, &ast.vis, all_modules, &ret.typeref.loc, &md.name);
+                    scope.abs(&mut ret.typed, false);
+                    check_abs_available(&ret.typed.name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                 }
                 for arg in args {
-                    scope.abs(&mut arg.typeref, false);
-                    check_abs_available(&arg.typeref.name, &ast.vis, all_modules, &arg.typeref.loc, &md.name);
+                    scope.abs(&mut arg.typed, false);
+                    check_abs_available(&arg.typed.name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
                 }
                 abs_block(body, &scope,all_modules, &md.name);
             }
             ast::Def::Struct{fields,..} => {
                 for field in fields {
-                    scope.abs(&mut field.typeref, false);
-                    check_abs_available(&field.typeref.name, &ast.vis, all_modules, &field.typeref.loc, &md.name);
+                    scope.abs(&mut field.typed, false);
+                    check_abs_available(&field.typed.name, &ast.vis, all_modules, &field.typed.loc, &md.name);
                     if let Some(ref mut array) = &mut field.array {
-                        if let ast::Value::Name(ref mut name) = array {
-                            scope.abs(name, false);
-                            check_abs_available(&name.name, &ast.vis, all_modules, &name.loc, &md.name);
-                        }
+                        abs_expr(array, &scope, false, all_modules, &md.name);
                     }
                 }
             }
@@ -471,6 +470,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
     }
 
     if ABORT.load(Ordering::Relaxed) {
+        error!("exit abs due to previous errors");
         std::process::exit(9);
     }
 

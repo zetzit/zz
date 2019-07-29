@@ -1,6 +1,7 @@
 use pest;
 use super::parser::Rule;
 use super::ast;
+use super::name::Name;
 use std::path::{Path, PathBuf};
 use super::parser;
 
@@ -49,7 +50,7 @@ impl PP {
             },
             Rule::call => {
                 let mut expr = expr.into_inner();
-                let (name, _) = parser::parse_name(expr.next().unwrap());
+                let name = Name::from(expr.next().unwrap().as_str());
                 let args = match expr.next() {
                     Some(args) => {
                         args.into_inner().into_iter().map(|arg|{

@@ -4,15 +4,15 @@ using aye;
 using error;
 using fl;
 
-thread_local mutable float wee = 0.1;
-atomic mutable uint32_t bargh = 932;
+thread_local float mut wee = 0.1;
+atomic uint32_t mut bargh = 932;
 
 struct Bob {
     char a;
     char b;
 };
-static mutable uint32_t bob = 932;
-static mutable Bob stbob = Bob{
+static uint32_t mut bob = 932;
+static Bob mut stbob = Bob{
     .a = 2,
 };
 
@@ -22,7 +22,7 @@ pub fn gimme_wee(aye::bob* lol) -> float {
 }
 
 export fn main() -> int {
-    error::Error err;
+    error::Error mut err;
     uint32_t bob;
 
     wee += 0.1;
@@ -43,7 +43,7 @@ export fn flsomething() {
 
     fl::MAKE(b, 8, 1000);
 
-    for (int i = 0; i < 10; i+=1) {
+    for (int mut i = 0; i < 10; i+=1) {
         fl::alloc(b);
     }
 }
