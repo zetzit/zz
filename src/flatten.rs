@@ -15,12 +15,11 @@ pub enum D {
 pub struct Module {
     pub name:           Name,
     pub sources:        HashSet<PathBuf>,
+    pub c_names:        HashMap<Name, ast::Location>,
     pub d:              Vec<D>,
-    pub short_names:    HashSet<Name>,
     pub aliases:        HashMap<Name, String>,
     pub deps:           HashSet<Name>,
 }
-
 
 struct Local {
     deps:               Vec<Name>,
@@ -186,7 +185,6 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     for local in &md.locals {
         let mut ns = md.name.clone();
         ns.push(local.name.clone());
-        flat.short_names.insert(ns.clone());
         incomming.push((ns, local.loc.clone()));
     }
 
@@ -194,7 +192,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
     let mut incomming_imports = Vec::new();
     for import in std::mem::replace(&mut md.imports, Vec::new()) {
-        incomming_imports.push((import, true));
+        incomming_imports.push(import);
     }
 
     let mut recursion_guard : HashSet<Name> = HashSet::new();
@@ -291,20 +289,20 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         }
 
 
-        for (import, short_names) in std::mem::replace(&mut incomming_imports, Vec::new()) {
+        for import in std::mem::replace(&mut incomming_imports, Vec::new()) {
             assert!(import.name.is_absolute(), "ice: not abs: {}", import.name);
             match all_modules.get(&import.name) {
                 None => {
                     debug!("    < none {}", import.name);
                     if import.name.0[1] == "libc" {
-                        md.includes.push(ast::Include{
-                            loc: import.loc.clone(),
-                            expr: format!("<{}.h>", import.name.0[2..].join("/")),
-                        });
+                        //md.includes.push(ast::Include{
+                        //    loc: import.loc.clone(),
+                        //    expr: format!("<{}.h>", import.name.0[2..].join("/")),
+                        //});
                         for (local,_) in &import.local {
                             let mut nn = import.name.clone();
                             nn.push(local.clone());
-                            flat.short_names.insert(nn);
+                            flat.c_names.insert(nn, import.loc.clone());
                         }
                     } else if import.name == md.name {
                         // self import. do nothing
@@ -315,16 +313,13 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 },
                 Some(loader::Module::C(path)) => {
                     debug!("    < C {}", import.name);
+                    let mut included_names = Vec::new();
                     flat.sources.insert(path.clone());
-                    flat.d.push(D::Include(ast::Include{
-                        loc: import.loc.clone(),
-                        expr: format!("{:?}", path),
-                    }));
-                    flat.short_names.insert(import.name.clone());
                     for (local,_) in &import.local {
                         let mut nn = import.name.clone();
                         nn.push(local.clone());
-                        flat.short_names.insert(nn);
+                        included_names.push(nn.clone());
+                        flat.c_names.insert(nn, import.loc.clone());
                     }
                 }
                 Some(loader::Module::ZZ(ast)) => {
@@ -338,18 +333,12 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                                 incomming.push((ns, import.loc.clone()));
                             }
                         }
-                        if short_names {
-                            flat.short_names.insert(import.name.clone());
-                        }
                     } else {
                         for (local, import_as) in &import.local {
                             debug!("      < {}", local);
                             let mut nn = import.name.clone();
                             nn.push(local.clone());
                             incomming.push((nn.clone(), import.loc.clone()));
-                            if short_names {
-                                flat.short_names.insert(nn.clone());
-                            }
                             if let Some(import_as) = import_as {
                                 flat.aliases.insert(nn, import_as.clone());
                             }

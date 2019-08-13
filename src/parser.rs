@@ -986,6 +986,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
             Rule::ptr => {
                 ptr.push(Pointer{
                     tags: std::mem::replace(&mut tags, HashMap::new()),
+                    loc,
                 });
             }
             Rule::key_mut  => {
@@ -1035,6 +1036,7 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
             Rule::ptr => {
                 ptr.push(Pointer{
                     tags: std::mem::replace(&mut tags, HashMap::new()),
+                    loc,
                 });
             }
             Rule::key_mut  => {

@@ -92,7 +92,8 @@ pub struct Include {
 
 #[derive(Clone, Debug)]
 pub struct Pointer {
-    pub tags:       HashMap<String, Location>,
+    pub loc:    Location,
+    pub tags:   HashMap<String, Location>,
 }
 
 #[derive(Clone, Debug)]

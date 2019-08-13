@@ -1,6 +1,7 @@
 using libc::stdint::{uint8_t};
 using libc::stdio::{printf, snprintf};
 using libc::string::{memset};
+using libc::errno::{errno};
 
 export struct Error {
     uint8_t error;
@@ -8,10 +9,26 @@ export struct Error {
     char    locations[255];
 };
 
+
+
+pub fn mark_moved(Error move mut *err) {
+}
+
+pub macro perror(err, text) {
+    (err)->error = (err)->error || errno || EINVAL;
+    snprintf((err)->description, sizeof((err)->description), text);
+    memset((err)->locations, 0, sizeof((err)->locations));
+    snprintf(
+            (char mut*)(&((err)->locations)) + strlen((err)->locations),
+            sizeof((err)->locations) - strlen((err)->locations),
+            "\n  %s:%d", __FILE__, __LINE__);
+    mark_moved(err);
+}
+
 pub macro ECHECK() {
     if (err->error != 0) {
         snprintf(
-                (char*)(&((err)->locations)) + strlen((err)->locations),
+                (char mut*)(&((err)->locations)) + strlen((err)->locations),
                 sizeof((err)->locations) - strlen((err)->locations),
                 "\n  %s:%d", __FILE__, __LINE__);
         goto exit ;
@@ -22,14 +39,14 @@ pub macro try(expr) {
     expr;
     if (err->error != 0) {
         snprintf(
-                (char*)&((err)->locations) + strlen((err)->locations),
+                (char mut*)&((err)->locations) + strlen((err)->locations),
                 sizeof((err)->locations) - strlen((err)->locations),
                 "\n  %s:%d", __FILE__, __LINE__);
         goto exit ;
     }
 }
 
-pub macro EFAIL(text) {
+pub macro FAIL(text) {
     (err)->error = (err)->error || errno || EINVAL;
     snprintf((err)->description, sizeof((err)->description), text);
     memset((err)->locations, 0, sizeof((err)->locations));
@@ -47,17 +64,17 @@ pub macro throw(text) {
     goto exit ;
 }
 
-pub macro EFAILV(text, ...) {
+pub macro FAILV(text, ...) {
     (err)->error = (err)->error || errno || EINVAL;
     snprintf((err)->description, sizeof((err)->description), text, __VA_ARGS__ );
     memset((err)->locations, 0, sizeof((err)->locations));
     ECHECK;
 }
 
-export macro EABORT() {
+export macro ABORT() {
     if (err->error != 0) {
         snprintf(
-                (char*)&((err)->locations) + strlen((err)->locations),
+                (char mut*)&((err)->locations) + strlen((err)->locations),
                 sizeof((err)->locations) - strlen((err)->locations),
                 "\n  %s:%d", __FILE__, __LINE__);
         fprintf(stderr, "%s%s\n", err->description, err->locations);
