@@ -25,7 +25,8 @@ enum Lifetime {
     Pointer(usize),
     Function {
         ret:  Option<Box<Lifetime>>,
-        args: Vec<ast::NamedArg>
+        args: Vec<ast::NamedArg>,
+        vararg: bool,
     },
     Moved{
         moved_here:   ast::Location,
@@ -62,6 +63,7 @@ impl std::fmt::Display for Lifetime {
 #[derive(Clone)]
 struct Storage {
     name:           Name,
+    typ:            Option<ast::Typed>,
     tags:           HashMap<String, ast::Location>,
     stored_here:    ast::Location,
     changed_here:   Option<ast::Location>,
@@ -115,9 +117,10 @@ impl Stack {
         return None;
     }
 
-    fn local(&mut self, name: Name, loc: ast::Location, tags: &HashMap<String, ast::Location>) -> usize {
+    fn local(&mut self, typ: Option<ast::Typed>, name: Name, loc: ast::Location, tags: &HashMap<String, ast::Location>) -> usize {
         let ptr  = self.pointers.len();
         self.pointers.push(Storage{
+            typ,
             name:           name.clone(),
             stored_here:    loc,
             value:          Lifetime::Uninitialized,
@@ -212,35 +215,76 @@ impl Stack {
 
 
     fn check_call_arg(&mut self, stack: &ast::NamedArg, callsite: &mut ast::Expression) {
+        if let Lifetime::Static = self.check_expr(callsite, Access::Value) {
+            return;
+        }
 
-        // first step is to take the expression by value
-        // " int*a; fn(a); " means the value a is copied into fn
-
-        let mut callsite_ptr = match { self.check_expr(callsite, Access::Value) } {
-                Lifetime::Pointer(to) => {
-                    to
-                },
-                e => {
-                    // if the value is not a pointer, do no checks,
-                    // unless we actually expected a pointer
-                    if stack.typed.ptr.len() > 0 {
-                        error!("incompatible argument\n{}",
-                               parser::make_error(&callsite.loc(),
-                               format!("expected a pointer instead of {}", e)));
-                        ABORT.store(true, Ordering::Relaxed);
-                    }
-
-                    return;
-                }
-        };
-
-        // if the value was a pointer, this is now where it pointed at
+        let mut callsite_ptr     = self.check_expr(callsite, Access::Storage).as_pointer();
         let mut callsite_storage = &mut self.pointers[callsite_ptr];
 
-        for stack_ptr in stack.typed.ptr.iter().rev() {
+        for (i, stack_ptr) in stack.typed.ptr.iter().rev().enumerate() {
+
             // stack_ptr is now the last pointer in the functions stack argument
             // i.e it is "mut*" if the arg was "int ** mut* a"
             // we dig deeper into the callsite as we move right to left
+
+            callsite_ptr = match &callsite_storage.value {
+                Lifetime::Pointer(to) => {
+                    *to
+                },
+                Lifetime::Uninitialized => {
+                    error!("uninitialized pointer arg passed as safe pointer\n{}\n{}",
+                           parser::make_error(&callsite.loc(), "this pointer must be safe"),
+                           parser::make_error(&callsite_storage.stored_here, "but this value is unitialized"),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
+                },
+                Lifetime::Dropped{stored_here, dropped_here} => {
+                    error!("passing dropped value as safe pointer {}\n{}\n{}\n{}",
+                           callsite_storage.name,
+                           parser::make_error(&callsite.loc(),"used here"),
+                           parser::make_error(&stored_here,   "points at this storage location"),
+                           parser::make_error(&dropped_here,  "which was dropped here"),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
+                },
+                Lifetime::Moved{moved_here} => {
+                    error!("passing moved value '{}' as safe pointer \n{}\n{}",
+                           callsite_storage.name,
+                           parser::make_error(&callsite.loc(), "use of moved value"),
+                           parser::make_error(&moved_here, "was moved here"),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
+                },
+                Lifetime::Function{..} => {
+                    error!("ICE: trying to pass function as pointer\n{}",
+                           parser::make_error(&callsite.loc(), "cannot determine lifetime of expression"),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
+                },
+                Lifetime::Static => {
+                    if let Some(change) = &callsite_storage.changed_here {
+                        error!("incompatible argument\n{}\n{}\n{}",
+                               parser::make_error(&callsite.loc(), "this expression has a different pointer depth"),
+                               parser::make_error(&change, "value assigned here might not be a pointer"),
+                               parser::make_error(&stack.typed.loc, format!("expected at depth {} here", i)),
+                               );
+                    } else {
+                        error!("incompatible argument\n{}\n{}",
+                               parser::make_error(&callsite.loc(), "this value has a different pointer depth"),
+                               parser::make_error(&stack.typed.loc, "expected this type"),
+                               );
+                    }
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
+                }
+            };
+            callsite_storage = &mut self.pointers[callsite_ptr];
+
 
             if stack_ptr.tags.contains_key("mutable") && !callsite_storage.tags.contains_key("mutable") {
                 error!("const pointer cannot be used as mut pointer in function call\n{}\n{}",
@@ -249,6 +293,21 @@ impl Stack {
                        );
                 ABORT.store(true, Ordering::Relaxed);
                 return;
+            }
+
+            if callsite_storage.tags.contains_key("unavailable") {
+                error!("cannot use unavailable local '{}'\n{}",
+                       callsite_storage.name,
+                       parser::make_error(&callsite.loc(),
+                       format!("'{}' is unavailable here and must be made available with ? first", callsite_storage.name)),
+                       );
+                ABORT.store(true, Ordering::Relaxed);
+                return;
+
+            }
+
+            if let Some(tagloc) = stack_ptr.tags.get("via") {
+                callsite_storage.tags.insert("unavailable".to_string(), callsite.loc().clone());
             }
 
             if let Some(tagloc) = stack_ptr.tags.get("move") {
@@ -290,65 +349,6 @@ impl Stack {
                 ABORT.store(true, Ordering::Relaxed);
                 return;
             }
-
-
-            callsite_ptr = match &callsite_storage.value {
-                Lifetime::Pointer(to) => {
-                    *to
-                },
-                Lifetime::Uninitialized => {
-                    error!("uninitialized pointer arg passed as safe pointer\n{}\n{}",
-                           parser::make_error(&callsite.loc(), "this pointer must be safe"),
-                           parser::make_error(&callsite_storage.stored_here, "but this value is unitialized"),
-                           );
-                    ABORT.store(true, Ordering::Relaxed);
-                    return;
-                },
-                Lifetime::Dropped{stored_here, dropped_here} => {
-                    error!("passing dropped value as safe pointer {}\n{}\n{}\n{}",
-                           callsite_storage.name,
-                           parser::make_error(&callsite.loc(),     "used here"),
-                           parser::make_error(&stored_here,   "points at this storage location"),
-                           parser::make_error(&dropped_here,  "which was dropped here"),
-                           );
-                    ABORT.store(true, Ordering::Relaxed);
-                    return;
-                },
-                Lifetime::Moved{moved_here} => {
-                    error!("passing moved value '{}' as safe pointer \n{}\n{}",
-                           callsite_storage.name,
-                           parser::make_error(&callsite.loc(), "use of moved value"),
-                           parser::make_error(&moved_here, "was moved here"),
-                           );
-                    ABORT.store(true, Ordering::Relaxed);
-                    return;
-                },
-                Lifetime::Function{..} => {
-                    error!("ICE: trying to pass function as pointer\n{}",
-                           parser::make_error(&callsite.loc(), "cannot determine lifetime of expression"),
-                           );
-                    ABORT.store(true, Ordering::Relaxed);
-                    return;
-                },
-                Lifetime::Static => {
-                    if let Some(change) = &callsite_storage.changed_here {
-                        error!("incompatible argument\n{}\n{}\n{}",
-                               parser::make_error(&callsite.loc(), "this expression has a different pointer depth"),
-                               parser::make_error(&change, "value assigned here might not be a pointer"),
-                               parser::make_error(&stack.typed.loc, "expected this type"),
-                               );
-                    } else {
-                        error!("incompatible argument\n{}\n{}",
-                               parser::make_error(&callsite.loc(), "this value has a different pointer depth"),
-                               parser::make_error(&stack.typed.loc, "expected this type"),
-                               );
-                    }
-                    ABORT.store(true, Ordering::Relaxed);
-                    return;
-                }
-            };
-            callsite_storage = &mut self.pointers[callsite_ptr];
-
         }
     }
 
@@ -357,6 +357,10 @@ impl Stack {
         let exprloc = expr.loc().clone();
         match expr {
             ast::Expression::Name(name) => {
+                if name.name.is_absolute() && name.name.0[1] == "ext" {
+                    //TODO
+                    return Lifetime::Static;
+                }
                 self.check_name(&name.name, &name.loc, access)
             }
             ast::Expression::MemberAccess {lhs, rhs, op, ..} => {
@@ -383,16 +387,44 @@ impl Stack {
                 Lifetime::Static
             },
             ast::Expression::Call { name, args: callargs, loc: callloc, .. } => {
-                if name.name.is_absolute() && name.name.0[1] == "libc" {
+                if name.name.is_absolute() && name.name.0[1] == "ext" {
                     //TODO
                     return Lifetime::Static;
                 }
                 match self.check_name(&name.name, &name.loc, Access::Value) {
-                    Lifetime::Function{ret, args} => {
+                    Lifetime::Function{ret, args, vararg} => {
                         debug!("    checking function call {}", name.name);
-                        if args.len() != callargs.len()  {
+
+
+                        // generated arguments
+                        for i in 0..args.len() {
+                            if args[i].tags.contains_key("_callsite_file") {
+                                if i > callargs.len() { break }
+                                callargs.insert(i, Box::new(ast::Expression::Literal{
+                                    loc: callloc.clone(),
+                                    v:   "__FILE__".into(),
+                                }));
+                            } else if args[i].tags.contains_key("_callsite_line") {
+                                if i > callargs.len() { break }
+                                callargs.insert(i, Box::new(ast::Expression::Literal{
+                                    loc: callloc.clone(),
+                                    v:   "__LINE__".into(),
+                                }));
+                            } else if args[i].tags.contains_key("_callsite_function") {
+                                if i > callargs.len() { break }
+                                callargs.insert(i, Box::new(ast::Expression::Literal{
+                                    loc: callloc.clone(),
+                                    v:   "__FUNCTION__".into(),
+                                }));
+                            }
+                        }
+
+                        if (!vararg && args.len() != callargs.len()) | (vararg && args.len() > callargs.len())   {
                             error!("call argument count mismatch\n{}",
-                                   parser::make_error(&name.loc, format!("this function expects {} arguments", args.len()))
+                                   parser::make_error(&name.loc,
+                                        format!("this function expects {} arguments, but you passed {}",
+                                                args.len(),
+                                                callargs.len() ))
                                    );
                             ABORT.store(true, Ordering::Relaxed);
                             return Lifetime::Uninitialized;
@@ -412,7 +444,7 @@ impl Stack {
                                         let tags = &self.pointers[return_scope_ptr].tags.clone();
                                         return_scope_lf = self.pointers[return_scope_ptr].value.clone();
 
-                                        let mut callsite_ptr = self.local(Name::from(
+                                        let mut callsite_ptr = self.local(None, Name::from(
                                                 &format!("function call return {} at {:?}", name.name, exprloc.span.start_pos().line_col())),
                                                 exprloc.clone(),
                                                 &tags);
@@ -457,12 +489,20 @@ impl Stack {
                 //TODO
                 self.check_expr(expr, access)
             }
-            ast::Expression::UnaryPost {expr, ..} => {
-                Lifetime::Uninitialized
+            ast::Expression::UnaryPost {expr, ref mut op, ..}=> {
+                self.check_expr(expr, access)
             }
             ast::Expression::UnaryPre {expr, op,..} => {
                 if op == "&" {
-                    self.check_expr(expr, Access::Storage)
+
+                    let lf = self.check_expr(expr, Access::Storage);
+                    let temp_ptr = self.local(None, Name::from(
+                            &format!("temporary access at {:?}", expr.loc().span.start_pos().line_col())),
+                            expr.loc().clone(),
+                            &HashMap::new());
+                    self.write(temp_ptr, lf, &expr.loc());
+                    Lifetime::Pointer(temp_ptr)
+
                 } else if op == "*" {
                     let v = self.check_expr(expr, Access::Value);
                     match v {
@@ -492,10 +532,34 @@ impl Stack {
                 }
             }
             ast::Expression::StructInit {loc, typed, fields} => {
-                Lifetime::Uninitialized
+                let mut all_static = true;
+                for (_, field) in fields {
+                    if let Lifetime::Static = self.check_expr(field, Access::Value)  {
+                    } else {
+                        all_static = false
+                    }
+                }
+
+                if all_static {
+                    Lifetime::Static
+                } else {
+                    Lifetime::Uninitialized
+                }
             }
             ast::Expression::ArrayInit {fields, ..} => {
-                Lifetime::Uninitialized
+                let mut all_static = true;
+                for field in fields {
+                    if let Lifetime::Static = self.check_expr(field, Access::Value)  {
+                    } else {
+                        all_static = false
+                    }
+                }
+
+                if all_static {
+                    Lifetime::Static
+                } else {
+                    Lifetime::Uninitialized
+                }
             }
         }
     }
@@ -515,6 +579,8 @@ impl Stack {
                         let storage = self.pointers.get_mut(to).unwrap();
                         if mark == "safe" {
                             storage.tags.remove("unsafe");
+                        } else if mark == "available" {
+                            storage.tags.remove("unavailable");
                         } else {
                             storage.tags.insert(mark.to_string(), loc.clone());
                         }
@@ -532,6 +598,72 @@ impl Stack {
                 self.check_block(block);
                 self.pop(&block.end);
             }
+            ast::Statement::Via{body, expr, loc} => {
+                let lhs_lf = self.check_expr(expr, Access::Value);
+                match lhs_lf {
+                    Lifetime::Pointer(to)  => {
+                        let storage = self.pointers.get_mut(to).unwrap();
+                        storage.tags.remove("unavailable");
+
+                        let typ = match &storage.typ {
+                            None => {
+                                error!("untyped storage location\n{}",
+                                       parser::make_error(expr.loc(), "we cannot desugar unknown types"),
+                                       );
+                                ABORT.store(true, Ordering::Relaxed);
+                                return;
+                            },
+                            Some(t) => t.name.clone(),
+                        };
+                        let mut typename = typ.0.clone();
+
+                        if typename[1] == "ext" {
+                            error!("via is impossible for ext type '{}'\n{}",
+                                   typ,
+                                   parser::make_error(expr.loc(), "cannot desugar ext type"),
+                                   );
+                            ABORT.store(true, Ordering::Relaxed);
+                            return;
+
+                        }
+
+                        typename.pop();
+                        typename.push("via".to_string());
+
+                        let nucall = ast::Expression::Call{
+                            loc:    loc.clone(),
+                            name:   ast::Typed{
+                                loc: storage.typ.as_ref().unwrap().loc.clone(),
+                                name: Name(typename),
+                                ptr: Vec::new(),
+                            },
+                            args:   vec![
+                                expr.clone()
+                            ],
+                        };
+
+                        let mut nustm = ast::Statement::Cond{
+                            op:         "if".to_string(),
+                            expr:       Some(nucall),
+                            body:       ast::Block{
+                                statements: vec![*body.clone()],
+                                end: loc.clone(),
+                            },
+                        };
+                        self.check_stm(&mut nustm);
+
+                        *stm = nustm;
+                    },
+                    _ => {
+                        error!("lvalue is not a pointer\n{}",
+                               parser::make_error(expr.loc(), "via's are pointers"),
+                               );
+                        ABORT.store(true, Ordering::Relaxed);
+                        return;
+                    },
+                };
+
+            },
             ast::Statement::Cond{body, expr,..}=> {
                 self.push("if");
                 if let Some(expr) = expr {
@@ -560,7 +692,7 @@ impl Stack {
             ast::Statement::Var{name, assign, tags, loc, ..} => {
                 let mut tags = tags.clone();
                 tags.insert("stack".to_string(), loc.clone());
-                let ptr = self.local(Name::from(&*name), loc.clone(), &tags);
+                let ptr = self.local(None, Name::from(&*name), loc.clone(), &tags);
 
                 if let Some(assign) = assign {
                     let rhs_rf = self.check_expr(assign, Access::Value);
@@ -634,6 +766,7 @@ impl Stack {
             },
             ast::Statement::Goto{..}
             | ast::Statement::Label{..}
+            | ast::Statement::Break{..}
             => {},
         }
     }
@@ -650,7 +783,7 @@ pub fn check(md: &mut flatten::Module) {
 
     for (name,loc) in &md.c_names {
         let mut tags = HashMap::new();
-        let ptr = stack.local(name.clone(), loc.clone(), &tags);
+        let ptr = stack.local(None, name.clone(), loc.clone(), &tags);
         stack.write(ptr, Lifetime::Static, &loc);
     }
 
@@ -662,18 +795,18 @@ pub fn check(md: &mut flatten::Module) {
         match &mut local.def {
             ast::Def::Macro{args, body} => {
                 let localname = Name::from(&local.name);
-                let ptr = stack.local(localname.clone(), local.loc.clone(), &HashMap::new());
+                let ptr = stack.local(None, localname.clone(), local.loc.clone(), &HashMap::new());
                 stack.write(ptr, Lifetime::Static, &local.loc);
             },
             ast::Def::Static{typed, expr, storage, tags} => {
                 let localname = Name::from(&local.name);
-                let ptr = stack.local(localname.clone(), local.loc.clone(), tags);
+                let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), tags);
                 stack.write(ptr, Lifetime::Static, &local.loc);
             },
-            ast::Def::Function{body, args, ret, ..} => {
+            ast::Def::Function{body, args, ret, vararg, ..} => {
 
                 let localname = Name::from(&local.name);
-                let ptr = stack.local(localname.clone(), local.loc.clone(), &HashMap::new());
+                let ptr = stack.local(None, localname.clone(), local.loc.clone(), &HashMap::new());
 
                 let ret = match ret {
                     None => None,
@@ -686,6 +819,7 @@ pub fn check(md: &mut flatten::Module) {
                                 tags.insert("borrowed".to_string(), ret.typed.loc.clone());
                             }
                             let storage = stack.local(
+                                Some(ret.typed.clone()),
                                 Name::from(&format!("return value of {}", local.name)),
                                 ret.typed.loc.clone(), &tags);
                             stack.write(storage, rlf, &ret.typed.loc.clone());
@@ -702,14 +836,17 @@ pub fn check(md: &mut flatten::Module) {
                 for arg in args.iter() {
                     let argname = Name::from(&arg.name);
 
-                    let mut storage = stack.local(argname.clone(), arg.loc.clone(), &arg.tags);
+                    let mut storage = stack.local(Some(arg.typed.clone()), argname.clone(), arg.loc.clone(), &arg.tags);
 
                     for ast_ptr in arg.typed.ptr.iter().rev() {
                         let mut body_tags = ast_ptr.tags.clone();
                         if !body_tags.contains_key("move") {
                             body_tags.insert("borrowed".to_string(), arg.loc.clone());
                         }
-                        let site = stack.local(Name::from(&format!("__builtin::pointer_to_callsite::{}", storage)), arg.loc.clone(), &body_tags);
+                        let site = stack.local(
+                            Some(arg.typed.clone()),
+                            Name::from(&format!("__builtin::pointer_to_callsite::{}", storage)), arg.loc.clone(), &body_tags
+                        );
                         stack.write(storage, Lifetime::Pointer(site), &arg.loc);
                         storage = site;
 
@@ -718,19 +855,21 @@ pub fn check(md: &mut flatten::Module) {
                                 "mutable" => {}
                                 "unsafe" => {}
                                 "move" => {}
+                                "via" => {}
                                 _ => {
-                                    error!("undefined mark '{}'\n{}",
+                                    warn!("undefined mark '{}'\n{}",
                                            mark,
                                            parser::make_error(loc, "the meaning of this mark is not (yet) known"),
                                            );
-                                    ABORT.store(true, Ordering::Relaxed);
                                 }
                             }
                         }
 
                     }
 
-                    let site = stack.local(Name::from(&format!("__builtin::callstack::{}", storage)), arg.loc.clone(), &arg.tags);
+                    let site = stack.local(Some(arg.typed.clone()),
+                        Name::from(&format!("__builtin::callstack::{}", storage)), arg.loc.clone(), &arg.tags
+                    );
                     stack.write(storage, Lifetime::Pointer(site), &arg.loc);
                 }
 
@@ -740,6 +879,7 @@ pub fn check(md: &mut flatten::Module) {
                 stack.write(ptr, Lifetime::Function{
                     ret,
                     args: args.clone(),
+                    vararg: *vararg,
                 }, &local.loc);
 
                 stack.pop(&body.end);

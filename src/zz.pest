@@ -31,6 +31,7 @@ keyword    = {
     key_else    |
     key_return  |
     key_mark    |
+    key_break   |
     key_goto
 }
 
@@ -45,6 +46,7 @@ key_else    = { "else" }
 key_return  = { "return" }
 key_mark    = { "is" }
 key_goto    = { "goto" }
+key_break   = { "break" }
 
 // type identifiers
 
@@ -66,16 +68,16 @@ named_typei = _{ type_part  ~ named_typei | ident }
 
 // declarations
 
-fn_args     = { named_type ~ ( "," ~ named_type )* ~ ","? }
+fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
 function    = { ( exported | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 
-importname  = ${ ident ~ ( "::" ~ (local | importname))? }
+cimport     = ${ "<" ~ (!">" ~ ANY)* ~ ">" }
+importname  = ${ ( ident | cimport ) ~ ( "::" ~ (local | importname))? }
 import      = { exported? ~  "using" ~ importname ~  ";"? }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
-include     = { "#include" ~ (syspath | localpath) }
 
 pp          = { ppif | ppelse | ppelif | ppendif }
 ppif        = ${ "#if" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
@@ -141,13 +143,13 @@ preop   = { "!!" | "!" | "~" | "++" | "--" }
 postop  = { "++" | "--" }
 
 term    = _{
-    call | number_literal | char_literal | string_literal | struct_init | array_init | member_access |
-    unarypost | unarypre | ptr_access | array_access | takeref | deref | cast | type_name | "(" ~ expr ~ ")"
+    unarypost | call | number_literal | char_literal | string_literal | struct_init | array_init | member_access |
+    unarypre | ptr_access | array_access | takeref | deref | cast | type_name | "(" ~ expr ~ ")"
 }
 expr    = { term ~ (infix ~ term) * }
 termish  = !{ term }
 
-unarypost       = { ( type_name | "(" ~ expr ~ ")") ~ postop}
+unarypost       = { ( type_name | "(" ~ expr ~ ")") ~ postop }
 unarypre        = { preop  ~ termish}
 deref           = { "*"  ~ termish}
 takeref         = { "&"  ~ termish}
@@ -167,7 +169,7 @@ lhs         = {
     member_access | unarypost | unarypre | ptr_access | array_access | deref | type_name | "(" ~ expr ~ ")"
 }
 assign      = { lhs ~ assignop ~ expr}
-call        = { ( type_name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")" }
+call        = { ( type_name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")"  }
 call_args   = { expr ~ ( "," ~ expr )* }
 
 array       = { "[" ~ expr ~ "]" }
@@ -179,9 +181,11 @@ if_stm      = { "if"  ~ "(" ~ expr  ~ ")" ~ block }
 elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
 else_stm    = { "else" ~  block }
 return_stm  = { key_return ~ expr_stm? }
+break_stm   = { key_break }
 goto_stm    = { "goto" ~ ident }
 label       = ${ ident ~ ":"}
 mark_stm    = { lhs ~ "is" ~ ident }
+via_stm     = { lhs ~ "?" ~ (term_statement | block) ~ ";" }
 
 expr_stm = _{
     vardecl |
@@ -189,21 +193,26 @@ expr_stm = _{
     expr
 }
 
+
+term_statement = _{
+    mark_stm   |
+    goto_stm   |
+    return_stm |
+    break_stm  |
+    expr_stm
+}
+
 statement = _{
-    pp          |
+    via_stm     |
     for_stm     |
     if_stm      |
     else_stm    |
     elseif_stm  |
     block       |
-    (mark_stm  ~ ";")  |
-    (goto_stm  ~ ";")   |
-    (return_stm ~ ";")  |
-    (expr_stm ~ ";") |
-    label
+    (term_statement ~ ";")
 }
 
-block = { "{" ~ (statement)* ~ expr_stm? ~ "}" }
+block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" }
 
 
 
@@ -217,7 +226,6 @@ file        = { SOI ~ (struct_d
                         | function
                         | import
                         | constant
-                        | include
                         | pp
                         | comment
                         | imacro

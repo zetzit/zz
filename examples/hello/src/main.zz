@@ -1,5 +1,5 @@
+using <stdint.h>::{uint32_t};
 using identity::{some_helper};
-using libc::stdint::{uint32_t};
 using aye;
 using error;
 using fl;

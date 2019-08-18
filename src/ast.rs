@@ -62,6 +62,7 @@ pub enum Def {
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
         body:       Block,
+        vararg:     bool,
     },
     Struct {
         fields:     Vec<Field>,
@@ -88,6 +89,7 @@ pub struct Local {
 pub struct Include {
     pub expr:   String,
     pub loc:    Location,
+    pub fqn:    Name,
 }
 
 #[derive(Clone, Debug)]
@@ -108,7 +110,6 @@ pub struct Module {
     pub name:       Name,
     pub source:     PathBuf,
     pub locals:     Vec<Local>,
-    pub includes:   Vec<Include>,
     pub imports:    Vec<Import>,
     pub sources:    HashSet<PathBuf>,
 }
@@ -235,6 +236,9 @@ pub enum Statement {
         loc:        Location,
         expr:       Expression,
     },
+    Break {
+        loc:        Location,
+    },
     Return {
         loc:        Location,
         expr:       Option<Expression>,
@@ -257,6 +261,11 @@ pub enum Statement {
         op:         String,
         expr:       Option<Expression>,
         body:       Block,
+    },
+    Via {
+        loc:        Location,
+        expr:       Box<Expression>,
+        body:       Box<Statement>,
     },
     Block(Box<Block>),
 }

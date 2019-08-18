@@ -1,3 +1,4 @@
+use super::project::{Project};
 use std::fs;
 use super::flatten;
 use super::ast;
@@ -15,6 +16,7 @@ pub struct CFile {
 }
 
 pub struct Emitter{
+    cxx:            bool,
     p:              String,
     f:              fs::File,
     module:         flatten::Module,
@@ -23,20 +25,36 @@ pub struct Emitter{
     cur_loc:        Option<ast::Location>,
 }
 
+
+fn outname(project: &Project, module: &flatten::Module, header: bool) -> (bool, String) {
+    let mut cxx = false;
+    if let Some(std) = &project.std {
+        if std.contains("c++") {
+            cxx = true;
+        }
+    }
+
+    if header {
+        let mut ns = module.name.0.clone();
+        ns.remove(0);
+        (cxx, format!("target/include/{}.h", ns.join("_")))
+    } else if cxx {
+        (cxx, format!("target/zz/{}.cpp", module.name))
+    } else {
+        (cxx, format!("target/zz/{}.c", module.name))
+    }
+}
+
 impl Emitter {
-    pub fn new(module: flatten::Module, header: bool) -> Self {
-        let p = if header {
-            let mut ns = module.name.0.clone();
-            ns.remove(0);
-            format!("target/include/{}.h", ns.join("_"))
-        } else {
-            format!("target/zz/{}.c", module.name)
-        };
+    pub fn new(project: &Project, module: flatten::Module, header: bool) -> Self {
+
+        let (cxx, p) = outname(project, &module, header);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
 
 
         Emitter{
+            cxx,
             p,
             f,
             header,
@@ -74,7 +92,7 @@ impl Emitter {
             return an.clone();
         }
 
-        if s.0[1] == "libc" {
+        if s.0[1] == "ext" {
             return s.0.last().unwrap().clone();
         }
 
@@ -178,11 +196,24 @@ impl Emitter {
 
 
     pub fn emit_include(&mut self, i: &ast::Include) {
+        trace!("emit include {:?}", i.fqn);
         self.emit_loc(&i.loc);
+
+        if self.cxx && i.expr.contains(".h>") {
+            write!(self.f, "extern \"C\" {{\n").unwrap();
+        }
         write!(self.f, "#include {}\n", i.expr).unwrap();
+        if self.cxx && i.expr.contains(".h>") {
+            write!(self.f, "}}\n").unwrap();
+        }
+
+        if i.fqn.len() > 3 {
+            write!(self.f, "using namespace {} ;\n", i.fqn.0[3..].join("::")).unwrap();
+        }
     }
 
     pub fn emit_macro(&mut self, v: &ast::Local) {
+        self.emit_loc(&v.loc);
         self.inside_macro = true;
         let (args, body) = match &v.def {
             ast::Def::Macro{args, body, ..} => (args, body),
@@ -306,8 +337,8 @@ impl Emitter {
     }
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {
-        let (ret, args, _body) = match &ast.def {
-            ast::Def::Function{ret, args, body} => (ret, args, body),
+        let (ret, args, _body, vararg) = match &ast.def {
+            ast::Def::Function{ret, args, body, vararg} => (ret, args, body, *vararg),
             _ => unreachable!(),
         };
 
@@ -339,6 +370,9 @@ impl Emitter {
         write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
 
         self.function_args(args);
+        if vararg {
+            write!(self.f, ", ...").unwrap();
+        }
         write!(self.f, ");\n").unwrap();
 
         // declare the short local name
@@ -367,6 +401,9 @@ impl Emitter {
 
         write!(self.f, "{} (", self.to_local_name(&Name::from(&ast.name))).unwrap();
         self.function_args(args);
+        if vararg {
+            write!(self.f, ", ...").unwrap();
+        }
         write!(self.f, ")").unwrap();
 
         write!(self.f, "{{").unwrap();
@@ -390,8 +427,8 @@ impl Emitter {
     }
 
     pub fn emit_def(&mut self, ast: &ast::Local) {
-        let (ret, args, body) = match &ast.def {
-            ast::Def::Function{ret, args, body} => (ret, args, body),
+        let (ret, args, body, vararg) = match &ast.def {
+            ast::Def::Function{ret, args, body, vararg} => (ret, args, body, *vararg),
             _ => unreachable!(),
         };
 
@@ -428,6 +465,9 @@ impl Emitter {
         }
 
         self.function_args(args);
+        if vararg {
+            write!(self.f, ", ...").unwrap();
+        }
         write!(self.f, ")\n").unwrap();
         self.emit_zblock(&body, true);
         write!(self.f, "\n").unwrap();
@@ -436,6 +476,10 @@ impl Emitter {
     fn emit_statement(&mut self, stm: &ast::Statement) {
         match stm {
             ast::Statement::Mark{..} => {},
+            ast::Statement::Break{loc} => {
+                self.emit_loc(&loc);
+                write!(self.f, "break").unwrap();
+            },
             ast::Statement::Goto{loc, label} => {
                 self.emit_loc(&loc);
                 write!(self.f, "goto {}", label).unwrap();
@@ -482,6 +526,9 @@ impl Emitter {
                 }
                 write!(self.f, ")").unwrap();
                 self.emit_zblock(body, true);
+            },
+            ast::Statement::Via{..}  => {
+                panic!("ICE: via in emitter");
             },
             ast::Statement::Cond{expr, body, op}  => {
                 write!(self.f, "  {} ", op).unwrap();
@@ -620,7 +667,7 @@ impl Emitter {
                 self.emit_loc(&loc);
                 write!(self.f, "    {}", v).unwrap();
             }
-            ast::Expression::Call { loc, name, args } => {
+            ast::Expression::Call { loc, name, args} => {
                 self.emit_loc(&loc);
                 write!(self.f, "    {} (", self.to_local_name(&name.name)).unwrap();
 

@@ -26,6 +26,7 @@ pub struct Artifact {
 pub struct Project {
     pub version:    String,
     pub name:       String,
+    pub std:        Option<String>,
     pub cincludes:  Option<Vec<String>>,
     pub cobjects:   Option<Vec<String>>,
     pub cflags:     Option<Vec<String>>,
@@ -40,9 +41,9 @@ pub enum Dependency {
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub project:    Project,
-    pub artifacts:  Option<Vec<Artifact>>,
-    pub dependencies: Option<HashMap<String, Value>>,
+    pub project:        Project,
+    pub artifacts:      Option<Vec<Artifact>>,
+    pub dependencies:   Option<HashMap<String, Value>>,
 }
 
 pub fn init() {

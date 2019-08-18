@@ -179,10 +179,10 @@ fn build(tests: bool) {
     let mut cfiles = HashMap::new();
     for mut module in flat {
         lifetimes::check(&mut module);
-        let header  = emitter::Emitter::new(module.clone(), true);
+        let header  = emitter::Emitter::new(&project.project, module.clone(), true);
         let header  = header.emit();
 
-        let em = emitter::Emitter::new(module, false);
+        let em = emitter::Emitter::new(&project.project, module, false);
         let cf = em.emit();
         cfiles.insert(cf.name.clone(), cf);
     }

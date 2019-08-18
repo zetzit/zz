@@ -64,6 +64,12 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
             deps.extend(block_deps(body));
             deps
         },
+        ast::Statement::Via{expr, body,..} => {
+            let mut deps = Vec::new();
+            deps.extend(expr_deps(expr));
+            deps.extend(stm_deps(body));
+            deps
+        },
         ast::Statement::Assign{lhs, rhs, ..}  => {
             let mut deps = Vec::new();
             deps.extend(expr_deps(lhs));
@@ -90,7 +96,10 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
             } else {
                 Vec::new()
             }
-        }
+        },
+        ast::Statement::Break{..} => {
+            Vec::new()
+        },
     }
 }
 
@@ -209,7 +218,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             let local_name = module_name.pop().unwrap();
 
 
-            if module_name.0[1] == "libc" {
+            if module_name.0[1] == "ext" {
                 //TODO
                 collected.0.insert(name.clone(), Local{
                     deps: Vec::new(),
@@ -256,6 +265,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     }
                     for arg in args {
                         deps.push(arg.typed.name.clone());
+                        for ptr in &arg.typed.ptr {
+                            if ptr.tags.contains_key("via") {
+                                let mut v = arg.typed.name.clone();
+                                v.pop();
+                                v.push("via".to_string());
+                                deps.push(v);
+                            }
+                        }
+
                     }
                     deps.extend(block_deps(body));
                 }
@@ -294,7 +312,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             match all_modules.get(&import.name) {
                 None => {
                     debug!("    < none {}", import.name);
-                    if import.name.0[1] == "libc" {
+                    if import.name.0[1] == "ext" {
                         //md.includes.push(ast::Include{
                         //    loc: import.loc.clone(),
                         //    expr: format!("<{}.h>", import.name.0[2..].join("/")),
@@ -352,14 +370,6 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
 
     let mut included = HashSet::new();
-    for inc in &md.includes {
-        if included.insert(inc.expr.clone()) {
-            flat.d.push(D::Include(inc.clone()));
-        }
-    }
-
-
-
     // dependency sort
     let mut sorted = Vec::new();
     let mut sorted_mark = HashSet::new();
@@ -383,10 +393,13 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         if let Some(ast) = &l.ast {
             flat.d.push(D::Local(ast.clone()));
         } else {
-            assert!(name.0[1] == "libc");
+            assert!(name.0[1] == "ext");
+            let mut fqn = name.0.clone();
+            fqn.pop();
             let inc = ast::Include{
-                expr: format!("<{}.h>", name.0[2..name.len()-1].join("/")),
+                expr: name.0[2].clone(),
                 loc:  l.in_scope_here.clone(),
+                fqn:  Name(fqn),
             };
 
             if included.insert(inc.expr.clone()) {

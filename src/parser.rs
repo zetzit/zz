@@ -112,6 +112,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut args = Vec::new();
                 let mut ret  = None;
                 let mut body = None;
+                let mut vararg = false;
                 let mut vis = Visibility::Object;
 
                 for part in decl {
@@ -147,14 +148,18 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                     span: arg.as_span(),
                                 };
 
-                                let TypedName{typed, name, tags} = parse_named_type((file_str, n), arg);
+                                if arg.as_rule() == Rule::vararg {
+                                    vararg = true;
+                                } else {
+                                    let TypedName{typed, name, tags} = parse_named_type((file_str, n), arg);
 
-                                args.push(NamedArg{
-                                    name,
-                                    typed,
-                                    tags,
-                                    loc: argloc,
-                                });
+                                    args.push(NamedArg{
+                                        name,
+                                        typed,
+                                        tags,
+                                        loc: argloc,
+                                    });
+                                }
                             }
                         },
                         Rule::block => {
@@ -173,6 +178,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         ret,
                         args,
                         body: body.unwrap(),
+                        vararg,
                     }
                 });
             },
@@ -291,17 +297,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
 
             },
-            Rule::include => {
-                let loc = Location{
-                    file: n.to_string_lossy().into(),
-                    span: decl.as_span(),
-                };
-                let im = decl.into_inner().as_str();
-                module.includes.push(Include{
-                    expr: im.to_string(),
-                    loc,
-                });
-            },
             Rule::comment => {},
             Rule::istatic | Rule::constant => {
                 let rule = decl.as_rule();
@@ -410,7 +405,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
         Rule::lhs   => { }
         Rule::expr  => { }
         Rule::termish => { }
-        _ => { panic!("parse_expr called with {:?}", decl); }
+        _ => { panic!("parse_expr call called with {:?}", decl); }
     };
 
     let mut s_op = Some((String::new(), Location{
@@ -476,7 +471,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                             loc,
                         })
                     },
-                    Rule::termish => {
+                    Rule::expr => {
                         parse_expr(n, part)
                     }
                     e => panic!("unexpected rule {:?} in unary post lhs", e),
@@ -611,33 +606,8 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                 })));
             },
             Rule::call => {
-                let mut expr = expr.into_inner();
-                let name = expr.next().unwrap();
-                let nameloc = Location{
-                    file: n.1.to_string_lossy().into(),
-                    span: name.as_span(),
-                };
-                let name = Name::from(name.as_str());
-                let args = match expr.next() {
-                    Some(args) => {
-                        args.into_inner().into_iter().map(|arg|{
-                            Box::new(parse_expr(n, arg))
-                        }).collect()
-                    },
-                    None => {
-                        Vec::new()
-                    }
-                };
 
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::Call{
-                    loc: loc,
-                    name: Typed{
-                        name,
-                        loc: nameloc,
-                        ptr: Vec::new(),
-                    },
-                    args,
-                })));
+                s_r.push((s_op.take().unwrap(), Box::new(parse_call(n, expr))));
             },
             Rule::array_init => {
                 let mut fields = Vec::new();
@@ -736,6 +706,11 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                 label,
             }
         },
+        Rule::break_stm => {
+            Statement::Break{
+                loc,
+            }
+        },
         Rule::goto_stm => {
             let mut stm = stm.into_inner();
             let label   = stm.next().unwrap().as_str().to_string();
@@ -769,6 +744,18 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             Statement::Expr{
                 expr,
                 loc: loc.clone(),
+            }
+        }
+        Rule::via_stm => {
+            let mut stm = stm.into_inner();
+            let part    = stm.next().unwrap();
+            let expr    = parse_expr(n, part);
+            let part    = stm.next().unwrap();
+            let body    = Box::new(parse_statement(n, part));
+            Statement::Via {
+                loc,
+                expr: Box::new(expr),
+                body,
             }
         }
         Rule::if_stm => {
@@ -1067,6 +1054,9 @@ pub(crate) fn parse_importname(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<
     let mut v = Vec::new();
     for part in decl.into_inner() {
         match part.as_rule() {
+            Rule::cimport => {
+                v = vec![String::new(), "ext".into(), part.as_str().into()];
+            }
             Rule::ident => {
                 v.push(part.as_str().into());
             }
@@ -1106,3 +1096,43 @@ pub(crate) fn parse_importname(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<
     }
     (Name(v), locals)
 }
+
+fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rule>) -> Expression {
+    let loc = Location{
+        file: n.1.to_string_lossy().into(),
+        span: expr.as_span(),
+    };
+    let mut expr = expr.into_inner();
+    let name = expr.next().unwrap();
+    let nameloc = Location{
+        file: n.1.to_string_lossy().into(),
+        span: name.as_span(),
+    };
+    let name = Name::from(name.as_str());
+
+
+    let mut args = Vec::new();
+
+
+    for part in expr.into_iter() {
+        match part.as_rule() {
+            Rule::call_args => {
+                args = part.into_inner().into_iter().map(|arg|{
+                    Box::new(parse_expr(n, arg))
+                }).collect();
+            },
+            e => panic!("unexpected rule {:?} in function call", e),
+        }
+    };
+
+    Expression::Call{
+        loc: loc,
+        name: Typed{
+            name,
+            loc: nameloc,
+            ptr: Vec::new(),
+        },
+        args,
+    }
+}
+

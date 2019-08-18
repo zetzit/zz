@@ -54,8 +54,8 @@ impl Scope{
             => {
                 let nuname = Name(vec![
                     String::new(),
-                    "libc".to_string(),
-                    "stddef".to_string(),
+                    "ext".to_string(),
+                    "<stddef.h>".to_string(),
                     t.name.to_string(),
                 ]);
                 debug!("  {} => {}", t.name, nuname);
@@ -95,7 +95,7 @@ impl Scope{
                     ABORT.store(true, Ordering::Relaxed);
                 }
 
-                if rhs.len() != 0 && v.name.0[1] == "libc" {
+                if rhs.len() != 0 && v.name.0[1] == "ext" {
                     error!("'{}' cannot be used as qualified name\n{}\n{}",
                            v.name,
                            parser::make_error(&t.loc, format!("'{}' is a c header", lhs)),
@@ -135,13 +135,13 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
             debug!("  import self abs {}", import.name);
             return import.name.clone();
         }
-    } else {
-        if let Some("libc") = import.name.0.first().map(|s|s.as_str()) {
-            let mut n2 = import.name.clone();
-            n2.0.insert(0, String::new());
-            debug!("  import libc {} => {}", import.name, n2);
-            return n2;
+
+        if let Some("ext") = import.name.0.get(1).map(|s|s.as_str()) {
+            debug!("  import ext {} ", import.name);
+            return import.name.clone();
         }
+
+    } else {
 
         // root/current_module/../search
         let mut search = imported_from.clone();
@@ -210,7 +210,7 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
         return;
     }
 
-    if module_name.0[1] == "libc" {
+    if module_name.0[1] == "ext" {
         //TODO
         return
     }
@@ -331,7 +331,7 @@ fn abs_statement(
         ast::Statement::Mark{lhs,..} => {
             abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
         },
-        ast::Statement::Goto{..} |  ast::Statement::Label{..} => {
+        ast::Statement::Goto{..} |  ast::Statement::Label{..} | ast::Statement::Break{..} => {
         }
         ast::Statement::Block(b2) => {
             abs_block(b2, &scope, all_modules, self_md_name);
@@ -353,6 +353,10 @@ fn abs_statement(
                 abs_expr(expr, &scope, inbody, all_modules, self_md_name);
             }
             abs_block(body, &scope, all_modules, self_md_name);
+        },
+        ast::Statement::Via{expr, body, ..} => {
+            abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+            abs_statement(body, &scope, inbody, all_modules, self_md_name);
         },
         ast::Statement::Assign{lhs, rhs, ..}  => {
             abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
@@ -414,7 +418,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                 };
 
                 // if not self
-                if md.name.0[..] != nn.0[..md.name.len()] {
+                if md.name.len() > nn.len() || md.name.0[..] != nn.0[..md.name.len()] {
                     // add to scope
                     scope.insert(localname, nn, &import.loc, false);
                 }

@@ -5,7 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
 
-
 pub struct Step {
     source: PathBuf,
     args:   Vec<String>
@@ -14,20 +13,24 @@ pub struct Step {
 pub struct Make {
     artifact:   Artifact,
     steps:      Vec<Step>,
+    cc:         String,
     cflags:     Vec<String>,
     lflags:     Vec<String>,
 }
 
 impl Make {
     pub fn new(mut project: Project, artifact: Artifact) -> Self {
-        let mut lflags = Vec::new();
-        if let Some(plflags) = &project.lflags{
-            lflags.extend(plflags.clone());
-        }
 
+        let mut lflags = Vec::new();
         let mut cflags = Vec::new();
-        if let Some(pcflags) = &project.cflags{
-            cflags.extend(pcflags.clone());
+
+        let mut cc = "clang".to_string();
+
+        if let Some(std) = project.std {
+            cflags.push(format!("-std={}", std));
+            if std.contains("c++") {
+                cc = "clang++".to_string();
+            }
         }
 
         if let Some(cincs) = &project.cincludes {
@@ -46,7 +49,15 @@ impl Make {
 
         let cobjects = std::mem::replace(&mut project.cobjects, None);
 
+        if let Some(pcflags) = &project.cflags{
+            cflags.extend(pcflags.clone());
+        }
+        if let Some(plflags) = &project.lflags{
+            lflags.extend(plflags.clone());
+        }
+
         let mut m = Make {
+            cc,
             artifact,
             //project,
             lflags,
@@ -107,7 +118,7 @@ impl Make {
             });
         }
 
-        self.lflags.push(outp);
+        self.lflags.insert(0, outp);
     }
 
     pub fn build(&mut self, cf: &super::emitter::CFile) {
@@ -132,14 +143,14 @@ impl Make {
                 args,
             });
         }
-        self.lflags.push(outp);
+        self.lflags.insert(0, outp);
     }
 
 
     pub fn link(mut self) {
         for step in self.steps {
-            info!("clang {:?}", step.source);
-            let status = Command::new("clang")
+            info!("{} {:?}", self.cc, step.source);
+            let status = Command::new(&self.cc)
                 .args(step.args)
                 .status()
                 .expect("failed to execute cc");
@@ -172,7 +183,7 @@ impl Make {
         info!("ld [{:?}] {}", self.artifact.typ, self.artifact.name);
         debug!("{:?}", self.lflags);
 
-        let status = Command::new("clang")
+        let status = Command::new(&self.cc)
             .args(&self.lflags)
             .status()
             .expect("failed to execute linker");
