@@ -30,6 +30,7 @@ fn main() {
     env_logger::builder()
         //.default_format_module_path(false)
         .default_format_timestamp(false)
+        .default_format_module_path(false)
         .init();
 
     let matches = App::new("Drunk Octopus")

@@ -97,6 +97,18 @@ impl Stack {
         let dead = self.stack.pop().unwrap();
         for ( _ , local) in dead.locals {
             let m = self.pointers.get_mut(local).unwrap();
+
+            if !m.tags.contains_key("borrowed") {
+                if let Some(vals) = m.tags.get("tainted") {
+                    for (val,vloc) in vals {
+                        warn!("dropped local '{}' while still tainted with '{}'\n{}\n{}", m.name, val,
+                              parser::make_error(&dropped_here, format!("'{}' will be dropped unclean", m.name)),
+                              parser::make_error(&vloc, format!("tainted with '{}' here. you probably must call a related function to untaint", val)),
+                              );
+                    }
+                }
+            }
+
             m.value = Lifetime::Dropped {
                 stored_here:    m.stored_here.clone(),
                 dropped_here:   dropped_here.clone(),
@@ -801,7 +813,7 @@ pub fn check(md: &mut flatten::Module) {
                         }
                         let site = stack.local(
                             Some(arg.typed.clone()),
-                            Name::from(&format!("__builtin::pointer_to_callsite::{}", storage)), arg.loc.clone(), body_tags.clone()
+                            Name::from(&format!("pointer to callsite of {} ({})", local.name, storage)), arg.loc.clone(), body_tags.clone()
                         );
                         stack.write(storage, Lifetime::Pointer(site), &arg.loc);
                         storage = site;

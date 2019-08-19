@@ -1,0 +1,21 @@
+using <stdio.h>::{printf};
+
+
+
+struct Socket {
+    int fd;
+}
+
+
+fn open(Socket taint<open> mut* self) {
+    self->fd = 3;
+}
+
+export fn main() -> int {
+
+    Socket mut sock = {0};
+    open(&sock);
+
+    printf("hello taint\n");
+    return 0;
+}

@@ -1,8 +1,8 @@
 using <stdint.h>::{uint8_t};
-using <stdio.h>::{printf, snprintf, vsnprintf};
+using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, stderr};
 using <string.h>::{memset};
 using <errno.h>::{errno};
-using <stdlib.h>::{abort};
+using <stdlib.h>::{abort as cabort};
 using <stdarg.h>::{va_list, va_start};
 
 export struct Error {
@@ -51,13 +51,18 @@ pub fn fail(
             "\n  %s:%d %s", file, line, scope);
 }
 
-export macro ABORT(err) {
+export fn abort(
+        Error untaint<Error> mut* err,
+        char* callsite_macro<__FILE__>      file,
+        char* callsite_macro<__FUNCTION__>  scope,
+        int   callsite_macro<__LINE__>      line,
+) {
     if (err->error != 0) {
         snprintf(
                 (char mut*)&((err)->locations) + strlen((err)->locations),
                 sizeof((err)->locations) - strlen((err)->locations),
                 "\n  %s:%d %s", __FILE__, __LINE__, __FUNCTION__);
         fprintf(stderr, "%s%s\n", err->description, err->locations);
-        abort();
+        cabort();
     }
 }

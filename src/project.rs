@@ -67,7 +67,7 @@ pub fn init() {
     if !std::env::current_dir().unwrap().join("src/main.zz").exists() {
         let mut f = File::create("./src/main.zz").unwrap();
         write!(f, "\
-using libc::stdio::{{printf}};
+using <stdio.h>::{{printf}};
 
 export fn main() -> int {{
     printf(\"hello {}\\n\");
