@@ -1,5 +1,4 @@
 use pest::Parser;
-use std::collections::HashMap;
 use super::ast::*;
 use super::name::Name;
 use std::path::Path;
@@ -356,9 +355,9 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 match rule {
 
                     Rule::constant => {
-                        for (_,loc) in &tags {
+                        for (_,tag) in tags.0 {
                             error!("syntax error\n{}",
-                                   make_error(&loc, "tags not allowed here (yet)"),
+                                   make_error(&tag.iter().next().unwrap().1, "anonymous type cannot have storage tags (yet)"),
                                    );
                             std::process::exit(9);
                         }
@@ -686,16 +685,19 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             let part    = stm.next().unwrap();
             let lhs     = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let loc = Location{
+            let tagloc = Location{
                 file: n.1.to_string_lossy().into(),
                 span: part.as_span(),
             };
-            let mark    = part.as_str().to_string();
+            let mut part = part.into_inner();
+            let key   = part.next().unwrap().as_str().into();
+            let value = part.next().map(|s|s.as_str().into()).unwrap_or(String::new());
 
             Statement::Mark{
                 loc,
                 lhs,
-                mark,
+                key,
+                value,
             }
         },
         Rule::label => {
@@ -744,18 +746,6 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             Statement::Expr{
                 expr,
                 loc: loc.clone(),
-            }
-        }
-        Rule::via_stm => {
-            let mut stm = stm.into_inner();
-            let part    = stm.next().unwrap();
-            let expr    = parse_expr(n, part);
-            let part    = stm.next().unwrap();
-            let body    = Box::new(parse_statement(n, part));
-            Statement::Via {
-                loc,
-                expr: Box::new(expr),
-                body,
             }
         }
         Rule::if_stm => {
@@ -925,7 +915,7 @@ pub(crate) fn parse_block(n: (&'static str, &Path), decl: pest::iterators::Pair<
 pub(crate) struct TypedName {
     name:   String,
     typed:  Typed,
-    tags:   HashMap<String, Location>,
+    tags:   Tags,
 }
 
 pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> TypedName {
@@ -961,7 +951,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
         }
     };
 
-    let mut tags : HashMap<String, Location> = HashMap::new();
+    let mut tags = Tags::new();
     let mut ptr = Vec::new();
 
     for part in decl {
@@ -972,15 +962,22 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
         match part.as_rule() {
             Rule::ptr => {
                 ptr.push(Pointer{
-                    tags: std::mem::replace(&mut tags, HashMap::new()),
+                    tags: std::mem::replace(&mut tags, Tags::new()),
                     loc,
                 });
             }
             Rule::key_mut  => {
-                tags.insert("mutable".to_string(), loc);
+                tags.insert(
+                    "mutable".to_string(),
+                    String::new(),
+                    loc,
+                );
             },
-            Rule::ident => {
-                tags.insert(part.as_str().into(), loc);
+            Rule::tag_name => {
+                let mut part = part.into_inner();
+                let name  = part.next().unwrap().as_str().into();
+                let value = part.next().as_ref().map(|s|s.as_str().to_string()).unwrap_or(String::new());
+                tags.insert(name, value, loc);
             }
             e => panic!("unexpected rule {:?} in named_type ", e),
         }
@@ -1011,7 +1008,7 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
     let mut decl = decl.into_inner();
     let name = Name::from(decl.next().unwrap().as_str());
 
-    let mut tags : HashMap<String, Location> = HashMap::new();
+    let mut tags = Tags::new();
     let mut ptr = Vec::new();
 
     for part in decl {
@@ -1022,23 +1019,30 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
         match part.as_rule() {
             Rule::ptr => {
                 ptr.push(Pointer{
-                    tags: std::mem::replace(&mut tags, HashMap::new()),
+                    tags: std::mem::replace(&mut tags, Tags::new()),
                     loc,
                 });
             }
             Rule::key_mut  => {
-                tags.insert("mutable".to_string(), loc);
+                tags.insert(
+                    "mutable".to_string(),
+                    String::new(),
+                    loc,
+                );
             },
-            Rule::ident => {
-                tags.insert(part.as_str().into(), loc);
+            Rule::tag_name => {
+                let mut part = part.into_inner();
+                let name  = part.next().unwrap().as_str().into();
+                let value = part.next().as_ref().map(|s|s.as_str().to_string()).unwrap_or(String::new());
+                tags.insert(name, value, loc);
             }
             e => panic!("unexpected rule {:?} in anon_type", e),
         }
     }
 
-    for (_ , loc) in tags {
+    for (_,tag) in tags.0 {
         error!("syntax error\n{}",
-               make_error(&loc, "anonymous type cannot have storage tags (yet)"),
+               make_error(&tag.iter().next().unwrap().1, "anonymous type cannot have storage tags (yet)"),
                );
         std::process::exit(9);
     }

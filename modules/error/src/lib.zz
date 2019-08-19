@@ -11,14 +11,11 @@ export struct Error {
     char    locations[255];
 };
 
-pub fn via (
-        Error mut* err,
-        //char* callsite<__FILE__>      file,
-        //char* callsite<__FUNCTION__>  scope,
-        //int   callsite<__LINE__>      line,
-        char*  _callsite_file           file,
-        char*  _callsite_function       scope,
-        int    _callsite_line           line,
+pub fn check(
+        Error untaint<Error> mut* err,
+        char* callsite_macro<__FILE__>      file,
+        char* callsite_macro<__FUNCTION__>  scope,
+        int   callsite_macro<__LINE__>      line,
         ) -> int {
     if ((err)->error != 0) {
         snprintf(
@@ -31,11 +28,11 @@ pub fn via (
 }
 
 pub fn fail(
-        Error mut via* err,
+        Error untaint<Error> taint<Error> mut* err,
         uint8_t e,
-        char*  _callsite_file           file,
-        char*  _callsite_function       scope,
-        int    _callsite_line           line,
+        char* callsite_macro<__FILE__>      file,
+        char* callsite_macro<__FUNCTION__>  scope,
+        int   callsite_macro<__LINE__>      line,
         char*  fmt,
         ...
         ) {

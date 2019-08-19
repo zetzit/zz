@@ -527,9 +527,6 @@ impl Emitter {
                 write!(self.f, ")").unwrap();
                 self.emit_zblock(body, true);
             },
-            ast::Statement::Via{..}  => {
-                panic!("ICE: via in emitter");
-            },
             ast::Statement::Cond{expr, body, op}  => {
                 write!(self.f, "  {} ", op).unwrap();
                 if let Some(expr) = expr {

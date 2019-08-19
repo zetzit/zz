@@ -354,10 +354,6 @@ fn abs_statement(
             }
             abs_block(body, &scope, all_modules, self_md_name);
         },
-        ast::Statement::Via{expr, body, ..} => {
-            abs_expr(expr, &scope, inbody, all_modules, self_md_name);
-            abs_statement(body, &scope, inbody, all_modules, self_md_name);
-        },
         ast::Statement::Assign{lhs, rhs, ..}  => {
             abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, &scope, inbody, all_modules, self_md_name);

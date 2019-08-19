@@ -59,8 +59,9 @@ local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~
 namespace   = ${ ident ~ "::" ~ namespace? }
 
 type_name   = ${ namespace? ~ ident }
+tag_name    = ${ ident ~ ("<" ~ ident ~ ">")? }
 ptr         = !{"*"}
-type_part   = _{ (ident | ptr | key_mut) }
+type_part   = _{ (tag_name | ptr | key_mut) }
 anon_type   = !{ type_name ~ type_part* }
 named_type  = !{ type_name ~ named_typei}
 named_typei = _{ type_part  ~ named_typei | ident }
@@ -177,15 +178,14 @@ vardecl     = { named_type  ~ array? ~ ( "=" ~ expr )? }
 
 semicolon   = { ";" }
 for_stm     = { "for" ~ "(" ~ expr_stm? ~ semicolon ~ expr_stm? ~ semicolon ~ expr_stm? ~ ")" ~ block }
-if_stm      = { "if"  ~ "(" ~ expr  ~ ")" ~ block }
+if_stm      = { "if"  ~ expr  ~ block }
 elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
 else_stm    = { "else" ~  block }
 return_stm  = { key_return ~ expr_stm? }
 break_stm   = { key_break }
 goto_stm    = { "goto" ~ ident }
 label       = ${ ident ~ ":"}
-mark_stm    = { lhs ~ "is" ~ ident }
-via_stm     = { lhs ~ "?" ~ (term_statement | block) ~ ";" }
+mark_stm    = { lhs ~ "is" ~ tag_name }
 
 expr_stm = _{
     vardecl |
@@ -203,7 +203,6 @@ term_statement = _{
 }
 
 statement = _{
-    via_stm     |
     for_stm     |
     if_stm      |
     else_stm    |

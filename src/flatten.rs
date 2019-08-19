@@ -64,12 +64,6 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
             deps.extend(block_deps(body));
             deps
         },
-        ast::Statement::Via{expr, body,..} => {
-            let mut deps = Vec::new();
-            deps.extend(expr_deps(expr));
-            deps.extend(stm_deps(body));
-            deps
-        },
         ast::Statement::Assign{lhs, rhs, ..}  => {
             let mut deps = Vec::new();
             deps.extend(expr_deps(lhs));
@@ -265,15 +259,6 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     }
                     for arg in args {
                         deps.push(arg.typed.name.clone());
-                        for ptr in &arg.typed.ptr {
-                            if ptr.tags.contains_key("via") {
-                                let mut v = arg.typed.name.clone();
-                                v.pop();
-                                v.push("via".to_string());
-                                deps.push(v);
-                            }
-                        }
-
                     }
                     deps.extend(block_deps(body));
                 }
