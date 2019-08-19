@@ -395,6 +395,38 @@ impl Stack {
                 return;
             }
         }
+
+        // leftmost pointer 
+        match &callsite_storage.value {
+            Lifetime::Uninitialized => {
+                error!("uninitialized arg passed as safe \n{}\n{}",
+                       parser::make_error(&callsite.loc(), "this arg must be safe"),
+                       parser::make_error(&callsite_storage.stored_here, "but this value is unitialized"),
+                       );
+                ABORT.store(true, Ordering::Relaxed);
+                return;
+            },
+            Lifetime::Dropped{stored_here, dropped_here} => {
+                error!("passing dropped value as safe pointer {}\n{}\n{}\n{}",
+                       callsite_storage.name,
+                       parser::make_error(&callsite.loc(),"used here"),
+                       parser::make_error(&stored_here,   "points at this storage location"),
+                       parser::make_error(&dropped_here,  "which was dropped here"),
+                       );
+                ABORT.store(true, Ordering::Relaxed);
+                return;
+            },
+            Lifetime::Moved{moved_here} => {
+                error!("passing moved value '{}' as safe pointer \n{}\n{}",
+                       callsite_storage.name,
+                       parser::make_error(&callsite.loc(), "use of moved value"),
+                       parser::make_error(&moved_here, "was moved here"),
+                       );
+                ABORT.store(true, Ordering::Relaxed);
+                return;
+            },
+            _ => (),
+        }
     }
 
 
