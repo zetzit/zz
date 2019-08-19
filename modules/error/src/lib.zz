@@ -12,7 +12,7 @@ export struct Error {
 };
 
 pub fn check(
-        Error untaint<Error> mut* err,
+        Error unset<Error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
         int   callsite_macro<__LINE__>      line,
@@ -28,7 +28,7 @@ pub fn check(
 }
 
 pub fn fail(
-        Error untaint<Error> taint<Error> mut* err,
+        Error unset<Error> set<Error> mut* err,
         uint8_t e,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
@@ -52,7 +52,7 @@ pub fn fail(
 }
 
 export fn abort(
-        Error untaint<Error> mut* err,
+        Error unset<Error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
         int   callsite_macro<__LINE__>      line,

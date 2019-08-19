@@ -99,11 +99,11 @@ impl Stack {
             let m = self.pointers.get_mut(local).unwrap();
 
             if !m.tags.contains_key("borrowed") {
-                if let Some(vals) = m.tags.get("tainted") {
+                if let Some(vals) = m.tags.get("marked") {
                     for (val,vloc) in vals {
-                        warn!("dropped local '{}' while still tainted with '{}'\n{}\n{}", m.name, val,
+                        warn!("dropped local '{}' while still marked as '{}'\n{}\n{}", m.name, val,
                               parser::make_error(&dropped_here, format!("'{}' will be dropped unclean", m.name)),
-                              parser::make_error(&vloc, format!("tainted with '{}' here. you probably must call a related function to untaint", val)),
+                              parser::make_error(&vloc, format!("marked '{}' here. probably must call a related function to unset", val)),
                               );
                     }
                 }
@@ -307,38 +307,72 @@ impl Stack {
                 return;
             }
 
-            if let Some(v) = stack_ptr.tags.get("untaint") {
-                for (v,_) in v {
-                    callsite_storage.tags.remove("tainted", Some(v));
+            if let Some(vals) = stack_ptr.tags.get("require") {
+                let mut missing = vals.clone();
+                if let Some(v) = callsite_storage.tags.get("marked") {
+                    for (v,_) in v {
+                        missing.remove(v);
+                    }
+                }
+                for (val,_) in missing {
+                    error!("missing required type state '{}'\n{}",
+                           val,
+                           parser::make_error(&callsite.loc(),
+                           format!("argument here must be '{}'", val)),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
                 }
 
             }
-            if callsite_storage.tags.contains_key("tainted") {
-                error!("cannot use tainted local '{}'\n{}",
-                       callsite_storage.name,
-                       parser::make_error(&callsite.loc(),
-                       format!("'{}' is tainted", callsite_storage.name)),
-                       );
-                ABORT.store(true, Ordering::Relaxed);
-                return;
+
+            if let Some(v) = stack_ptr.tags.get("unset") {
+                for (v,_) in v {
+                    callsite_storage.tags.remove("marked", Some(v));
+                }
             }
 
-            if let Some(tag) = stack_ptr.tags.get("taint") {
+            if let Some(vals) = callsite_storage.tags.get("marked") {
 
+                let mut missing = vals.clone();
+                if let Some(v) = stack_ptr.tags.get("require") {
+                    for (v,_) in v {
+                        missing.remove(v);
+                    }
+                }
+                if let Some(v) = stack_ptr.tags.get("allow") {
+                    for (v,_) in v {
+                        missing.remove(v);
+                    }
+                }
+
+                for (val,vloc) in missing {
+                    error!("cannot use marked local '{}'\n{}\n{}",
+                           callsite_storage.name,
+                           parser::make_error(&callsite.loc(),
+                           format!("argument here is not allowed to be '{}'", val)),
+                           parser::make_error(&vloc, format!("marked '{}' here. probably must call a related function to unset", val)),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
+                }
+            }
+
+            if let Some(tag) = stack_ptr.tags.get("set") {
                 if callsite_storage.tags.contains_key("borrowed") {
                     let mut taint_missing  = tag.clone();
-                    if let Some(tag2) = callsite_storage.tags.get("taint") {
+                    if let Some(tag2) = callsite_storage.tags.get("set") {
                         for (value,_) in tag2 {
                             taint_missing.remove(value);
                         }
                     }
                     for missing in taint_missing {
-                        error!("call would taint borrowed callsite\n{}\n{}",
+                        error!("call would mark borrowed callsite\n{}\n{}",
                                parser::make_error(&callsite.loc(),
-                               format!("this expression would taint the callsite with undeclared taint '{}'",
+                               format!("this expression would mark the callsite with undeclared mark '{}'",
                                        missing.0)),
                                        parser::make_error(&callsite_storage.stored_here,
-                                                          format!("try adding a taint<{}> tag here",
+                                                          format!("try adding a set<{}> tag here",
                                                                   missing.0)),
                                                                   );
                         ABORT.store(true, Ordering::Relaxed);
@@ -348,7 +382,7 @@ impl Stack {
 
                 for (val,_) in tag {
                     callsite_storage.tags.insert(
-                        "tainted".to_string(),
+                        "marked".to_string(),
                         val.clone(),
                         callsite.loc().clone(),
                     );
@@ -646,7 +680,7 @@ impl Stack {
                         if key == "safe" {
                             storage.tags.remove("unsafe", None);
                         } else if key == "pure" {
-                            storage.tags.remove("tainted", None);
+                            storage.tags.remove("marked", None);
                         } else {
                             storage.tags.insert(key.clone(), value.clone(), loc.clone());
                         }

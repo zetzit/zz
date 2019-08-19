@@ -7,14 +7,24 @@ struct Socket {
 }
 
 
-fn open(Socket taint<open> mut* self) {
-    self->fd = 3;
+
+fn open(Socket set<open> mut* self) {
+    self->fd = 2;
+}
+
+fn boop(Socket mut* self) {
+
+}
+
+fn read(Socket require<open> mut* self) {
+
 }
 
 export fn main() -> int {
 
     Socket mut sock = {0};
     open(&sock);
+    read(&sock);
 
     printf("hello taint\n");
     return 0;
