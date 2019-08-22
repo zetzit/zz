@@ -241,6 +241,9 @@ pub enum Statement {
         loc:        Location,
         expr:       Expression,
     },
+    Continue{
+        loc:        Location,
+    },
     Break {
         loc:        Location,
     },

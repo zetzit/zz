@@ -91,6 +91,9 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
                 Vec::new()
             }
         },
+        ast::Statement::Continue{..} => {
+            Vec::new()
+        },
         ast::Statement::Break{..} => {
             Vec::new()
         },

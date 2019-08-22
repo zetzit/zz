@@ -708,6 +708,11 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                 label,
             }
         },
+        Rule::continue_stm => {
+            Statement::Continue{
+                loc,
+            }
+        },
         Rule::break_stm => {
             Statement::Break{
                 loc,

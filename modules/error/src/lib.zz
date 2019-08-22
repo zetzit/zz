@@ -1,6 +1,6 @@
 using <stdint.h>::{uint8_t};
 using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, stderr};
-using <string.h>::{memset};
+using <string.h>::{memset, strncat};
 using <errno.h>::{errno};
 using <stdlib.h>::{abort as cabort};
 using <stdarg.h>::{va_list, va_start};
@@ -21,10 +21,36 @@ pub fn check(
         snprintf(
                 (char mut*)(&((err)->locations)) + strlen((err)->locations),
                 sizeof((err)->locations) - strlen((err)->locations),
-                "\n  %s:%d %s", file, line, scope);
+                "\n  %s:%d \t%s", file, line, scope);
         return (err)->error;
     }
     return 0;
+}
+
+pub fn fail_with_errno(
+        Error unset<Error> set<Error> mut* err,
+        char* callsite_macro<__FILE__>      file,
+        char* callsite_macro<__FUNCTION__>  scope,
+        int   callsite_macro<__LINE__>      line,
+        char*  fmt,
+        ...
+        ) {
+
+    (err)->error = errno;
+
+    va_list mut vargs;
+    va_start(vargs, fmt);
+    vsnprintf((err)->description, sizeof((err)->description), fmt, vargs);
+
+    strncat((err)->description, " : ", sizeof((err)->description) - strlen((err)->description));
+    strncat((err)->description, strerror(errno), sizeof((err)->description) - strlen((err)->description));
+
+    memset((err)->locations, 0, sizeof((err)->locations));
+
+    snprintf(
+            (char mut*)(&((err)->locations)) + strlen((err)->locations),
+            sizeof((err)->locations) - strlen((err)->locations),
+            "\n  %s:%d \t%s", file, line, scope);
 }
 
 pub fn fail(
@@ -48,7 +74,7 @@ pub fn fail(
     snprintf(
             (char mut*)(&((err)->locations)) + strlen((err)->locations),
             sizeof((err)->locations) - strlen((err)->locations),
-            "\n  %s:%d %s", file, line, scope);
+            "\n  %s:%d \t%s", file, line, scope);
 }
 
 export fn abort(
@@ -61,8 +87,8 @@ export fn abort(
         snprintf(
                 (char mut*)&((err)->locations) + strlen((err)->locations),
                 sizeof((err)->locations) - strlen((err)->locations),
-                "\n  %s:%d %s", __FILE__, __LINE__, __FUNCTION__);
-        fprintf(stderr, "%s%s\n", err->description, err->locations);
+                "\n  %s:%d \t%s", file, line, scope);
+        fprintf(stderr, "fatal error: %s%s\n", err->description, err->locations);
         cabort();
     }
 }

@@ -473,16 +473,18 @@ impl Emitter {
         write!(self.f, "\n").unwrap();
     }
 
-    fn emit_statement(&mut self, stm: &ast::Statement) {
+    fn emit_statement(&mut self, stm: &ast::Statement) -> bool {
         match stm {
-            ast::Statement::Mark{..} => {},
+            ast::Statement::Mark{..} => {false},
             ast::Statement::Break{loc} => {
                 self.emit_loc(&loc);
                 write!(self.f, "break").unwrap();
+                true
             },
             ast::Statement::Goto{loc, label} => {
                 self.emit_loc(&loc);
                 write!(self.f, "goto {}", label).unwrap();
+                true
             }
             ast::Statement::Label{loc, label} => {
                 self.emit_loc(&loc);
@@ -492,9 +494,11 @@ impl Emitter {
                 } else {
                     write!(self.f, "\n").unwrap();
                 }
+                false
             }
             ast::Statement::Block(b2) => {
                 self.emit_zblock(b2, true);
+                false
             }
             ast::Statement::For{e1, e2, e3, body}  => {
                 write!(self.f, "  for (").unwrap();
@@ -526,6 +530,7 @@ impl Emitter {
                 }
                 write!(self.f, ")").unwrap();
                 self.emit_zblock(body, true);
+                false
             },
             ast::Statement::Cond{expr, body, op}  => {
                 write!(self.f, "  {} ", op).unwrap();
@@ -535,12 +540,14 @@ impl Emitter {
                     write!(self.f, ")").unwrap();
                 }
                 self.emit_zblock(body, true);
+                false
             },
             ast::Statement::Assign{lhs, rhs, op, loc}  => {
                 self.emit_loc(&loc);
                 self.emit_expr(lhs);
                 write!(self.f, "  {} ", op).unwrap();
                 self.emit_expr(rhs);
+                true
             }
             ast::Statement::Var{assign, loc, typed, name, array, tags}  => {
                 self.emit_loc(&loc);
@@ -564,10 +571,17 @@ impl Emitter {
                     write!(self.f, " = ").unwrap();
                     self.emit_expr(assign);
                 }
+                true
             }
             ast::Statement::Expr{expr, loc}  => {
                 self.emit_loc(&loc);
                 self.emit_expr(expr);
+                true
+            }
+            ast::Statement::Continue{loc}  => {
+                self.emit_loc(&loc);
+                write!(self.f, "continue").unwrap();
+                true
             }
             ast::Statement::Return{expr, loc}  => {
                 self.emit_loc(&loc);
@@ -575,6 +589,7 @@ impl Emitter {
                 if let Some(expr) = expr {
                     self.emit_expr(expr);
                 }
+                true
             }
         }
     }
@@ -589,11 +604,13 @@ impl Emitter {
         }
 
         for stm in &v.statements {
-            self.emit_statement(stm);
+            if self.emit_statement(stm) {
+                write!(self.f, ";").unwrap();
+            }
             if self.inside_macro {
-                write!(self.f, ";\\\n").unwrap();
+                write!(self.f, "\\\n").unwrap();
             } else {
-                write!(self.f, ";\n").unwrap();
+                write!(self.f, "\n").unwrap();
             }
         }
 

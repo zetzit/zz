@@ -11,7 +11,7 @@ alpha       = { 'a'..'z' | 'A'..'Z' }
 digit       = { '0'..'9' }
 hexdigit    = { '0'..'9' | 'a'..'f' }
 
-string_literal  = @{ "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
+string_literal  = @{ "\"" ~ ( "\"\"" | "\\\""    | (!"\"" ~ ANY) )* ~ "\"" }
 char_literal    = @{ "'" ~ ( "''" | (!"'" ~ ANY) )* ~ "'" }
 number_literal  = @{ hex_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
 int_literal     = @{ ("+" | "-")? ~ digit+ }
@@ -21,17 +21,18 @@ cblock          = @{ "{" ~ ((!("}" | "{") ~ ANY) | cblock )* ~ "}" }
 // keywords
 
 keyword    = {
-    exported    |
-    key_shared  |
-    key_const   |
-    key_packed  |
-    key_mut     |
-    key_for     |
-    key_if      |
-    key_else    |
-    key_return  |
-    key_mark    |
-    key_break   |
+    exported     |
+    key_shared   |
+    key_const    |
+    key_packed   |
+    key_mut      |
+    key_for      |
+    key_if       |
+    key_else     |
+    key_return   |
+    key_mark     |
+    key_break    |
+    key_continue |
     key_goto
 }
 
@@ -44,6 +45,7 @@ key_for     = { "for"}
 key_if      = { "if" }
 key_else    = { "else" }
 key_return  = { "return" }
+key_continue= { "continue" }
 key_mark    = { "is" }
 key_goto    = { "goto" }
 key_break   = { "break" }
@@ -182,6 +184,7 @@ if_stm      = { "if"  ~ expr  ~ block }
 elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
 else_stm    = { "else" ~  block }
 return_stm  = { key_return ~ expr_stm? }
+continue_stm  = { key_continue }
 break_stm   = { key_break }
 goto_stm    = { "goto" ~ ident }
 label       = ${ ident ~ ":"}
@@ -199,6 +202,7 @@ term_statement = _{
     goto_stm   |
     return_stm |
     break_stm  |
+    continue_stm |
     expr_stm
 }
 

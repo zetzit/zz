@@ -510,11 +510,11 @@ impl Stack {
                         // generated arguments
                         for i in 0..args.len() {
                             if let Some(cs) = args[i].tags.get("callsite_macro") {
-                                let (v,loc) = cs.iter().next().unwrap();
+                                let (v, loc) = cs.iter().next().unwrap();
                                 if i > callargs.len() { break }
                                 callargs.insert(i, Box::new(ast::Expression::Literal{
-                                    loc: loc.clone(),
-                                    v: v.clone(),
+                                    loc: name.loc.clone(),
+                                    v:   v.clone(),
                                 }));
                             }
                         }
@@ -801,6 +801,7 @@ impl Stack {
             ast::Statement::Goto{..}
             | ast::Statement::Label{..}
             | ast::Statement::Break{..}
+            | ast::Statement::Continue{..}
             => {},
         }
     }
@@ -830,6 +831,11 @@ pub fn check(md: &mut flatten::Module) {
             ast::Def::Macro{args, body} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
+                stack.write(ptr, Lifetime::Static, &local.loc);
+            },
+            ast::Def::Const{typed, expr} => {
+                let localname = Name::from(&local.name);
+                let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), Tags::new());
                 stack.write(ptr, Lifetime::Static, &local.loc);
             },
             ast::Def::Static{typed, expr, storage, tags} => {

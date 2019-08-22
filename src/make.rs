@@ -24,12 +24,12 @@ impl Make {
         let mut lflags = Vec::new();
         let mut cflags = Vec::new();
 
-        let mut cc = "clang".to_string();
+        let mut cc = std::env::var("CC").unwrap_or("clang".to_string());
 
         if let Some(std) = project.std {
             cflags.push(format!("-std={}", std));
             if std.contains("c++") {
-                cc = "clang++".to_string();
+                cc = std::env::var("CXX").unwrap_or("clang++".to_string());
             }
         }
 
