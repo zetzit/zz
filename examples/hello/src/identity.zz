@@ -1,7 +1,7 @@
-using math;
-using libc::stdint::{ uint32_t,
+using "mymath.h" as math;
+using <stdint.h>::{ uint32_t,
 };
-using libc::stdio::{printf} ;
+using <stdio.h>::{printf} ;
 
 using constants::{foo};
 using error::{Error};
@@ -17,7 +17,7 @@ pub fn some_helper(Error mut* err, uint32_t mut* bob) -> uint32_t {
     counter+=1;
     printf("lol\n");
     if (bob) {
-        (*bob) = add(horst(), foo);
+        (*bob) = math::add(horst(), foo);
         printf("bob %d\n", (*bob));
     }
     return ADD_IMPL(32, wuast);

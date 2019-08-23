@@ -1,7 +1,7 @@
-using libc::stdint::{size_t, uint8_t};
-using libc::stdlib::{abort};
-using libc::string::{memset};
-using libc::stdio;
+using <stdint.h>::{size_t, uint8_t};
+using <stdlib.h>::{abort, sizeof};
+using <string.h>::{memset};
+using <stdio.h>::{fprintf};
 
 struct Pool {
     size_t          slab;

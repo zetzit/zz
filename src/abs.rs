@@ -73,14 +73,14 @@ impl Scope{
                 if inbody {
                     if t.name.len() > 1 {
                         error!("possibly undefined name '{}' \n{}",
-                              t.name,
+                              lhs,
                               parser::make_error(&t.loc, "cannot use :: notation to reference names not tracked by zz"),
                               );
                         ABORT.store(true, Ordering::Relaxed);
                     }
                 } else {
                     error!("undefined name '{}' \n{}",
-                           t.name,
+                           lhs,
                            parser::make_error(&t.loc, "used in this scope"),
                            );
                     ABORT.store(true, Ordering::Relaxed);
@@ -95,6 +95,7 @@ impl Scope{
                     ABORT.store(true, Ordering::Relaxed);
                 }
 
+                /*
                 if rhs.len() != 0 && v.name.0[1] == "ext" {
                     error!("'{}' cannot be used as qualified name\n{}\n{}",
                            v.name,
@@ -103,6 +104,7 @@ impl Scope{
                            );
                     ABORT.store(true, Ordering::Relaxed);
                 }
+                */
 
                 if rhs.len() == 0 && v.is_module {
                     error!("cannot use module '{}' as a type\n{}\n{}",
@@ -399,8 +401,10 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
     for import in &mut md.imports {
         let fqn  = abs_import(&md.name, &import, all_modules);
 
+        let local_module_name = import.alias.clone().unwrap_or(import.name.0.last().unwrap().clone());
+
         if import.local.len() == 0 {
-            scope.insert(import.name.0.last().unwrap().clone(), fqn.clone(), &import.loc, true);
+            scope.insert(local_module_name, fqn.clone(), &import.loc, true);
         } else {
             for (local, import_as) in &import.local {
                 let mut nn = fqn.clone();

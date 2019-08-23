@@ -75,9 +75,10 @@ fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
 function    = { ( exported | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 
-cimport     = ${ "<" ~ (!">" ~ ANY)* ~ ">" }
+cimport     = ${ ("<" ~ (!">" ~ ANY)* ~ ">") | ("\"" ~ (!"\"" ~ ANY)* ~ "\"")  }
+importalias = { "as" ~ ident }
 importname  = ${ ( ident | cimport ) ~ ( "::" ~ (local | importname))? }
-import      = { exported? ~  "using" ~ importname ~  ";"? }
+import      = { exported? ~  "using" ~ importname ~  importalias?  ~ ";"? }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}

@@ -270,25 +270,27 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     span: decl.as_span(),
                 };
                 let mut vis = Visibility::Object;
-                let mut decli = None;
+                let mut importname = None;
+                let mut alias      = None;
                 for part in decl.into_inner() {
                     match part.as_rule() {
                         Rule::importname => {
-                            decli = Some(part);
-                            break;
+                            importname = Some(parse_importname(part));
                         },
                         Rule::exported => {
                             vis = Visibility::Export;
                         }
+                        Rule::importalias => {
+                            alias = Some(part.into_inner().next().unwrap().as_str().to_string());
+                        }
                         e => panic!("unexpected rule {:?} in import ", e),
                     }
                 };
-                let decl = decli.unwrap();
 
-                let (name, local) = parse_importname(decl);
-
+                let (name, local) = importname.unwrap();
                 module.imports.push(Import{
                     name,
+                    alias,
                     local,
                     vis,
                     loc

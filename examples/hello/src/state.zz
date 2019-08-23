@@ -1,6 +1,5 @@
-using libc::stdint::{uint8_t};
-using libc::string;
-using libc::string::{memset};
+using <stdint.h>::{uint8_t};
+using <string.h>::{memset};
 
 
 pub struct State {

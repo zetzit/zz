@@ -29,6 +29,7 @@ pub struct Project {
     pub std:        Option<String>,
     pub cincludes:  Option<Vec<String>>,
     pub cobjects:   Option<Vec<String>>,
+    pub pkgconfig:  Option<Vec<String>>,
     pub cflags:     Option<Vec<String>>,
     pub lflags:     Option<Vec<String>>,
 }

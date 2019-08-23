@@ -4,8 +4,8 @@ using error::{Error};
 fn usemeeee(Error* e) {
 }
 
-using libc::stdint::{uint8_t};
-using libc::memory::{memset};
+using <stdint.h>::{uint8_t};
+using <memory.h>::{memset};
 
 pub fn new(Error mut* self) {
     memset(self, 0, sizeof(Error));

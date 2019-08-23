@@ -1,6 +1,6 @@
-using libc::stdint::{uint32_t, int32_t, int8_t};
+using <stdint.h> as stdint;
 
-pub fn yoo() -> int32_t {
+pub fn yoo() -> stdint::int32_t {
     return 2;
 }
 
@@ -12,4 +12,4 @@ export struct bob {
 
 
 
-pub const int8_t horst = 0x3f ;
+pub const stdint::int8_t horst = 0x3f ;

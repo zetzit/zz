@@ -1,7 +1,7 @@
 [project]
 version   = "0.1"
 name      = "example"
-cincludes = ["."]
+cincludes = [".", "src"]
 
 [dependencies]
 fl    = "0.1"

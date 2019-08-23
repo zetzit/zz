@@ -1,6 +1,6 @@
 pub const int foo = 3 * 6;
-using libc::math::{floor};
-using libc::memory::{memset};
+using <math.h>::{floor};
+using <memory.h>::{memset};
 
 pub macro ADD_IMPL (a,b)
 {
@@ -11,7 +11,7 @@ pub macro ADD_IMPL (a,b)
 using aye;
 
 export fn conflict() -> aye::bob {
-    aye::bob mut r;
+    aye::bob mut r = {0};
     memset(&r, 0, sizeof(aye::bob));
     return r;
 }

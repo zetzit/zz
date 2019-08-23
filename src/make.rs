@@ -1,9 +1,9 @@
 use super::project::{Project, Artifact};
-use std::process::Command;
 use fasthash::metro;
 use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
+use std::process::Command;
 
 pub struct Step {
     source: PathBuf,
@@ -39,6 +39,35 @@ impl Make {
                 cflags.push(cinc.clone());
             }
         }
+
+        if let Some(pkgs) = &project.pkgconfig {
+            for pkg in pkgs {
+                let flags = Command::new("pkg-config")
+                    .arg("--cflags")
+                    .arg(pkg)
+                    .output()
+                    .expect(&format!("failed to execute pkg-config --cflags {}", pkg));
+
+                let flags = String::from_utf8_lossy(&flags.stdout);
+                let flags = flags.split_whitespace();
+                for flag in flags {
+                    cflags.push(flag.to_string());
+                }
+
+                let flags = Command::new("pkg-config")
+                    .arg("--libs")
+                    .arg(pkg)
+                    .output()
+                    .expect(&format!("failed to execute pkg-config --lflags {}", pkg));
+
+                let flags = String::from_utf8_lossy(&flags.stdout);
+                let flags = flags.split_whitespace();
+                for flag in flags {
+                    lflags.push(flag.to_string());
+                }
+            }
+        }
+
         cflags.push("-fPIC".into());
         cflags.push("-I".into());
         cflags.push(".".into());

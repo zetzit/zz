@@ -1,6 +1,6 @@
 using constants;
 using identity;
-using aye
+using aye;
 using error;
 using bob;
 using state;

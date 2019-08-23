@@ -1,4 +1,5 @@
 using <stdint.h>::{uint32_t};
+using <stdio.h>::{printf};
 using identity::{some_helper};
 using aye;
 using error;
@@ -22,7 +23,7 @@ pub fn gimme_wee(aye::bob* lol) -> float {
 }
 
 export fn main() -> int {
-    error::Error mut err;
+    error::Error mut err = {0};
     uint32_t bob;
 
     wee += 0.1;
@@ -41,13 +42,12 @@ export fn flsomething() {
 
     printf("static struct initialization Bob should be 2,0: %d,%d\n", stbob.a, stbob.b);
 
-    fl::MAKE(b, 8, 1000);
-
-    for (int mut i = 0; i < 10; i+=1) {
-        fl::alloc(b);
-    }
+    //fl::MAKE(b, 8, 1000);
+    //for (int mut i = 0; i < 10; i+=1) {
+    //    fl::alloc(b);
+    //}
 }
 
 
-using libc::stdbool::{bool, false};
+using <stdbool.h>::{bool, false};
 static bool horst = false;
