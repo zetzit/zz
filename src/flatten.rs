@@ -1,6 +1,7 @@
 use super::ast;
 use super::name::Name;
 use super::loader;
+use super::parser;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -22,7 +23,7 @@ pub struct Module {
 }
 
 struct Local {
-    deps:               Vec<Name>,
+    deps:               Vec<(Name, ast::Location)>,
     ast:                Option<ast::Local>,
     in_scope_here:      ast::Location,
 }
@@ -31,7 +32,7 @@ struct Local {
 struct Locals (HashMap<Name, Local>);
 
 
-fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
+fn stm_deps(stm: &ast::Statement) -> Vec<(Name, ast::Location)> {
     match stm {
         ast::Statement::Mark{lhs, .. } => {
             expr_deps(lhs)
@@ -78,7 +79,7 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
             if let Some(assign) = &assign {
                 deps.extend(expr_deps(assign));
             }
-            deps.push(typed.name.clone());
+            deps.push((typed.name.clone(), typed.loc.clone()));
             deps
         },
         ast::Statement::Expr{expr, ..} => {
@@ -100,7 +101,7 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
     }
 }
 
-fn block_deps(block: &ast::Block) -> Vec<Name> {
+fn block_deps(block: &ast::Block) -> Vec<(Name, ast::Location)> {
     let mut deps = Vec::new();
     for stm in &block.statements {
         deps.extend(stm_deps(stm));
@@ -109,7 +110,7 @@ fn block_deps(block: &ast::Block) -> Vec<Name> {
 }
 
 
-fn expr_deps(expr: &ast::Expression) -> Vec<Name> {
+fn expr_deps(expr: &ast::Expression) -> Vec<(Name, ast::Location)> {
     match expr {
         ast::Expression::ArrayInit{fields,..}  => {
             let mut v = Vec::new();
@@ -120,7 +121,7 @@ fn expr_deps(expr: &ast::Expression) -> Vec<Name> {
         },
         ast::Expression::StructInit{typed, fields,..}  => {
             let mut v = Vec::new();
-            v.push(typed.name.clone());
+            v.push((typed.name.clone(), typed.loc.clone()));
             for (_, expr) in fields {
                 v.extend(expr_deps(expr));
             }
@@ -128,14 +129,14 @@ fn expr_deps(expr: &ast::Expression) -> Vec<Name> {
         },
         ast::Expression::Name(name)  => {
             if name.name.len() > 2 {
-                vec![name.name.clone()]
+                vec![(name.name.clone(), name.loc.clone())]
             } else {
                 Vec::new()
             }
         },
         ast::Expression::Cast{expr, into,..} => {
             let mut v = Vec::new();
-            v.push(into.name.clone());
+            v.push((into.name.clone(), into.loc.clone()));
             v.extend(expr_deps(expr));
             v
         }
@@ -145,7 +146,7 @@ fn expr_deps(expr: &ast::Expression) -> Vec<Name> {
         ast::Expression::Call { name, args, ..} => {
             let mut v = Vec::new();
             if name.name.len() > 2 {
-                v.push(name.name.clone());
+                v.push((name.name.clone(), name.loc.clone()));
             }
             for arg in args {
                 v.extend(expr_deps(arg));
@@ -210,7 +211,13 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             }
             debug!("  localizing {}", name);
 
-            assert!(name.is_absolute(), "is not absolute: {}", name);
+            if !name.is_absolute() {
+                error!("undefined type '{}' during flatten of '{}' \n{}",
+                       name, md.name,
+                       parser::make_error(&loc, &format!("type '{}' unavailable in this scope", name)),
+                       );
+                std::process::exit(9);
+            }
             let mut module_name = name.clone();
             let local_name = module_name.pop().unwrap();
 
@@ -246,28 +253,28 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             let local = local.expect(&format!("ICE: module {} does not contain {}", module_name, local_name));
 
 
-            let mut deps : Vec<Name> = Vec::new();
+            let mut deps : Vec<(Name, ast::Location)> = Vec::new();
             match &local.def {
                 ast::Def::Static{typed,expr,..} => {
-                    deps.push(typed.name.clone());
+                    deps.push((typed.name.clone(), typed.loc.clone()));
                     deps.extend(expr_deps(expr));
                 }
                 ast::Def::Const{typed,expr, ..} => {
-                    deps.push(typed.name.clone());
+                    deps.push((typed.name.clone(), typed.loc.clone()));
                     deps.extend(expr_deps(expr));
                 }
                 ast::Def::Function{ret, args,body, ..} => {
                     if let Some(ret) = ret {
-                        deps.push(ret.typed.name.clone());
+                        deps.push((ret.typed.name.clone(), ret.typed.loc.clone()));
                     }
                     for arg in args {
-                        deps.push(arg.typed.name.clone());
+                        deps.push((arg.typed.name.clone(), arg.typed.loc.clone()));
                     }
                     deps.extend(block_deps(body));
                 }
                 ast::Def::Struct{fields,..} => {
                     for field in fields {
-                        deps.push(field.typed.name.clone());
+                        deps.push((field.typed.name.clone(), field.typed.loc.clone()));
                         if let Some(ref expr) = &field.array {
                             deps.extend(expr_deps(expr));
                         }
@@ -278,7 +285,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 }
             }
 
-            for dep in &deps  {
+            for (dep,loc) in &deps  {
                 incomming.push((dep.clone(), loc.clone()));
             }
 
@@ -375,7 +382,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     debug!("sorted");
     for (name, l) in sorted {
         debug!(" {} ", name);
-        for dep in &l.deps {
+        for (dep, _) in &l.deps {
             debug!("    < {}", dep);
         }
         if let Some(ast) = &l.ast {
@@ -409,7 +416,7 @@ fn sort_visit(sorted: &mut Vec<(Name,Local)>,
         return;
     }
     let n = unsorted.remove(name).expect(&format!("recursive type {} will never complete", name));
-    for dep in &n.deps {
+    for (dep,_) in &n.deps {
         sort_visit(sorted, sorted_mark, unsorted, dep);
     }
     sorted_mark.insert(name.clone());

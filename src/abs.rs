@@ -51,6 +51,8 @@ impl Scope{
             | "int"
             | "float"
             | "double"
+            | "sizeof"
+            | "unsigned"
             => {
                 let nuname = Name(vec![
                     String::new(),

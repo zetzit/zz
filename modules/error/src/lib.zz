@@ -28,7 +28,7 @@ pub fn check(
 }
 
 pub fn fail_with_errno(
-        Error unset<error> set<Error> mut* err,
+        Error unset<error> set<error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
         int   callsite_macro<__LINE__>      line,
@@ -54,7 +54,7 @@ pub fn fail_with_errno(
 }
 
 pub fn fail(
-        Error unset<error> set<Error> mut* err,
+        Error unset<error> set<error> mut* err,
         uint8_t e,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
