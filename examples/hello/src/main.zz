@@ -30,7 +30,11 @@ export fn main() -> int {
 
     flsomething();
 
-    return some_helper(&err, &bob);
+    if some_helper(&err, &bob) == 41 {
+        return 0;
+    } else {
+        return 1;
+    }
 }
 
 

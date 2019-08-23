@@ -1,0 +1,5 @@
+language: rust
+rust:
+  - stable
+script:
+  - ./ci.sh

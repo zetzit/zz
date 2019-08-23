@@ -1,19 +1,19 @@
 ![logo](logo.png?raw=true)
 
-Drunk Octopus
-==============
-
+Drunk Octopus - It compiles, ship it
+====================================
 
 ZZ (drunk octopus) is a dialect of C, inspired by rust
 
 It's main use case is embedded systems, where we still program C out of desperation, because nothing else actually works.
-You can also use it to build cross platform libraries. The build and linking concept is tailed to export a clean api with a namespace.
+You can also use it to build cross platform libraries. The build and linking concept is biased towards exporting a clean api.
 
+[![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
 
 ### too long didn't try
 
 ```bash
-cd example
+cd examples/hello
 cargo run run
 ```
 
@@ -27,26 +27,19 @@ cargo run run
  - namespaces
  - building
  - testing
+ - compile time assertions
 
-## maybe-later-features
+### maybe-later-features
 
  - advanced type system
- - compile time assertions
  - procedural macros
- - monads (sounds worse than it is, trust me)
 
 ### never-features
 
  - stdlib: ZZ is a C dialect, so libc works fine. If in doubt use musl. For additional functionality, we have modules.
  - smart pointers and runtime checks: ZZ is C. C is terrible but we would not be here if anyone knew how to make smart pointers free.
- - borrowchecker: no idea how to implement without changing the language.
  - emit binary directly: lots of work for no gain, reduces portability and ignores all the work that went into optimizing clang/gcc/etc.
 
-
-### minimally invasive.
-
-ZZ is C, and it only deviates from C when useful. sure, C syntax is shit,
-but the solution is not to make up another shit syntax that you'd have to learn for no reason.
 
 ### no headers
 
@@ -69,7 +62,7 @@ If you want something like that, you're probably not working on embedded systems
 ### how it looks
 
 
-```C
+```C++
 using errors;
 using libc::stdint::{uint32_t as u32};
 
@@ -77,10 +70,9 @@ struct Beep {
     u32 a;
 }
 
-fn some_helper(errors::error* err, mut uint32_t* bob) -> uint32_t {
+fn some_helper(errors::error* err, uint32_t mut* bob) -> uint32_t {
     printf("lol\n");
     if (bob) {
-        bob is safe;
         *bob = add(horst(), foo);
         printf("bob %d\n", *bob);
     }
@@ -92,7 +84,7 @@ export const fn horst() -> uint32_t {
 }
 
 ```
-By default, arguments are const, unless declared mutable. You can declare them const, but it does nothing.
+By default, arguments are const, unless declared mutable.
 
 note how horst() has been declared later than its use. Declaration order does no longer matter.
 
@@ -210,21 +202,35 @@ pub fn foo(
 
 note that even code that is disabled by conditions must still be valid syntax. It can however not be type checked,
 
-#### a note on pointer syntax
+#### a note on west-const vs east-const
 
-in ZZ, the star "\*" is always on the left side, i.e. attached to the type. There cannot be a space between type and star.
+ZZ enforces east-const. C is not a formally correct language, so in order to make ZZ formally correct, we have to make some syntax illegal.
+In this case we sacrifice west-const, which is incosistent and difficult to comprehend anyway.
 
-```C
-    void* foo;
+west-const with left aligned star reads as if the pointer is part of the type, and mutability is a property of the pointer (which it is).
+
+```C++
+    int mut* foo;
+    foo = 0; // compile error
+    *foo = 0 // valid
 ```
 
-the reason is parser complexity. If you hate this, feel free to submit a PR that makes the parser tolerate different styles.
+unless you want to apply mutability to the local storage named foo
+
+```C++
+    void * mut foo;
+    foo = 0; // valid
+    *foo = 0 // compile error
+```
+
+Coincidentally this is roughly equivalent to Rust, so rust devs should feel right at home.
+Even if not, you will quickly learn how pointer tags works by following the compiler errors.
 
 
 #### annotations
 
 ZZ has type annotations.
-They are boolean values that are attached to types and local names used throughout compilation and type checking,
+They are key-value pairs (with default empty value) that are attached to types and local names used throughout compilation and type checking,
 but they will never be emitted into the C interface.
 
 examples of built-in predicares are "mutable", "initialized" and "safe"
@@ -236,10 +242,35 @@ A pointer that is not safe, cannot be dereferenced.
 Because automatic annotation is still in early stage, you will do manual annotation alot using the 'is' keyword.
 
 ```C
-fn bla(mut A* a) {
+fn bla(A mut* a) {
     if (a != 0) {
         a is safe;
         a->a = 3;
     }
 }
 ```
+
+#### typestate
+
+we can use annotations to define states for types, which neatly lets you define which calls are legal on which
+type at a given time in the program without ANY runtime code.
+
+
+```C++
+fn open(int set<open> mut* a) {
+    *a = 1;
+}
+
+fn read(int require<open> mut* a) -> int {
+    return *a;
+}
+
+fn close(int unset<open> mut* a) {
+    *a = 0;
+}
+```
+
+the above example defines a type state transition that is legal: open -> read -> close
+any other combination will lead to a compile error, such as read before open.
+Also not calling close while dropping a will lead to the lifetime checker emitting a warning.
+
