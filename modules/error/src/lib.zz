@@ -12,7 +12,7 @@ export struct Error {
 };
 
 pub fn check(
-        Error unset<Error> mut* err,
+        Error unset<error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
         int   callsite_macro<__LINE__>      line,
@@ -28,7 +28,7 @@ pub fn check(
 }
 
 pub fn fail_with_errno(
-        Error unset<Error> set<Error> mut* err,
+        Error unset<error> set<Error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
         int   callsite_macro<__LINE__>      line,
@@ -54,7 +54,7 @@ pub fn fail_with_errno(
 }
 
 pub fn fail(
-        Error unset<Error> set<Error> mut* err,
+        Error unset<error> set<Error> mut* err,
         uint8_t e,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
@@ -78,7 +78,7 @@ pub fn fail(
 }
 
 export fn abort(
-        Error unset<Error> mut* err,
+        Error unset<error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
         int   callsite_macro<__LINE__>      line,

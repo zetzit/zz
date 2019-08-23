@@ -767,6 +767,18 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                 body,
             }
         }
+        Rule::while_stm => {
+            let mut stm = stm.into_inner();
+            let part    = stm.next().unwrap();
+            let expr    = parse_expr(n, part);
+            let part    = stm.next().unwrap();
+            let body    = parse_block(n, part);
+            Statement::Cond{
+                op: "while".to_string(),
+                expr: Some(expr),
+                body,
+            }
+        }
         Rule::elseif_stm => {
             let mut stm = stm.into_inner();
             let part    = stm.next().unwrap();

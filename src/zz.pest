@@ -27,6 +27,7 @@ keyword    = {
     key_packed   |
     key_mut      |
     key_for      |
+    key_while    |
     key_if       |
     key_else     |
     key_return   |
@@ -42,6 +43,7 @@ key_const   = { "const"   }
 key_packed  = { "packed"   }
 key_mut     = { "mutable" | "mut" }
 key_for     = { "for"}
+key_while   = { "while"}
 key_if      = { "if" }
 key_else    = { "else" }
 key_return  = { "return" }
@@ -181,6 +183,7 @@ vardecl     = { named_type  ~ array? ~ ( "=" ~ expr )? }
 
 semicolon   = { ";" }
 for_stm     = { "for" ~ "(" ~ expr_stm? ~ semicolon ~ expr_stm? ~ semicolon ~ expr_stm? ~ ")" ~ block }
+while_stm   = { "while" ~ expr ~ block }
 if_stm      = { "if"  ~ expr  ~ block }
 elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
 else_stm    = { "else" ~  block }
@@ -210,6 +213,7 @@ term_statement = _{
 statement = _{
     for_stm     |
     if_stm      |
+    while_stm   |
     else_stm    |
     elseif_stm  |
     block       |
