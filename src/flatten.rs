@@ -44,13 +44,13 @@ fn stm_deps(stm: &ast::Statement) -> Vec<Name> {
         },
         ast::Statement::For{e1,e2,e3, body} => {
             let mut deps = Vec::new();
-            if let Some(s) = e1 {
+            for s in e1 {
                 deps.extend(stm_deps(s));
             }
-            if let Some(s) = e2 {
+            for s in e1 {
                 deps.extend(stm_deps(s));
             }
-            if let Some(s) = e3 {
+            for s in e1 {
                 deps.extend(stm_deps(s));
             }
             deps.extend(block_deps(body));

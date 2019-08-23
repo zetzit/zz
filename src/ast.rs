@@ -261,9 +261,9 @@ pub enum Statement {
         assign:     Option<Expression>,
     },
     For {
-        e1:         Option<Box<Statement>>,
-        e2:         Option<Box<Statement>>,
-        e3:         Option<Box<Statement>>,
+        e1:         Vec<Box<Statement>>,
+        e2:         Vec<Box<Statement>>,
+        e3:         Vec<Box<Statement>>,
         body:       Block,
     },
     Cond {

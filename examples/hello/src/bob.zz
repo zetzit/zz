@@ -9,4 +9,10 @@ using <memory.h>::{memset};
 
 pub fn new(Error mut* self) {
     memset(self, 0, sizeof(Error));
+
+
+
+    int mut o = 0;
+    for (int mut i = 1; i < 1; i++, o++) {
+    }
 }

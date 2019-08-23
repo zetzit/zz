@@ -502,7 +502,13 @@ impl Emitter {
             }
             ast::Statement::For{e1, e2, e3, body}  => {
                 write!(self.f, "  for (").unwrap();
-                if let Some(expr) = e1 {
+                let mut first = true;
+                for expr in e1 {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(self.f, ",").unwrap();
+                    }
                     if self.inside_macro {
                         write!(self.f, "\\\n").unwrap();
                     } else {
@@ -511,7 +517,14 @@ impl Emitter {
                     self.emit_statement(expr);
                 }
                 write!(self.f, ";").unwrap();
-                if let Some(expr) = e2 {
+
+                let mut first = true;
+                for expr in e2 {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(self.f, ",").unwrap();
+                    }
                     if self.inside_macro {
                         write!(self.f, "\\\n").unwrap();
                     } else {
@@ -520,7 +533,14 @@ impl Emitter {
                     self.emit_statement(expr);
                 }
                 write!(self.f, ";").unwrap();
-                if let Some(expr) = e3 {
+
+                let mut first = true;
+                for expr in e3 {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(self.f, ",").unwrap();
+                    }
                     if self.inside_macro {
                         write!(self.f, "\\\n").unwrap();
                     } else {

@@ -807,9 +807,9 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
 
             let stm = stm.into_inner();
 
-            let mut expr1 = None;
-            let mut expr2 = None;
-            let mut expr3 = None;
+            let mut expr1 = Vec::new();
+            let mut expr2 = Vec::new();
+            let mut expr3 = Vec::new();
             let mut block = None;
 
             let mut cur = 1;
@@ -823,13 +823,13 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                         block = Some(parse_block(n, part));
                     },
                     _ if cur == 1 => {
-                        expr1 = Some(Box::new(parse_statement(n, part)));
+                        expr1.push(Box::new(parse_statement(n, part)));
                     },
                     _ if cur == 2 => {
-                        expr2 = Some(Box::new(parse_statement(n, part)));
+                        expr2.push(Box::new(parse_statement(n, part)));
                     },
                     _ if cur == 3 => {
-                        expr3 = Some(Box::new(parse_statement(n, part)));
+                        expr3.push(Box::new(parse_statement(n, part)));
                     },
                     e => panic!("unexpected rule {:?} in for ", e),
                 }

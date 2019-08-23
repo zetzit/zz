@@ -708,13 +708,13 @@ impl Stack {
             },
             ast::Statement::For{body, e1, e2, e3,..} => {
                 self.push("for");
-                if let Some(stm) = e1 {
+                for stm in e1 {
                     self.check_stm(stm)
                 }
-                if let Some(stm) = e2 {
+                for stm in e2 {
                     self.check_stm(stm)
                 }
-                if let Some(stm) = e3 {
+                for stm in e3 {
                     self.check_stm(stm)
                 }
                 self.check_block(body);
