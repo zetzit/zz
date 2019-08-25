@@ -77,6 +77,11 @@ fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
 function    = { ( exported | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 
+
+enum_i      = { ident ~ ( "=" ~ int_literal)? }
+enum_list   = _{ (pp | enum_i ) ~ "," ~ enum_list | pp | enum_i  }
+ienum       = { (exported | key_shared)? ~ "enum" ~ ident ~ "{" ~ enum_list? ~ ","?  ~ "}"  }
+
 cimport     = ${ ("<" ~ (!">" ~ ANY)* ~ ">") | ("\"" ~ (!"\"" ~ ANY)* ~ "\"")  }
 importalias = { "as" ~ ident }
 importname  = ${ ( ident | cimport ) ~ ( "::" ~ (local | importname))? }
@@ -178,7 +183,7 @@ assign      = { lhs ~ assignop ~ expr}
 call        = { ( type_name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")"  }
 call_args   = { expr ~ ( "," ~ expr )* }
 
-array       = { "[" ~ expr ~ "]" }
+array       = { "[" ~ expr? ~ "]" }
 vardecl     = { named_type  ~ array? ~ ( "=" ~ expr )? }
 
 semicolon   = { ";" }
@@ -233,6 +238,7 @@ block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" }
 
 file        = { SOI ~ (struct_d
                         | function
+                        | ienum
                         | import
                         | constant
                         | pp

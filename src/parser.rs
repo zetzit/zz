@@ -857,7 +857,11 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                         assign = Some(parse_expr(n, part));
                     }
                     Rule::array => {
-                        array = Some(parse_expr(n, part.into_inner().next().unwrap()));
+                        if let Some(expr) = part.into_inner().next() {
+                            array = Some(Some(parse_expr(n, expr)));
+                        } else {
+                            array = Some(None);
+                        }
                     }
                     e => panic!("unexpected rule {:?} in vardecl", e),
                 }

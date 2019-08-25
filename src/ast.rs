@@ -73,6 +73,9 @@ pub enum Def {
         fields:     Vec<Field>,
         packed:     bool,
     },
+    Enum {
+        names:      Vec<(Name, String)>,
+    },
     Macro {
         args:       Vec<String>,
         body:       Block,
@@ -257,7 +260,7 @@ pub enum Statement {
         typed:      Typed,
         tags:       Tags,
         name:       String,
-        array:      Option<Expression>,
+        array:      Option<Option<Expression>>,
         assign:     Option<Expression>,
     },
     For {

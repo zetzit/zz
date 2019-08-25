@@ -367,7 +367,9 @@ fn abs_statement(
                 abs_expr(assign, &scope, inbody, all_modules, self_md_name);
             }
             if let Some(array) = array {
-                abs_expr(array, &scope, inbody, all_modules, self_md_name);
+                if let Some(array) = array {
+                    abs_expr(array, &scope, inbody, all_modules, self_md_name);
+                }
             }
             scope.abs(typed, false);
             //check_abs_available(&typed.name, &ast.vis, all_modules, &typed.loc, &md.name);

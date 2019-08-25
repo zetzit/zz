@@ -157,6 +157,10 @@ impl Make {
         args.push("-Werror=return-type".to_string());
         args.push("-Wpedantic".to_string());
         args.push("-Wall".to_string());
+        args.push("-Wno-unused-function".to_string());
+        args.push("-Wno-parentheses-equality".to_string());
+        args.push("-Werror=pointer-sign".to_string());
+        args.push("-Werror=int-to-pointer-cast".to_string());
         args.push("-c".to_string());
         args.push(cf.filepath.clone());
         args.push("-o".to_string());

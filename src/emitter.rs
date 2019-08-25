@@ -582,7 +582,9 @@ impl Emitter {
                 write!(self.f, " {} ", name).unwrap();
                 if let Some(array) = &array {
                     write!(self.f, " [ ").unwrap();
-                    self.emit_expr(array);
+                    if let Some(array) = &array {
+                        self.emit_expr(array);
+                    }
                     write!(self.f, " ] ").unwrap();
                 }
 

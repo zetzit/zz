@@ -1,6 +1,13 @@
 using constants;
 using error::{Error};
 
+
+enum Bla {
+    Bob,
+    Lala,
+}
+
+
 fn usemeeee(Error* e) {
 }
 

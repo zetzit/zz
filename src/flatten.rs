@@ -74,7 +74,9 @@ fn stm_deps(stm: &ast::Statement) -> Vec<(Name, ast::Location)> {
         ast::Statement::Var{assign, typed, array, ..}  => {
             let mut deps = Vec::new();
             if let Some(array) = &array {
-                deps.extend(expr_deps(array));
+                if let Some(array) = &array {
+                    deps.extend(expr_deps(array));
+                }
             }
             if let Some(assign) = &assign {
                 deps.extend(expr_deps(assign));
