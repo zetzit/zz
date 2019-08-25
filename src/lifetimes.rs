@@ -798,6 +798,18 @@ impl Stack {
 
                 }
             },
+            ast::Statement::Switch{loc, expr, cases, default} => {
+                let val = self.check_expr(expr, Access::Value);
+                for (expr, block) in cases {
+                    let val = self.check_expr(expr, Access::Value);
+                    self.push("block");
+                    self.check_block(block);
+                    self.pop(&block.end);
+                }
+                if let Some(default) = default {
+                    self.check_block(default);
+                }
+            }
             ast::Statement::Goto{..}
             | ast::Statement::Label{..}
             | ast::Statement::Break{..}
@@ -842,6 +854,14 @@ pub fn check(md: &mut flatten::Module) {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), tags.clone());
                 stack.write(ptr, Lifetime::Static, &local.loc);
+            },
+            ast::Def::Enum{names, ..} => {
+                for (name,_) in names {
+                    let mut localname = Name::from(&local.name);
+                    localname.push(name.clone());
+                    let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
+                    stack.write(ptr, Lifetime::Static, &local.loc);
+                }
             },
             ast::Def::Function{body, args, ret, vararg, ..} => {
 

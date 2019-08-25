@@ -34,6 +34,8 @@ keyword    = {
     key_mark     |
     key_break    |
     key_continue |
+    key_default  |
+    key_switch   |
     key_goto
 }
 
@@ -50,7 +52,9 @@ key_return  = { "return" }
 key_continue= { "continue" }
 key_mark    = { "is" }
 key_goto    = { "goto" }
+key_switch  = { "switch" }
 key_break   = { "break" }
+key_default = { "default" }
 
 // type identifiers
 
@@ -190,6 +194,8 @@ semicolon   = { ";" }
 stm_list    = _{ expr_stm ~ "," ~ stm_list | expr_stm }
 for_stm     = { "for" ~ "(" ~ stm_list? ~ semicolon ~ stm_list? ~ semicolon ~ stm_list? ~ ")" ~ block }
 while_stm   = { "while" ~ expr ~ block }
+case_stm    = { (expr | key_default) ~ "=>" ~ block }
+switch_stm  = { "switch" ~ expr ~ "{" ~ case_stm* ~ "}"}
 if_stm      = { "if"  ~ expr  ~ block }
 elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
 else_stm    = { "else" ~  block }
@@ -217,6 +223,7 @@ term_statement = _{
 }
 
 statement = _{
+    switch_stm  |
     for_stm     |
     if_stm      |
     while_stm   |

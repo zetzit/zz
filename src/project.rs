@@ -77,6 +77,11 @@ export fn main() -> int {{
 ", c.project.name).unwrap();
     }
 
+    if !std::env::current_dir().unwrap().join(".gitignore").exists() {
+        let mut f = File::create(".gitignore").unwrap();
+        write!(f, "/target\n").unwrap();
+    }
+
     println!("project '{}' created", c.project.name);
 }
 

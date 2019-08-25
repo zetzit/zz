@@ -6,7 +6,9 @@ pub struct Name (pub Vec<String>);
 
 impl Name {
     pub fn push(&mut self, v: String) {
-        self.0.push(v);
+        for v in v.split("::") {
+            self.0.push(v.to_string());
+        }
     }
 
     pub fn pop(&mut self) -> Option<String> {

@@ -157,6 +157,9 @@ impl Emitter {
                         ast::Def::Struct{..} => {
                             self.emit_struct(&d)
                         }
+                        ast::Def::Enum{..} => {
+                            self.emit_enum(&d)
+                        }
                         ast::Def::Function{..} => {
                             if !d.name.ends_with("::main") {
                                 self.emit_decl(&d);
@@ -284,6 +287,26 @@ impl Emitter {
 
         self.emit_expr(&expr);
         write!(self.f, ";\n").unwrap();
+    }
+
+    pub fn emit_enum(&mut self, ast: &ast::Local) {
+        let (names) = match &ast.def {
+            ast::Def::Enum{names} => (names),
+            _ => unreachable!(),
+        };
+        self.emit_loc(&ast.loc);
+        write!(self.f, "typedef enum {{\n").unwrap();
+        for (name, literal) in names {
+            write!(self.f, "    {}_{}",
+                   self.to_local_name(&Name::from(&ast.name)),
+                   name
+                   ).unwrap();
+            if let Some(literal) = literal {
+                write!(self.f, " = {}", literal).unwrap();
+            }
+            write!(self.f, ",\n").unwrap();
+        }
+        write!(self.f, "\n}} {};\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
     }
 
     pub fn emit_struct(&mut self, ast: &ast::Local) {
@@ -612,6 +635,26 @@ impl Emitter {
                     self.emit_expr(expr);
                 }
                 true
+            }
+            ast::Statement::Switch{loc, expr, cases, default}  => {
+                self.emit_loc(&loc);
+                write!(self.f, "switch (\n").unwrap();
+                self.emit_expr(expr);
+                write!(self.f, ") {{\n").unwrap();
+                for (expr, block) in cases {
+                    write!(self.f, "case ").unwrap();
+                    self.emit_expr(expr);
+                    write!(self.f, ": {{\n").unwrap();
+                    self.emit_zblock(block, true);
+                    write!(self.f, "break;}}\n").unwrap();
+                }
+                if let Some(default) = default {
+                    write!(self.f, "default: {{\n").unwrap();
+                    self.emit_zblock(default, true);
+                    write!(self.f, "break;}}\n").unwrap();
+                }
+                write!(self.f, "}}\n").unwrap();
+                false
             }
         }
     }

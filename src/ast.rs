@@ -74,7 +74,7 @@ pub enum Def {
         packed:     bool,
     },
     Enum {
-        names:      Vec<(Name, String)>,
+        names:      Vec<(String, Option<i64>)>,
     },
     Macro {
         args:       Vec<String>,
@@ -86,7 +86,6 @@ pub enum Def {
 #[derive(Clone)]
 pub struct Local {
     pub name:       String,
-    pub export_as:  Option<String>,
     pub vis:        Visibility,
     pub loc:        Location,
     pub def:        Def,
@@ -244,6 +243,12 @@ pub enum Statement {
     Expr {
         loc:        Location,
         expr:       Expression,
+    },
+    Switch {
+        loc:        Location,
+        expr:       Expression,
+        cases:      Vec<(Expression, Block)>,
+        default:    Option<Block>,
     },
     Continue{
         loc:        Location,

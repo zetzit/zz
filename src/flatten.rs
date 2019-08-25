@@ -43,15 +43,25 @@ fn stm_deps(stm: &ast::Statement) -> Vec<(Name, ast::Location)> {
         ast::Statement::Block(b2) => {
             block_deps(b2)
         },
+        ast::Statement::Switch{expr, cases, default, ..} => {
+            let mut deps = expr_deps(expr);
+            for (_,body) in cases {
+                deps.extend(block_deps(body));
+            }
+            if let Some(default) =  default {
+                deps.extend(block_deps(default));
+            }
+            deps
+        },
         ast::Statement::For{e1,e2,e3, body} => {
             let mut deps = Vec::new();
             for s in e1 {
                 deps.extend(stm_deps(s));
             }
-            for s in e1 {
+            for s in e2 {
                 deps.extend(stm_deps(s));
             }
-            for s in e1 {
+            for s in e3 {
                 deps.extend(stm_deps(s));
             }
             deps.extend(block_deps(body));
@@ -220,11 +230,10 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                        );
                 std::process::exit(9);
             }
-            let mut module_name = name.clone();
-            let local_name = module_name.pop().unwrap();
 
 
-            if module_name.0[1] == "ext" {
+
+            if name.0[1] == "ext" {
                 //TODO
                 collected.0.insert(name.clone(), Local{
                     deps: Vec::new(),
@@ -234,13 +243,31 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 continue
             }
 
-            let module = if module_name == md.name { &md } else {match all_modules.get(&module_name) {
-                None => {
-                    panic!("ice: unknown module {}", module_name)
-                },
-                Some(loader::Module::C(_)) => panic!("not implemented"),
-                Some(loader::Module::ZZ(ast)) => ast,
-            }};
+            let mut module_name = name.clone();
+            let mut local_name = module_name.pop().unwrap();
+            let mut expecting_sub_type = false;
+
+            let module = loop {
+                let module = if module_name == md.name { &md } else {match all_modules.get(&module_name) {
+                    None => {
+                        // try moving left
+                        if module_name.len() > 3{
+                            local_name = module_name.pop().unwrap();
+                            expecting_sub_type = true;
+                            if let Some(loader::Module::ZZ(ast)) = all_modules.get(&module_name) {
+                                break ast;
+                            } else {
+                                continue;
+                            }
+                        }
+
+                        panic!("ice: unknown module {}", module_name)
+                    },
+                    Some(loader::Module::C(_)) => panic!("not implemented"),
+                    Some(loader::Module::ZZ(ast)) => ast,
+                }};
+                break module;
+            };
 
             // find the local we're looking for
             let mut local = None;
@@ -257,6 +284,19 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
             let mut deps : Vec<(Name, ast::Location)> = Vec::new();
             match &local.def {
+                ast::Def::Enum{names, ..} => {
+                    expecting_sub_type = false;
+                    //flat.aliases.insert(name.clone(), format!("enum {}", name.0[1..].join("_")));
+                    for (subname, _) in names {
+                        let mut name = name.clone();
+                        name.push(subname.clone());
+                        collected.0.insert(name, Local{
+                            deps:           Vec::new(),
+                            ast:            None,
+                            in_scope_here:  loc.clone(),
+                        });
+                    }
+                }
                 ast::Def::Static{typed,expr,..} => {
                     deps.push((typed.name.clone(), typed.loc.clone()));
                     deps.extend(expr_deps(expr));
@@ -285,6 +325,10 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 ast::Def::Macro{body, ..} => {
                     deps.extend(block_deps(body));
                 }
+            }
+
+            if expecting_sub_type {
+                panic!("ice: incorrectly resolved '{}' as local '{}' in module '{}' ", name, local_name, module_name)
             }
 
             for (dep,loc) in &deps  {
@@ -389,8 +433,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         }
         if let Some(ast) = &l.ast {
             flat.d.push(D::Local(ast.clone()));
-        } else {
-            assert!(name.0[1] == "ext");
+        } else if name.0[1] == "ext" {
             let mut fqn = name.0.clone();
             fqn.pop();
             let inc = ast::Include{
@@ -417,7 +460,21 @@ fn sort_visit(sorted: &mut Vec<(Name,Local)>,
     if sorted_mark.contains(name) {
         return;
     }
-    let n = unsorted.remove(name).expect(&format!("recursive type {} will never complete", name));
+    let n = match unsorted.remove(name) {
+        Some(v) => v,
+        None => {
+            eprintln!("recursive type {} will never complete.\nsorted:", name);
+            for (name, _) in sorted {
+                eprintln!("  {}", name);
+            }
+            eprintln!("unsorted:");
+            for (name, _) in unsorted {
+                eprintln!("  {}", name);
+            }
+            std::process::exit(10);
+        },
+    };
+
     for (dep,_) in &n.deps {
         sort_visit(sorted, sorted_mark, unsorted, dep);
     }

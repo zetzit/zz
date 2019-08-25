@@ -14,6 +14,7 @@ struct InScope {
     name:       Name,
     loc:        ast::Location,
     is_module:  bool,
+    subtypes:   bool,
 }
 
 #[derive(Default)]
@@ -22,7 +23,7 @@ struct Scope {
 }
 
 impl Scope{
-    pub fn insert(&mut self, local: String, fqn: Name, loc: &ast::Location, is_module: bool) {
+    pub fn insert(&mut self, local: String, fqn: Name, loc: &ast::Location, is_module: bool, subtypes: bool) {
         if let Some(previous) = self.v.get(&local) {
             if !is_module || !previous.is_module || fqn != previous.name {
                 error!("conflicting local name '{}' \n{}\n{}",
@@ -33,10 +34,12 @@ impl Scope{
                 std::process::exit(9);
             }
         }
+        trace!("  insert {:?}", fqn);
         self.v.insert(local, InScope{
             name:       fqn,
             loc:        loc.clone(),
             is_module,
+            subtypes,
         });
     }
 
@@ -89,7 +92,7 @@ impl Scope{
                 }
             },
             Some(v) => {
-                if rhs.len() != 0  && !v.is_module {
+                if rhs.len() != 0  && !v.subtypes {
                     error!("resolving '{}' as member is not possible \n{}",
                            t.name,
                            parser::make_error(&t.loc, format!("'{}' is not a module", lhs))
@@ -382,6 +385,16 @@ fn abs_statement(
                 abs_expr(expr, &scope, inbody, all_modules, self_md_name);
             }
         }
+        ast::Statement::Switch {expr, cases, default, ..} => {
+            abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+            for (expr, block) in cases {
+                abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+                abs_block(block, &scope, all_modules, self_md_name);
+            }
+            if let Some(block) = default {
+                abs_block(block, &scope, all_modules, self_md_name);
+            }
+        }
     }
 }
 
@@ -408,7 +421,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
         let local_module_name = import.alias.clone().unwrap_or(import.name.0.last().unwrap().clone());
 
         if import.local.len() == 0 {
-            scope.insert(local_module_name, fqn.clone(), &import.loc, true);
+            scope.insert(local_module_name, fqn.clone(), &import.loc, true, true);
         } else {
             for (local, import_as) in &import.local {
                 let mut nn = fqn.clone();
@@ -424,19 +437,62 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                 // if not self
                 if md.name.len() > nn.len() || md.name.0[..] != nn.0[..md.name.len()] {
                     // add to scope
-                    scope.insert(localname, nn, &import.loc, false);
+                    scope.insert(localname, nn, &import.loc, false, false);
                 }
             }
         }
         import.name = fqn;
     }
 
+
+    let mut new_locals = Vec::new();
     // round one, just get all local defs
     for ast in &mut md.locals {
         let mut ns = md.name.clone();
         ns.0.push(ast.name.clone());
-        scope.insert(ast.name.clone(), ns, &ast.loc, false);
+        match &mut ast.def {
+            ast::Def::Enum{names,..} => {
+                let mut value = 0;
+                for (_, val) in names.iter_mut() {
+                    if let Some(val) = val {
+                        value = *val;
+                    } else {
+                        *val = Some(value);
+                    }
+                    value += 1;
+                }
+                for (name, value) in names {
+                    let subname = format!("{}::{}", ast.name, name);
+
+                    new_locals.push(ast::Local{
+                        name: subname.clone(),
+                        loc:  ast.loc.clone(),
+                        vis:  ast.vis.clone(),
+                        def: ast::Def::Const {
+                            typed: ast::Typed {
+                                name:   Name::from(&ast.name),
+                                loc:    ast.loc.clone(),
+                                ptr:    Vec::new(),
+                            },
+                            expr: ast::Expression::Literal{
+                                loc:    ast.loc.clone(),
+                                v:      format!("{}", value.unwrap()),
+                            },
+                        }
+                    });
+                    let mut ns = md.name.clone();
+                    ns.push(subname.clone());
+                    scope.insert(subname, ns, &ast.loc, false, false);
+                }
+                scope.insert(ast.name.clone(), ns, &ast.loc, false, true);
+            }
+            _ => {
+                scope.insert(ast.name.clone(), ns, &ast.loc, false, false);
+            }
+        };
     }
+
+    //md.locals.extend(new_locals);
 
     // round two, make all dependencies absolute
     for ast in &mut md.locals {
@@ -470,6 +526,8 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                         abs_expr(array, &scope, false, all_modules, &md.name);
                     }
                 }
+            }
+            ast::Def::Enum{names,..} => {
             }
             ast::Def::Macro{body, ..} => {
                 abs_block(body, &scope,all_modules, &md.name);

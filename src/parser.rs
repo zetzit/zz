@@ -54,7 +54,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let decl = decl.into_inner();
                 let mut name = None;
                 let mut args = Vec::new();
-                let mut export_as = None;
                 let mut body = None;
                 let mut vis = Visibility::Object;
                 for part in decl {
@@ -64,14 +63,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         }
                         Rule::exported => {
                             vis = Visibility::Export;
-                            for part in part.into_inner() {
-                                match part.as_rule() {
-                                    Rule::ident => {
-                                        export_as = Some(part.as_str().to_string());
-                                    },
-                                    e => panic!("unexpected rule {:?} in export", e),
-                                }
-                            }
                         }
                         Rule::ident if name.is_none() => {
                             name = part.as_str().into();
@@ -89,7 +80,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 }
 
                 module.locals.push(Local{
-                    export_as,
                     name: name.unwrap().to_string(),
                     vis,
                     loc,
@@ -107,7 +97,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 };
                 let decl = decl.into_inner();
                 let mut name = String::new();
-                let mut export_as = None;
                 let mut args = Vec::new();
                 let mut ret  = None;
                 let mut body = None;
@@ -121,14 +110,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         }
                         Rule::exported => {
                             vis = Visibility::Export;
-                            for part in part.into_inner() {
-                                match part.as_rule() {
-                                    Rule::ident => {
-                                        export_as = Some(part.as_str().to_string());
-                                    },
-                                    e => panic!("unexpected rule {:?} in export", e),
-                                }
-                            }
                         }
                         Rule::ident => {
                             name = part.as_str().into();
@@ -170,7 +151,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                 module.locals.push(Local{
                     name,
-                    export_as,
                     vis,
                     loc,
                     def:Def::Function{
@@ -182,12 +162,73 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 });
             },
             Rule::EOI => {},
+            Rule::ienum => {
+                let decl = decl.into_inner();
+
+                let mut vis    = Visibility::Object;
+                let mut name   = None;
+                let mut names  = Vec::new();
+                let mut loc    = None;
+
+                for part in PP::new(n, decl) {
+                    match part.as_rule() {
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
+                        }
+                        Rule::exported => {
+                            vis = Visibility::Export;
+                        }
+                        Rule::ident if name.is_none() => {
+                            loc  = Some(Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            });
+                            name = Some(part.as_str().into());
+
+                        }
+                        Rule::enum_i => {
+                            let mut part = part.into_inner();
+                            let name = part.next().unwrap().as_str().to_string();
+                            let mut literal = None;
+                            if let Some(part) = part.next() {
+                                literal = Some(match part.as_str().to_string().parse() {
+                                    Err(e) => {
+                                        let loc  = Location{
+                                            file: n.to_string_lossy().into(),
+                                            span: part.as_span(),
+                                        };
+                                        error!("enums must be integer literals\n{}",
+                                               make_error(&loc, format!("{}", e)),
+                                               );
+                                        std::process::exit(9);
+                                    },
+                                    Ok(v) => v,
+                                });
+                            }
+
+                            names.push((name, literal));
+
+
+                        }
+                        e => panic!("unexpected rule {:?} in enum", e),
+                    }
+                };
+
+                module.locals.push(Local{
+                    name: name.unwrap(),
+                    vis,
+                    loc: loc.unwrap(),
+                    def: Def::Enum{
+                        names,
+                    }
+                });
+
+            },
             Rule::struct_d => {
                 let decl = decl.into_inner();
 
                 let mut vis    = Visibility::Object;
                 let mut name   = None;
-                let mut export_as = None;
                 let mut fields = Vec::new();
                 let mut loc    = None;
                 let mut packed = false;
@@ -202,14 +243,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         }
                         Rule::exported => {
                             vis = Visibility::Export;
-                            for part in part.into_inner() {
-                                match part.as_rule() {
-                                    Rule::ident => {
-                                        export_as = Some(part.as_str().to_string());
-                                    },
-                                    e => panic!("unexpected rule {:?} in export", e),
-                                }
-                            }
                         }
                         Rule::ident => {
                             loc  = Some(Location{
@@ -255,7 +288,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                 module.locals.push(Local{
                     name: name.unwrap(),
-                    export_as,
                     vis,
                     loc: loc.unwrap(),
                     def: Def::Struct {
@@ -365,7 +397,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                         }
 
                         module.locals.push(Local{
-                            export_as: None,
                             name: name,
                             loc,
                             vis,
@@ -377,7 +408,6 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                     },
                     Rule::istatic => {
                         module.locals.push(Local{
-                            export_as: None,
                             name: name,
                             loc,
                             vis: Visibility::Object,
@@ -906,6 +936,38 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                 op:     op.unwrap(),
             }
         }
+        Rule::switch_stm => {
+            let mut stm  = stm.into_inner();
+            let mut default = None;
+            let expr = parse_expr(n, stm.next().unwrap());
+
+            let mut cases = Vec::new();
+            for part in stm {
+                let mut part = part.into_inner();
+                let ppart = part.next().unwrap();
+                if ppart.as_rule() == Rule::key_default {
+                    if default.is_some() {
+                        error!("multiple default cases\n{}",
+                               make_error(&loc, "in this switch"),
+                               );
+                        std::process::exit(9);
+                    } else {
+                        default = Some(parse_block(n, part.next().unwrap()));
+                    }
+                } else {
+                    let expr  = parse_expr(n, ppart);
+                    let block = parse_block(n, part.next().unwrap());
+                    cases.push((expr,block));
+                }
+            }
+
+            Statement::Switch {
+                default,
+                loc,
+                expr,
+                cases,
+            }
+        },
         e => panic!("unexpected rule {:?} in block", e),
     }
 }

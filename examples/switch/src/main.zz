@@ -1,0 +1,34 @@
+using <stdio.h>::{printf};
+
+
+enum A {
+    g,
+    f,
+}
+
+enum B {
+    wop,
+    dop = 10,
+    mop,
+}
+
+
+export fn main() -> int {
+    printf("hello switch\n");
+
+
+    A a = A::g;
+
+
+    switch a {
+        A::f => {
+            printf("no\n");
+        }
+        default => {
+            printf("yes\n");
+        }
+    }
+
+
+    return 0;
+}
