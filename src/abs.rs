@@ -1,7 +1,7 @@
 /// make all names in a module absolute
 
 use super::ast;
-use super::parser;
+use super::parser::emit_error;
 use std::collections::HashMap;
 use super::name::Name;
 use super::loader;
@@ -26,11 +26,11 @@ impl Scope{
     pub fn insert(&mut self, local: String, fqn: Name, loc: &ast::Location, is_module: bool, subtypes: bool) {
         if let Some(previous) = self.v.get(&local) {
             if !is_module || !previous.is_module || fqn != previous.name {
-                error!("conflicting local name '{}' \n{}\n{}",
-                       local,
-                       parser::make_error(&loc, "declared here"),
-                       parser::make_error(&previous.loc, "also declared here"),
-                       );
+
+                emit_error(format!("conflicting local name '{}'", local), &[
+                       (loc.clone(), "declared here"),
+                       (previous.loc.clone(), "also declared here"),
+                ]);
                 std::process::exit(9);
             }
         }
@@ -77,46 +77,42 @@ impl Scope{
             None => {
                 if inbody {
                     if t.name.len() > 1 {
-                        error!("possibly undefined name '{}' \n{}",
-                              lhs,
-                              parser::make_error(&t.loc, "cannot use :: notation to reference names not tracked by zz"),
-                              );
+                        emit_error(format!("possibly undefined name '{}'", lhs), &[
+                              (t.loc.clone(), "cannot use :: notation to reference names not tracked by zz"),
+                        ]);
                         ABORT.store(true, Ordering::Relaxed);
                     }
                 } else {
-                    error!("undefined name '{}' \n{}",
-                           lhs,
-                           parser::make_error(&t.loc, "used in this scope"),
-                           );
+                    emit_error(format!("undefined name '{}'", lhs), &[
+                               (t.loc.clone(), "used in this scope"),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                 }
             },
             Some(v) => {
                 if rhs.len() != 0  && !v.subtypes {
-                    error!("resolving '{}' as member is not possible \n{}",
-                           t.name,
-                           parser::make_error(&t.loc, format!("'{}' is not a module", lhs))
-                           );
+                    emit_error(format!("resolving '{}' as member is not possible", t.name), &[
+                        (t.loc.clone(), format!("'{}' is not a module", lhs))
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                 }
 
                 /*
                 if rhs.len() != 0 && v.name.0[1] == "ext" {
-                    error!("'{}' cannot be used as qualified name\n{}\n{}",
+                    emit_error("'{}' cannot be used as qualified name\n{}\n{}",
                            v.name,
-                           parser::make_error(&t.loc, format!("'{}' is a c header", lhs)),
-                           parser::make_error(&v.loc, format!("suggestion: add '{}' to this import", rhs.join("::")))
+                           (t.loc, format!("'{}' is a c header", lhs)),
+                           (v.loc, format!("suggestion: add '{}' to this import", rhs.join("::")))
                            );
                     ABORT.store(true, Ordering::Relaxed);
                 }
                 */
 
                 if rhs.len() == 0 && v.is_module {
-                    error!("cannot use module '{}' as a type\n{}\n{}",
-                           v.name,
-                           parser::make_error(&t.loc, format!("cannot use module '{}' as a type", t.name)),
-                           parser::make_error(&v.loc, format!("if you wanted to import '{}' as a type, use ::{{{}}} here", t.name, t.name)),
-                           );
+                    emit_error(format!("cannot use module '{}' as a type", v.name), &[
+                           (t.loc.clone(), format!("cannot use module '{}' as a type", t.name)),
+                           (v.loc.clone(), format!("if you wanted to import '{}' as a type, use ::{{{}}} here", t.name, t.name)),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                 }
 
@@ -196,10 +192,9 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
         }
     }
 
-    error!("cannot find module '{}' \n{}",
-           import.name,
-           parser::make_error(&import.loc, "imported here"),
-           );
+    emit_error(format!("cannot find module '{}'", import.name), &[
+        (import.loc.clone(), "imported here"),
+    ]);
     std::process::exit(9);
 }
 
@@ -227,10 +222,9 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
 
     let module = match all_modules.get(&module_name) {
         None => {
-            error!("cannot find module '{}' while type checking module '{}' \n{}",
-                   module_name, selfname,
-                   parser::make_error(&loc, "expected to be in scope here"),
-                   );
+            emit_error(format!("cannot find module '{}' while type checking module '{}'", module_name, selfname), &[
+                   (loc.clone(), "expected to be in scope here"),
+            ]);
             std::process::exit(9);
         },
         Some(loader::Module::C(_)) => return,
@@ -240,29 +234,26 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
     for local2 in &module.locals {
         if local2.name == local_name {
             if local2.vis == ast::Visibility::Object {
-                error!("the type '{}' in '{}' is private \n{}\n{}",
-                       local_name, module_name,
-                       parser::make_error(&loc, "cannot use private type"),
-                       parser::make_error(&local2.loc, "add 'pub' to share this type"),
-                       );
+                emit_error(format!("the type '{}' in '{}' is private", local_name, module_name), &[
+                       (loc.clone(), "cannot use private type"),
+                       (local2.loc.clone(), "add 'pub' to share this type"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
             }
             if this_vis == &ast::Visibility::Export && local2.vis != ast::Visibility::Export {
-                error!("the type '{}' in '{}' is not exported \n{}\n{}",
-                       local_name, module_name,
-                       parser::make_error(&loc, "cannot use an unexported type here"),
-                       parser::make_error(&local2.loc, "suggestion: export this type"),
-                       );
+                emit_error(format!("the type '{}' in '{}' is not exported", local_name, module_name), &[
+                       (loc.clone(), "cannot use an unexported type here"),
+                       (local2.loc.clone(), "suggestion: export this type"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
             }
             return;
         }
     };
 
-    error!("module '{}' does not contain '{}' \n{}",
-           module_name, local_name,
-           parser::make_error(&loc, "imported here"),
-           );
+    emit_error(format!("module '{}' does not contain '{}'", module_name, local_name), &[
+        (loc.clone(), "imported here"),
+    ]);
     ABORT.store(true, Ordering::Relaxed);
 
 }
@@ -341,6 +332,9 @@ fn abs_statement(
         ast::Statement::Goto{..} |  ast::Statement::Label{..} | ast::Statement::Break{..} | ast::Statement::Continue{..}=> {
         }
         ast::Statement::Block(b2) => {
+            abs_block(b2, &scope, all_modules, self_md_name);
+        }
+        ast::Statement::Unsafe(b2) => {
             abs_block(b2, &scope, all_modules, self_md_name);
         }
         ast::Statement::For{e1,e2,e3, body} => {
@@ -536,7 +530,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
     }
 
     if ABORT.load(Ordering::Relaxed) {
-        error!("exit abs due to previous errors");
+        warn!("exit abs due to previous errors");
         std::process::exit(9);
     }
 

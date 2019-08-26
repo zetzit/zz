@@ -1,9 +1,8 @@
 use pest;
-use super::parser::Rule;
+use super::parser::{Rule, emit_warn, emit_error};
 use super::ast;
 use super::name::Name;
 use std::path::{Path, PathBuf};
-use super::parser;
 
 pub struct PP {
     decl:   pest::iterators::Pairs<'static, Rule>,
@@ -65,27 +64,26 @@ impl PP {
                 match name.0.join("::").as_str() {
                     "def" => {
                         if args.len() != 1 {
-                            error!("wrong number of arguments to cfg. expected 1 \n{}", 
-                                   parser::make_error(&loc, "called here"),
-                                   );
+                            emit_error("wrong number of arguments to cfg. expected 1", &[
+                                   (loc, "called here"),
+                            ]);
                             std::process::exit(9);
                         }
 
                         match &args[0] {
                             Value::String(s) if s == "debug" => Value::Bool(true),
                             _ => {
-                                warn!("undefined def defaults to false\n{}",
-                                       parser::make_error(&loc, "avoid this warning by defining it explicitly"),
-                                );
+                                emit_warn("undefined def defaults to false", &[
+                                       (loc, "avoid this warning by defining it explicitly"),
+                                ]);
                                 Value::Bool(false)
                             }
                         }
                     },
                     n => {
-                        error!("function '{}' not available in preprocessor directive \n{}", 
-                               n,
-                               parser::make_error(&loc, "used here"),
-                        );
+                        emit_error(format!("function '{}' not available in preprocessor directive",n),  &[
+                               (loc, "used here"),
+                        ]);
                         std::process::exit(9);
                     }
                 }
@@ -93,10 +91,9 @@ impl PP {
 
             },
             _ => {
-                error!("{:?} expression cannot (yet) be used in preprocessor directive \n{}",
-                       expr.as_rule(),
-                       parser::make_error(&loc, "used here"),
-                       );
+                emit_error(format!("{:?} expression cannot (yet) be used in preprocessor directive", expr.as_rule()), &[
+                       (loc, "used here"),
+                ]);
                 std::process::exit(9);
             }
         }
@@ -111,9 +108,9 @@ impl PP {
                 self.stack.push(true);
             },
             _ => {
-                error!("preprocessor directive must evaluate to boolean\n{}",
-                       parser::make_error(&loc, format!("this expression = '{:?}'", v)),
-                       );
+                emit_error("preprocessor directive must evaluate to boolean", &[
+                       (loc, format!("this expression = '{:?}'", v)),
+                ]);
                 std::process::exit(9);
             }
 
@@ -122,9 +119,9 @@ impl PP {
 
     fn pop(&mut self, loc: &ast::Location) -> bool {
         if self.stack.len() < 1 {
-            error!("missing preceeding #if directive\n{}",
-                   parser::make_error(&loc, "here"),
-                   );
+            emit_error("missing preceeding #if directive", &[
+                (loc.clone(), "here"),
+            ]);
             std::process::exit(9);
         }
         self.stack.pop().unwrap()

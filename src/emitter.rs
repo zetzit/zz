@@ -519,6 +519,10 @@ impl Emitter {
                 }
                 false
             }
+            ast::Statement::Unsafe(b2) => {
+                self.emit_zblock(b2, true);
+                false
+            }
             ast::Statement::Block(b2) => {
                 self.emit_zblock(b2, true);
                 false

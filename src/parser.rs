@@ -4,24 +4,47 @@ use super::name::Name;
 use std::path::Path;
 use std::io::{Read};
 use super::pp::PP;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Parser)]
 #[grammar = "zz.pest"]
 pub struct ZZParser;
 
+pub static ERRORS_AS_JSON : AtomicBool = AtomicBool::new(false);
 
-pub fn make_error<S: Into<String>>(loc: &Location, message: S) -> pest::error::Error<Rule> {
-    pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
-        message: message.into(),
-    }, loc.span.clone()).with_path(&loc.file)
-}
+
 
 pub fn parse(n: &Path) -> Module
 {
     match p(&n){
         Err(e) => {
             let e = e.with_path(&n.to_string_lossy());
-            error!("syntax error\n{}", e);
+            if ERRORS_AS_JSON.load(Ordering::SeqCst) {
+
+
+                let mut j = JsonError::default();
+                j.message       = format!("syntax error:\n{}", e);
+                j.level         = "error".to_string();
+                j.file_name     = n.to_string_lossy().to_string();
+
+                match e.line_col {
+                    pest::error::LineColLocation::Span((l1,c1),(l2,c2)) => {
+                        j.line_start    = l1;
+                        j.column_start  = c1;
+                        j.line_end      = l2;
+                        j.column_end    = c2;
+                    },
+                    pest::error::LineColLocation::Pos((l1,c1)) => {
+                        j.line_start    = l1;
+                        j.column_start  = c1;
+                        j.line_end      = l1;
+                        j.column_end    = c1;
+                    }
+                };
+                println!("{}", serde_json::to_string(&j).unwrap());
+            } else {
+                error!("syntax error\n{}", e);
+            }
             std::process::exit(9);
         }
         Ok(md) => {
@@ -197,9 +220,10 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                                             file: n.to_string_lossy().into(),
                                             span: part.as_span(),
                                         };
-                                        error!("enums must be integer literals\n{}",
-                                               make_error(&loc, format!("{}", e)),
-                                               );
+                                        emit_error(
+                                            "enums must be integer literals",
+                                            &[(loc.clone(), format!("{}", e))]
+                                        );
                                         std::process::exit(9);
                                     },
                                     Ok(v) => v,
@@ -390,9 +414,9 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
 
                     Rule::constant => {
                         for (_,tag) in tags.0 {
-                            error!("syntax error\n{}",
-                                   make_error(&tag.iter().next().unwrap().1, "anonymous type cannot have storage tags (yet)"),
-                                   );
+                            emit_error("syntax error", &[(
+                                       tag.iter().next().unwrap().1.clone(),
+                                       "anonymous type cannot have storage tags (yet)")]);
                             std::process::exit(9);
                         }
 
@@ -947,9 +971,9 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                 let ppart = part.next().unwrap();
                 if ppart.as_rule() == Rule::key_default {
                     if default.is_some() {
-                        error!("multiple default cases\n{}",
-                               make_error(&loc, "in this switch"),
-                               );
+                        emit_error("multiple default cases", &[
+                            (loc.clone(), "in this switch")
+                        ]);
                         std::process::exit(9);
                     } else {
                         default = Some(parse_block(n, part.next().unwrap()));
@@ -967,6 +991,9 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                 expr,
                 cases,
             }
+        },
+        Rule::unsafe_block => {
+            Statement::Unsafe(Box::new(parse_block(n, stm.into_inner().next().unwrap())))
         },
         e => panic!("unexpected rule {:?} in block", e),
     }
@@ -1029,9 +1056,9 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
                 file: n.1.to_string_lossy().into(),
                 span: name_part.as_span(),
             };
-            error!("syntax error\n{}",
-                   make_error(&loc, "expected a name"),
-                   );
+            emit_error("syntax error", &[
+                       (loc.clone(), "expected a name")
+            ]);
             std::process::exit(9);
         }
     };
@@ -1126,9 +1153,9 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
     }
 
     for (_,tag) in tags.0 {
-        error!("syntax error\n{}",
-               make_error(&tag.iter().next().unwrap().1, "anonymous type cannot have storage tags (yet)"),
-               );
+        emit_error("syntax error", &[
+            (tag.iter().next().unwrap().1.clone(), "anonymous type cannot have storage tags (yet)"),
+        ]);
         std::process::exit(9);
     }
 
@@ -1225,3 +1252,82 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
     }
 }
 
+use serde::{Serialize};
+
+#[derive(Serialize, Default)]
+pub struct JsonError {
+    pub message:        String,
+    pub level:          String,
+    pub file_name:      String,
+    pub line_start:     usize,
+    pub line_end:       usize,
+    pub column_start:   usize,
+    pub column_end:     usize,
+}
+
+pub fn emit_error<'a, S1, S2, I>(message: S1, v: I)
+    where S1: std::string::ToString,
+          S2: std::string::ToString + 'a,
+          I:  std::iter::IntoIterator<Item=&'a (Location, S2)>,
+{
+    if ERRORS_AS_JSON.load(Ordering::SeqCst) {
+        let mut j = JsonError::default();
+        j.message   = message.to_string();
+        j.level     = "error".to_string();
+        j.file_name = "<anon>".to_string();
+
+        if let Some((loc,_)) = v.into_iter().next() {
+            j.file_name     = loc.file.clone();
+            j.line_start    = loc.span.start_pos().line_col().0;
+            j.column_start  = loc.span.start_pos().line_col().1;
+            j.line_end      = loc.span.end_pos().line_col().0;
+            j.column_end    = loc.span.end_pos().line_col().1;
+        }
+
+        println!("{}", serde_json::to_string(&j).unwrap());
+        return;
+    }
+
+
+    let mut s : String = message.to_string();
+    for (loc, message)  in v.into_iter() {
+        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+            message: message.to_string(),
+        }, loc.span.clone()).with_path(&loc.file);
+        s += &format!("\n{}", e);
+    }
+    error!("{}", s);
+}
+
+pub fn emit_warn<'a, S1, S2, I>(message: S1, v: I)
+    where S1: std::string::ToString,
+          S2: std::string::ToString + 'a,
+          I:  std::iter::IntoIterator<Item=&'a (Location, S2)>,
+{
+    if ERRORS_AS_JSON.load(Ordering::SeqCst) {
+        let mut j = JsonError::default();
+        j.message   = message.to_string();
+        j.level     = "warn".to_string();
+        j.file_name = "<anon>".to_string();
+
+        if let Some((loc,_)) = v.into_iter().next() {
+            j.file_name     = loc.file.clone();
+            j.line_start    = loc.span.start_pos().line_col().0;
+            j.column_start  = loc.span.start_pos().line_col().1;
+            j.line_end      = loc.span.end_pos().line_col().0;
+            j.column_end    = loc.span.end_pos().line_col().1;
+        }
+
+        println!("{}", serde_json::to_string(&j).unwrap());
+        return;
+    }
+
+    let mut s : String = message.to_string();
+    for (loc, message)  in v.into_iter() {
+        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+            message: message.to_string(),
+        }, loc.span.clone()).with_path(&loc.file);
+        s += &format!("\n{}", e);
+    }
+    warn!("{}", s);
+}

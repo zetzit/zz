@@ -1,7 +1,7 @@
 use super::ast;
 use super::name::Name;
 use super::loader;
-use super::parser;
+use super::parser::emit_error;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -41,6 +41,9 @@ fn stm_deps(stm: &ast::Statement) -> Vec<(Name, ast::Location)> {
             Vec::new()
         },
         ast::Statement::Block(b2) => {
+            block_deps(b2)
+        },
+        ast::Statement::Unsafe(b2) => {
             block_deps(b2)
         },
         ast::Statement::Switch{expr, cases, default, ..} => {
@@ -224,10 +227,9 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             debug!("  localizing {}", name);
 
             if !name.is_absolute() {
-                error!("undefined type '{}' during flatten of '{}' \n{}",
-                       name, md.name,
-                       parser::make_error(&loc, &format!("type '{}' unavailable in this scope", name)),
-                       );
+                emit_error(format!("undefined type '{}' during flatten of '{}'", name, md.name), &[
+                       (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
+                ]);
                 std::process::exit(9);
             }
 

@@ -34,6 +34,7 @@ keyword    = {
     key_mark     |
     key_break    |
     key_continue |
+    key_unsafe   |
     key_default  |
     key_switch   |
     key_goto
@@ -55,6 +56,7 @@ key_goto    = { "goto" }
 key_switch  = { "switch" }
 key_break   = { "break" }
 key_default = { "default" }
+key_unsafe  = { "unsafe" }
 
 // type identifiers
 
@@ -205,6 +207,7 @@ break_stm   = { key_break }
 goto_stm    = { "goto" ~ ident }
 label       = ${ ident ~ ":"}
 mark_stm    = { lhs ~ "is" ~ tag_name }
+unsafe_block = {"unsafe" ~ block }
 
 expr_stm = _{
     vardecl |
@@ -230,6 +233,7 @@ statement = _{
     else_stm    |
     elseif_stm  |
     block       |
+    unsafe_block |
     (term_statement ~ ";")
 }
 

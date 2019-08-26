@@ -22,6 +22,7 @@ use std::process::Command;
 use name::Name;
 use std::collections::HashSet;
 use std::collections::HashMap;
+use std::sync::atomic::{Ordering};
 
 fn main() {
     if let Err(_) = std::env::var("RUST_LOG") {
@@ -36,6 +37,7 @@ fn main() {
     let matches = App::new("Drunk Octopus")
         .version(clap::crate_version!())
         .setting(clap::AppSettings::UnifiedHelpMessage)
+        .subcommand(SubCommand::with_name("check").about("check the current project"))
         .subcommand(SubCommand::with_name("build").about("build the current project"))
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
         .subcommand(SubCommand::with_name("test").about("execute tests/*.zz")
@@ -57,7 +59,7 @@ fn main() {
             }
         },
         ("test", Some(submatches)) => {
-            build(true);
+            build(true, false);
             let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -85,7 +87,7 @@ fn main() {
 
         }
         ("run", Some(_submatches)) => {
-            build(false);
+            build(false, false);
             let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -110,8 +112,12 @@ fn main() {
                 .expect("failed to execute process");
             std::process::exit(status.code().expect("failed to execute process"));
         },
+        ("check", _) => {
+            parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
+            build(false, true)
+        },
         ("build", _) | ("", None) => {
-            build(false)
+            build(false, false)
         },
         _ => unreachable!(),
     }
@@ -119,7 +125,7 @@ fn main() {
 
 
 
-fn build(tests: bool) {
+fn build(tests: bool, check: bool) {
 
     let (root, mut project) = project::load_cwd();
     std::env::set_current_dir(root).unwrap();
@@ -233,7 +239,9 @@ fn build(tests: bool) {
             }
         }
 
-        make.link();
+        if !check {
+            make.link();
+        }
 
     };
 }
@@ -275,3 +283,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
     //std::env::set_current_dir(pp).unwrap();
 
 }
+
+
+
+

@@ -1,6 +1,6 @@
 use super::ast;
 use super::flatten;
-use super::parser;
+use super::parser::{emit_error, emit_warn};
 use std::collections::HashMap;
 use super::name::Name;
 use super::ast::Tags;
@@ -24,7 +24,7 @@ enum Lifetime {
     Static,
     Pointer(usize),
     Function {
-        ret:  Option<Box<Lifetime>>,
+        ret:  Option<(Box<Lifetime>, ast::Typed)>,
         args: Vec<ast::NamedArg>,
         vararg: bool,
     },
@@ -112,10 +112,10 @@ impl Stack {
             if !m.tags.contains_key("borrowed") {
                 if let Some(vals) = m.tags.get("marked") {
                     for (val,vloc) in vals {
-                        warn!("dropped local '{}' while still marked as '{}'\n{}\n{}", m.name, val,
-                              parser::make_error(&dropped_here, format!("'{}' will be dropped unclean", m.name)),
-                              parser::make_error(&vloc, format!("marked '{}' here. probably must call a related function to unset", val)),
-                              );
+                        emit_warn(format!("dropped local '{}' while still marked as '{}'", m.name, val), &[
+                            (dropped_here.clone(), format!("'{}' will be dropped unclean", m.name)),
+                            (vloc.clone(), format!("marked '{}' here. probably must call a related function to unset", val))
+                        ]);
                     }
                 }
             }
@@ -142,9 +142,9 @@ impl Stack {
 
     fn local(&mut self, typ: Option<ast::Typed>, name: Name, loc: ast::Location, tags: Tags) -> usize {
         if let Some(ptr) = self.cur().locals.get(&name) {
-            error!("redeclation of local name '{}'\n{}", name,
-                   parser::make_error(&loc, "this declaration would shadow a previous name"),
-                   );
+            emit_error(format!("redeclation of local name '{}'", name), &[
+                (loc.clone(), "this declaration would shadow a previous name")
+            ]);
             ABORT.store(true, Ordering::Relaxed);
         }
 
@@ -169,9 +169,9 @@ impl Stack {
     fn check_name(&mut self, name: &Name, used_here: &ast::Location, access: Access) -> Lifetime {
         let local = match self.find(&name) {
             None => {
-                error!("undefined name '{}' \n{}", name,
-                       parser::make_error(&used_here, format!("'{}' is not defined in this scope", name)),
-                       );
+                emit_error(format!("undefined name '{}'", name), &[
+                    (used_here.clone(), format!("'{}' is not defined in this scope", name))
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return Lifetime::Static;
             },
@@ -186,12 +186,11 @@ impl Stack {
 
         match &storage.value {
             Lifetime::Dropped{stored_here, dropped_here} => {
-                error!("illegal read access to dropped value {}\n{}\n{}\n{}",
-                       storage.name,
-                       parser::make_error(&used_here,     "used here"),
-                       parser::make_error(&stored_here,   "points at this storage location"),
-                       parser::make_error(&dropped_here,  "which was dropped here"),
-                       );
+                emit_error(format!("illegal read access to dropped value '{}'", storage.name), &[
+                    (used_here.clone(),     "used here"),
+                    (stored_here.clone(),   "points at this storage location"),
+                    (dropped_here.clone(),  "which was dropped here"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return Lifetime::Uninitialized;
             },
@@ -203,30 +202,27 @@ impl Stack {
         }
 
         if storage.tags.contains_key("unsafe") {
-            error!("illegal read access to unsafe storage {}\n{}\n{}",
-                   storage.name,
-                   parser::make_error(&used_here, "used here"),
-                   parser::make_error(&storage.stored_here, "suggestion: add a runtime check for this value and mark it safe"),
-                   );
+            emit_error(format!("illegal read access to unsafe storage '{}'", storage.name), &[
+                (used_here.clone(), "used here"),
+                (storage.stored_here.clone(), "suggestion: add a runtime check for this value and mark it safe"),
+            ]);
             ABORT.store(true, Ordering::Relaxed);
             return Lifetime::Uninitialized;
         }
 
         match &storage.value {
             Lifetime::Uninitialized => {
-                error!("illegal read access to unitialized local {}\n{}",
-                       storage.name,
-                       parser::make_error(&used_here, "used here"),
-                       );
+                emit_error(format!("illegal read access to unitialized local '{}'", storage.name), &[
+                    (used_here.clone(), "used here")
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return Lifetime::Uninitialized;
             }
             Lifetime::Moved{moved_here} => {
-                error!("illegal read access of moved value {}\n{}\n{}",
-                       storage.name,
-                       parser::make_error(&used_here, "use of moved value"),
-                       parser::make_error(&moved_here, "was moved here"),
-                       );
+                emit_error(format!("illegal read access of moved value '{}'", storage.name), &[
+                    (used_here.clone(),  "use of moved value"),
+                    (moved_here.clone(), "was moved here")
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return Lifetime::Uninitialized;
             }
@@ -265,36 +261,35 @@ impl Stack {
                     *to
                 },
                 Lifetime::Uninitialized => {
-                    error!("uninitialized pointer arg passed as safe pointer\n{}\n{}",
-                           parser::make_error(&callsite.loc(), "this pointer must be safe"),
-                           parser::make_error(&callsite_storage.stored_here, "but this value is unitialized"),
-                           );
+                    emit_error("uninitialized pointer arg passed as safe pointer", &[
+                        (callsite.loc().clone(), "this pointer must be safe"),
+                        (callsite_storage.stored_here.clone(), "but this value is unitialized"),
+                    ]);
+
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 },
                 Lifetime::Dropped{stored_here, dropped_here} => {
-                    error!("passing dropped value as safe pointer {}\n{}\n{}\n{}",
-                           callsite_storage.name,
-                           parser::make_error(&callsite.loc(),"used here"),
-                           parser::make_error(&stored_here,   "points at this storage location"),
-                           parser::make_error(&dropped_here,  "which was dropped here"),
-                           );
+                    emit_error(format!("passing dropped value '{}' as safe pointer", callsite_storage.name), &[
+                        (callsite.loc().clone(),    "used here"),
+                        (stored_here.clone(),       "points at this storage location"),
+                        (dropped_here.clone(),      "which was dropped here"),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 },
                 Lifetime::Moved{moved_here} => {
-                    error!("passing moved value '{}' as safe pointer \n{}\n{}",
-                           callsite_storage.name,
-                           parser::make_error(&callsite.loc(), "use of moved value"),
-                           parser::make_error(&moved_here, "was moved here"),
-                           );
+                    emit_error(format!("passing moved value '{}' as safe pointer", callsite_storage.name), &[
+                        (callsite.loc().clone(),    "use of moved value"),
+                        (moved_here.clone(),        "was moved here")
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 },
                 Lifetime::Function{..} => {
-                    error!("ICE: trying to pass function as pointer\n{}",
-                           parser::make_error(&callsite.loc(), "cannot determine lifetime of expression"),
-                           );
+                    emit_error("ICE: trying to pass function as pointer", &[
+                        (callsite.loc().clone(), "cannot determine lifetime of expression")
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 },
@@ -303,16 +298,16 @@ impl Stack {
                         return;
                     }
                     if let Some(change) = &callsite_storage.changed_here {
-                        error!("incompatible argument\n{}\n{}\n{}",
-                               parser::make_error(&callsite.loc(), "this expression has a different pointer depth"),
-                               parser::make_error(&change, "value assigned here might not be a pointer"),
-                               parser::make_error(&stack.typed.loc, format!("expected at depth {} here", i)),
-                               );
+                        emit_error("incompatible argument", &[
+                            (callsite.loc().clone(), "this expression has a different pointer depth".to_string()),
+                            (change.clone(), "value assigned here might not be a pointer".to_string()),
+                            (stack.typed.loc.clone(), format!("expected at depth {} here", i)),
+                        ]);
                     } else {
-                        error!("incompatible argument\n{}\n{}",
-                               parser::make_error(&callsite.loc(), "this value has a different pointer depth"),
-                               parser::make_error(&stack.typed.loc, "expected this type"),
-                               );
+                        emit_error("incompatible argument", &[
+                            (callsite.loc().clone(), "this expression has a different pointer depth".to_string()),
+                            (stack.typed.loc.clone(), format!("expected at depth {} here", i)),
+                        ]);
                     }
                     ABORT.store(true, Ordering::Relaxed);
                     return;
@@ -322,10 +317,10 @@ impl Stack {
 
 
             if stack_ptr.tags.contains_key("mutable") && !callsite_storage.tags.contains_key("mutable") {
-                error!("const pointer cannot be used as mut pointer in function call\n{}\n{}",
-                       parser::make_error(&callsite.loc(), "this expression must yield a mutable pointer"),
-                       parser::make_error(&callsite_storage.stored_here, "suggestion: change this declaration to mutable"),
-                       );
+                emit_error("const pointer cannot be used as mut pointer in function call", &[
+                       (callsite.loc().clone(), "this expression must yield a mutable pointer"),
+                       (callsite_storage.stored_here.clone(), "suggestion: change this declaration to mutable"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return;
             }
@@ -338,11 +333,9 @@ impl Stack {
                     }
                 }
                 for (val,_) in missing {
-                    error!("missing required type state '{}'\n{}",
-                           val,
-                           parser::make_error(&callsite.loc(),
-                           format!("argument here must be '{}'", val)),
-                           );
+                    emit_error(format!("missing required type state '{}'", val), &[
+                           (callsite.loc().clone(), format!("argument here must be '{}'", val))
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 }
@@ -370,12 +363,10 @@ impl Stack {
                 }
 
                 for (val,vloc) in missing {
-                    error!("cannot use marked local '{}'\n{}\n{}",
-                           callsite_storage.name,
-                           parser::make_error(&callsite.loc(),
-                           format!("argument here is not allowed to be '{}'", val)),
-                           parser::make_error(&vloc, format!("marked '{}' here. probably must call a related function to unset", val)),
-                           );
+                    emit_error(format!("cannot use marked local '{}'", callsite_storage.name), &[
+                        (callsite.loc().clone(), format!("argument here is not allowed to be '{}'", val)),
+                        (vloc.clone(), format!("marked '{}' here. probably must call a related function to unset", val)),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 }
@@ -390,14 +381,14 @@ impl Stack {
                         }
                     }
                     for missing in taint_missing {
-                        error!("call would mark borrowed callsite\n{}\n{}",
-                               parser::make_error(&callsite.loc(),
+                        emit_error("call would mark borrowed callsite", &[
+                               (callsite.loc().clone(),
                                format!("this expression would mark the callsite with undeclared mark '{}'",
                                        missing.0)),
-                                       parser::make_error(&callsite_storage.stored_here,
-                                                          format!("try adding a set<{}> tag here",
-                                                                  missing.0)),
-                                                                  );
+                               (callsite_storage.stored_here.clone(),
+                               format!("try adding a set<{}> tag here",
+                                       missing.0)),
+                        ]);
                         ABORT.store(true, Ordering::Relaxed);
                         return;
                     }
@@ -414,21 +405,21 @@ impl Stack {
 
             if let Some(tag) = stack_ptr.tags.get("move") {
                 if callsite_storage.tags.contains_key("stack") {
-                    error!("cannot move stack\n{}",
-                           parser::make_error(&callsite.loc(),
+                    emit_error("cannot move stack", &[
+                           (callsite.loc().clone(),
                            format!("this expression would move '{}' out of scope, which is on the stack", callsite_storage.name)),
-                           );
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 }
 
                 if let Some(_) = callsite_storage.tags.get("borrowed") {
-                    error!("cannot move borrowed pointer\n{}\n{}\n{}",
-                           parser::make_error(&callsite.loc(),
+                    emit_error("cannot move borrowed pointer", &[
+                           (callsite.loc().clone(),
                            format!("this expression would move '{}' out of scope", callsite_storage.name)),
-                           parser::make_error(&tag.iter().next().unwrap().1, "required because this call argument is move"),
-                           parser::make_error(&callsite_storage.stored_here, "try changing this declaration to move"),
-                           );
+                           (tag.iter().next().unwrap().1.clone(), "required because this call argument is move".to_string()),
+                           (callsite_storage.stored_here.clone(), "try changing this declaration to move".to_string()),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 }
@@ -444,10 +435,10 @@ impl Stack {
             }
 
             if !stack_ptr.tags.contains_key("unsafe") && callsite_storage.tags.contains_key("unsafe") {
-                error!("passing unsafe pointer to safe function call\n{}\n{}",
-                       parser::make_error(&callsite.loc(), "this expression must be safe"),
-                       parser::make_error(&callsite_storage.stored_here, "suggestion: add a runtime check for this value and mark it safe"),
-                       );
+                emit_error("passing unsafe pointer to safe function call", &[
+                       (callsite.loc().clone(), "this expression must be safe"),
+                       (callsite_storage.stored_here.clone(), "suggestion: add a runtime check for this value and mark it safe"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return;
             }
@@ -456,29 +447,27 @@ impl Stack {
         // leftmost pointer 
         match &callsite_storage.value {
             Lifetime::Uninitialized => {
-                error!("uninitialized arg passed as safe \n{}\n{}",
-                       parser::make_error(&callsite.loc(), "this arg must be safe"),
-                       parser::make_error(&callsite_storage.stored_here, "but this value is unitialized"),
-                       );
+                emit_error("uninitialized arg passed as safe", &[
+                       (callsite.loc().clone(), "this arg must be safe"),
+                       (callsite_storage.stored_here.clone(), "but this value is unitialized"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return;
             },
             Lifetime::Dropped{stored_here, dropped_here} => {
-                error!("passing dropped value as safe pointer {}\n{}\n{}\n{}",
-                       callsite_storage.name,
-                       parser::make_error(&callsite.loc(),"used here"),
-                       parser::make_error(&stored_here,   "points at this storage location"),
-                       parser::make_error(&dropped_here,  "which was dropped here"),
-                       );
+                emit_error(format!("passing dropped value '{}' as safe pointer", callsite_storage.name), &[
+                           (callsite.loc().clone(),"used here"),
+                           (stored_here.clone(),   "points at this storage location"),
+                           (dropped_here.clone(),  "which was dropped here"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return;
             },
             Lifetime::Moved{moved_here} => {
-                error!("passing moved value '{}' as safe pointer \n{}\n{}",
-                       callsite_storage.name,
-                       parser::make_error(&callsite.loc(), "use of moved value"),
-                       parser::make_error(&moved_here, "was moved here"),
-                       );
+                emit_error(format!("passing moved value '{}' as safe pointer", callsite_storage.name), &[
+                       (callsite.loc().clone(), "use of moved value"),
+                       (moved_here.clone(), "was moved here"),
+                ]);
                 ABORT.store(true, Ordering::Relaxed);
                 return;
             },
@@ -511,14 +500,14 @@ impl Stack {
                                 }
                                 _ => {
                                     if let Some(assigned_here) = &self.pointers.get(to).unwrap().changed_here {
-                                        error!("lvalue expression is not a storage location\n{}\n{}",
-                                               parser::make_error(&lhs.loc(), "cannot be accessed"),
-                                               parser::make_error(assigned_here, "value assigned here is not a struct"),
-                                               );
+                                        emit_error("lvalue expression is not a storage location", &[
+                                                   (lhs.loc().clone(), "cannot be accessed"),
+                                                   (assigned_here.clone(), "value assigned here is not a struct"),
+                                        ]);
                                     } else {
-                                        error!("lvalue expression is not a storage location\n{}",
-                                               parser::make_error(&lhs.loc(), "cannot be accessed"),
-                                               );
+                                        emit_error("lvalue expression is not a storage location", &[
+                                                   (lhs.loc().clone(), "cannot be accessed"),
+                                        ]);
                                     }
                                     ABORT.store(true, Ordering::Relaxed);
                                     return Lifetime::Uninitialized;
@@ -529,20 +518,19 @@ impl Stack {
                         }
                     },
                     _ => {
-                        error!("lvalue expression is not a storage location\n{}",
-                               parser::make_error(&lhs.loc(), "cannot be accessed"),
-                               );
+                        emit_error("lvalue expression is not a storage location}", &[
+                               (lhs.loc().clone(), "cannot be accessed"),
+                        ]);
                         ABORT.store(true, Ordering::Relaxed);
                         return Lifetime::Uninitialized;
                     }
                 };
                 let mut storage = self.pointers.get(ptr).unwrap().clone();
                 if storage.tags.contains_key("unsafe") {
-                    error!("illegal read access to unsafe storage {}\n{}\n{}",
-                           storage.name,
-                           parser::make_error(&loc, "used here"),
-                           parser::make_error(&storage.stored_here, "suggestion: add a runtime check for this value and mark it safe"),
-                           );
+                    emit_error(format!("illegal read access to unsafe storage '{}'", storage.name), &[
+                           (loc.clone(), "used here"),
+                           (storage.stored_here.clone(), "suggestion: add a runtime check for this value and mark it safe"),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return Lifetime::Uninitialized;
                 }
@@ -550,9 +538,9 @@ impl Stack {
 
                 match &storage.typ {
                     None => {
-                        error!("unknown type cannot be accessed\n{}",
-                               parser::make_error(&lhs.loc(), format!("type of '{}' is not known", storage.name)),
-                               );
+                        emit_error("unknown type cannot be accessed", &[
+                               (lhs.loc().clone(), format!("type of '{}' is not known", storage.name)),
+                        ]);
                         ABORT.store(true, Ordering::Relaxed);
                         return Lifetime::Uninitialized;
                     },
@@ -609,18 +597,16 @@ impl Stack {
                                         return self.read(*storage.array.get(&i).unwrap(), loc, access);
                                     }
                                 }
-                                error!("struct '{}' has no member named '{}' \n{}",
-                                       t.name, rhs,
-                                       parser::make_error(&loc, format!("unresolveable member access of '{}' here", storage.name)),
-                                       );
+                                emit_error(format!("struct '{}' has no member named '{}'", t.name, rhs), &[
+                                    (loc.clone(), format!("unresolveable member access of '{}' here", storage.name))
+                                ]);
                                 ABORT.store(true, Ordering::Relaxed);
                                 return Lifetime::Uninitialized;
                             },
                             _ =>  {
-                                error!("{} is not a struct\n{}",
-                                       t.name,
-                                       parser::make_error(&lhs.loc(), format!("'{}' is not accessible as struct", t.name)),
-                                       );
+                                emit_error(format!("'{}' is not a struct", t.name), &[
+                                       (lhs.loc().clone(), format!("'{}' is not accessible as struct", t.name))
+                                ]);
                                 ABORT.store(true, Ordering::Relaxed);
                                 return Lifetime::Uninitialized;
                             },
@@ -634,9 +620,9 @@ impl Stack {
             }
             ast::Expression::Literal { loc, .. } => {
                 if access == Access::Storage {
-                    error!("lvalue expression is not a storage location\n{}",
-                           parser::make_error(&loc, "literal cannot be used as lvalue"),
-                           );
+                    emit_error("lvalue expression is not a storage location", &[
+                           (loc.clone(), "literal cannot be used as lvalue"),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return Lifetime::Uninitialized;
                 }
@@ -665,12 +651,12 @@ impl Stack {
                         }
 
                         if (!vararg && args.len() != callargs.len()) | (vararg && args.len() > callargs.len())   {
-                            error!("call argument count mismatch\n{}",
-                                   parser::make_error(&name.loc,
-                                        format!("this function expects {} arguments, but you passed {}",
-                                                args.len(),
-                                                callargs.len() ))
-                                   );
+                            emit_error("call argument count mismatch", &[
+                                (   name.loc.clone(),
+                                    format!("this function expects {} arguments, but you passed {}",
+                                            args.len(),
+                                            callargs.len() ))
+                            ]);
                             ABORT.store(true, Ordering::Relaxed);
                             return Lifetime::Uninitialized;
                         }
@@ -681,7 +667,8 @@ impl Stack {
 
                         return match ret {
                             Some(ret) => {
-                                let mut return_scope_lf  = *ret.clone();
+                                let (return_scope_lf, ret_typ)  = ret;
+                                let mut return_scope_lf = *return_scope_lf;
                                 let mut callsite_lf = return_scope_lf.clone();
 
                                 loop {
@@ -689,7 +676,7 @@ impl Stack {
                                         let tags = &self.pointers[return_scope_ptr].tags.clone();
                                         return_scope_lf = self.pointers[return_scope_ptr].value.clone();
 
-                                        let mut callsite_ptr = self.local(None, Name::from(
+                                        let callsite_ptr = self.local(Some(ret_typ.clone()), Name::from(
                                                 &format!("function call return {} at {:?}", name.name, exprloc.span.start_pos().line_col())),
                                                 exprloc.clone(),
                                                 tags.clone());
@@ -710,18 +697,18 @@ impl Stack {
                         return Lifetime::Static;
                     },
                     _ => {
-                        warn!("lvalue is not a valid function\n{}",
-                               parser::make_error(&name.loc, "this expression cannot be used as function"),
-                               );
+                        emit_warn("lvalue is not a valid function", &[
+                               (name.loc.clone(), "this expression cannot be used as function"),
+                        ]);
                         return Lifetime::Uninitialized;
                     }
                 }
             }
             ast::Expression::InfixOperation { lhs, rhs, loc} => {
                 if access == Access::Storage {
-                    error!("value expression is not a storage location\n{}",
-                           parser::make_error(&loc, "this expression cannot be used as lvalue"),
-                           );
+                    emit_error("value expression is not a storage location", &[
+                        (loc.clone(), "this expression cannot be used as lvalue")
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
                     return Lifetime::Uninitialized;
                 }
@@ -759,22 +746,23 @@ impl Stack {
                             let v_ptr = match self.check_expr(expr, Access::Storage) {
                                 Lifetime::Pointer(u) => u,
                                 _ => {
-                                    error!("dereferencing something that is not a pointer\n{}",
-                                           parser::make_error(expr.loc(), "cannot determine lifetime of expression"),
-                                           );
+                                    emit_error(
+                                        "dereferencing something that is not a pointer",
+                                        &[(expr.loc().clone(), "cannot determine lifetime of expression")]
+                                        );
                                     return Lifetime::Uninitialized;
                                 }
                             };
                             let v_store = self.pointers.get_mut(v_ptr).unwrap();
                             if let Some(change) = &v_store.changed_here {
-                                error!("dereferencing something that is not a pointer\n{}\n{}",
-                                       parser::make_error(expr.loc(), "cannot determine lifetime of expression"),
-                                       parser::make_error(&change, "this assignment does not make a valid pointer"),
-                                       );
+                                emit_error("dereferencing something that is not a pointer", &[
+                                    (expr.loc().clone(), "cannot determine lifetime of expression"),
+                                    (change.clone(), "this assignment does not make a valid pointer")
+                                ]);
                             } else {
-                                error!("dereferencing something that is not a pointer\n{}",
-                                       parser::make_error(expr.loc(), "cannot determine lifetime of expression"),
-                                       );
+                                emit_error("dereferencing something that is not a pointer", &[
+                                    (expr.loc().clone(), "cannot determine lifetime of expression"),
+                                ]);
                             }
                             ABORT.store(true, Ordering::Relaxed);
                             return Lifetime::Uninitialized;
@@ -849,7 +837,7 @@ impl Stack {
                                 }
                             }
 
-                        } else if key == "pure" {
+                        } else if key == "clean" || key == "pure"{
                             storage.tags.remove("marked", None);
                         } else {
                             storage.tags.insert(key.clone(), value.clone(), loc.clone());
@@ -858,12 +846,14 @@ impl Stack {
                         *self.pointers.get_mut(to).unwrap() = storage;
                     },
                     _ => {
-                        error!("lvalue is not a storage location\n{}",
-                               parser::make_error(lhs.loc(), "left hand side doesn't name something with a lifetime"),
-                               );
+                        emit_error("lvalue is not a storage location", &[
+                            (lhs.loc().clone(), "left hand side doesn't name something with a lifetime")
+                        ]);
                         ABORT.store(true, Ordering::Relaxed);
                     },
                 };
+            }
+            ast::Statement::Unsafe(_) => {
             }
             ast::Statement::Block(block) => {
                 self.push("block");
@@ -904,9 +894,10 @@ impl Stack {
                     let rhs_rf = self.check_expr(assign, Access::Value);
                     match rhs_rf {
                         Lifetime::Uninitialized => {
-                            warn!("rvalue has unknown lifetime\n{}",
-                                  parser::make_error(assign.loc(), "cannot determine lifetime of right hand side"),
-                                  );
+                            emit_error("rvalue has unknown lifetime", &[
+                                (assign.loc().clone(), "cannot determine lifetime of right hand side")
+                            ]);
+
                         }
                         _ => (),
                     };
@@ -917,9 +908,9 @@ impl Stack {
                 let rhs_rf = self.check_expr(rhs, Access::Value);
                 match rhs_rf {
                     Lifetime::Uninitialized => {
-                        warn!("rvalue has invalid lifetime\n{}",
-                              parser::make_error(rhs.loc(), "cannot determine lifetime of right hand side"),
-                              );
+                        emit_error("rvalue has invalid lifetime", &[
+                            (rhs.loc().clone(), "cannot determine lifetime of right hand side")
+                        ]);
                     }
 
                     _ => (),
@@ -931,18 +922,18 @@ impl Stack {
                         let storage = &self.pointers.get(to).expect("ICE: invalid pointer");
                         let tags = &storage.tags;
                         if !tags.contains_key("mutable") {
-                            error!("cannot assign to immutable storage\n{}\n{}",
-                                   parser::make_error(lhs.loc(), "lvalue expression must be mutable"),
-                                   parser::make_error(&self.pointers[to].stored_here, "suggestion: change this declaration to mutable"),
-                                   );
+                            emit_error("cannot assign to immutable storage", &[
+                                (lhs.loc().clone(), "lvalue expression must be mutable"),
+                                (self.pointers[to].stored_here.clone(), "suggestion: change this declaration to mutable"),
+                            ]);
                             ABORT.store(true, Ordering::Relaxed);
                         }
                         self.write(to, rhs_rf, lhs.loc());
                     },
                     _ => {
-                        error!("lvalue has invalid lifetime\n{}",
-                               parser::make_error(lhs.loc(), "cannot determine lifetime of left hand side"),
-                               );
+                        emit_error("lvalue has invalid lifetime", &[
+                                   (lhs.loc().clone(), "cannot determine lifetime of left hand side"),
+                        ]);
                         ABORT.store(true, Ordering::Relaxed);
                     },
                 };
@@ -962,10 +953,10 @@ impl Stack {
                     if let Lifetime::Moved{..} = store.value {
                         continue;
                     }
-                    error!("function returns orphaning moved pointer\n{}\n{}",
-                           parser::make_error(&callloc, "the call moves a return value into scope"),
-                           parser::make_error(&loc, "but will be orphaned here"),
-                           );
+                    emit_error("function returns orphaning moved pointer", &[
+                           (callloc.clone(), "the call moves a return value into scope"),
+                           (loc.clone(), "but will be orphaned here"),
+                    ]);
                     ABORT.store(true, Ordering::Relaxed);
 
                 }
@@ -1060,7 +1051,7 @@ pub fn check(md: &mut flatten::Module) {
                             rlf = Lifetime::Pointer(storage);
                         }
 
-                        Some(Box::new(rlf))
+                        Some((Box::new(rlf), ret.typed.clone()))
                     }
                 };
 

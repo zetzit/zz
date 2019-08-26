@@ -19,6 +19,11 @@ struct Z{
 }
 
 
+fn lo(C *a) -> C* {
+    return a;
+}
+
+
 fn foo(A mut * a, Z *z) {
     if a->x {
         a->x is safe;
@@ -34,10 +39,14 @@ export fn main() -> int {
     C mut c = {0};
 
     A mut b = {0};
-    //b.x = &c;
+    b.x = &c;
     b.b = 3;
     foo(&b, 0);
 
-    printf("hello structs %d\n", c.m);
+
+    C *y = lo(&c);
+
+    int r =  y->m;
+    printf("hello structs %d\n", r);
     return 0;
 }

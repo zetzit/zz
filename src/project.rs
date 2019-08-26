@@ -80,6 +80,8 @@ export fn main() -> int {{
     if !std::env::current_dir().unwrap().join(".gitignore").exists() {
         let mut f = File::create(".gitignore").unwrap();
         write!(f, "/target\n").unwrap();
+        write!(f, ".gdb_history\n").unwrap();
+        write!(f, "vgcore.*\n").unwrap();
     }
 
     println!("project '{}' created", c.project.name);

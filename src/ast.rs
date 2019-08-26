@@ -280,6 +280,7 @@ pub enum Statement {
         body:       Block,
     },
     Block(Box<Block>),
+    Unsafe(Box<Block>),
 }
 
 #[derive(Clone)]
