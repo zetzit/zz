@@ -14,10 +14,12 @@ struct C{
     int mut m;
 };
 
+struct Z{
+    int mut j;
+}
 
 
-
-fn foo(A mut * a) {
+fn foo(A mut * a, Z *z) {
     if a->x {
         a->x is safe;
         C mut* beep = a->x;
@@ -34,7 +36,7 @@ export fn main() -> int {
     A mut b = {0};
     //b.x = &c;
     b.b = 3;
-    foo(&b);
+    foo(&b, 0);
 
     printf("hello structs %d\n", c.m);
     return 0;

@@ -557,6 +557,10 @@ impl Stack {
                         return Lifetime::Uninitialized;
                     },
                     Some(t) => {
+                        if t.name.0[1] == "ext" {
+                            return Lifetime::Static;
+                        }
+
                         let def = self.defs.get(&t.name).cloned();
                         match def {
                             Some(ast::Def::Struct{fields,..}) => {
@@ -752,7 +756,15 @@ impl Stack {
                             self.read(to, expr.loc(), access)
                         }
                         _ => {
-                            let v_ptr = self.check_expr(expr, Access::Storage).as_pointer();
+                            let v_ptr = match self.check_expr(expr, Access::Storage) {
+                                Lifetime::Pointer(u) => u,
+                                _ => {
+                                    error!("dereferencing something that is not a pointer\n{}",
+                                           parser::make_error(expr.loc(), "cannot determine lifetime of expression"),
+                                           );
+                                    return Lifetime::Uninitialized;
+                                }
+                            };
                             let v_store = self.pointers.get_mut(v_ptr).unwrap();
                             if let Some(change) = &v_store.changed_here {
                                 error!("dereferencing something that is not a pointer\n{}\n{}",
@@ -769,7 +781,7 @@ impl Stack {
                         }
                     }
                 } else {
-                    Lifetime::Uninitialized
+                    self.check_expr(expr, access)
                 }
             }
             ast::Expression::StructInit {loc, typed, fields} => {

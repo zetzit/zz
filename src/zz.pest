@@ -169,8 +169,8 @@ unarypre        = { preop  ~ termish}
 deref           = { "*"  ~ termish}
 takeref         = { "&"  ~ termish}
 
-member_access   = { (type_name | "(" ~ expr ~ ")") ~ "." ~ termish}
-ptr_access      = { (type_name | "(" ~ expr ~ ")") ~ "->" ~ termish}
+member_access   = { (type_name | "(" ~ expr ~ ")") ~ "." ~ ident }
+ptr_access      = { (type_name | "(" ~ expr ~ ")") ~ "->" ~ ident}
 array_access    = { (type_name | "(" ~ expr ~ ")") ~ array }
 cast            = { "(" ~ anon_type ~ ")" ~ termish }
 
