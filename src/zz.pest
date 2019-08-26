@@ -181,7 +181,7 @@ array_init      = { "{" ~ termish ~ ("," ~ termish)* ~ ","?  ~ "}" }
 
 assignop    = { "!=" | "~=" | "|=" | "&=" | "+=" | "-=" | "="}
 lhs         = {
-    member_access | unarypost | unarypre | ptr_access | array_access | deref | type_name | "(" ~ expr ~ ")"
+    member_access | unarypost | unarypre | ptr_access | array_access | takeref | deref | type_name | "(" ~ expr ~ ")"
 }
 assign      = { lhs ~ assignop ~ expr}
 call        = { ( type_name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")"  }

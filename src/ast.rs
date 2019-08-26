@@ -315,5 +315,8 @@ impl Tags {
     pub fn contains_key(&self, s: &str) -> bool {
         self.0.contains_key(s)
     }
+    pub fn contains(&self, s: &str) -> bool {
+        self.0.contains_key(s)
+    }
 }
 

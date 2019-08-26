@@ -68,6 +68,7 @@ struct Storage {
     stored_here:    ast::Location,
     changed_here:   Option<ast::Location>,
     value:          Lifetime,
+    array:          HashMap<usize, usize>,
 }
 
 struct Scope {
@@ -77,6 +78,8 @@ struct Scope {
 
 #[derive(Default)]
 struct Stack {
+    defs:       HashMap<Name, ast::Def>,
+
     pointers:   Vec<Storage>,
     stack:      Vec<Scope>,
 
@@ -95,8 +98,16 @@ impl Stack {
 
     fn pop(&mut self, dropped_here: &ast::Location) {
         let dead = self.stack.pop().unwrap();
-        for ( _ , local) in dead.locals {
-            let m = self.pointers.get_mut(local).unwrap();
+        let mut dead : Vec<usize> = dead.locals.iter().map(|(_,ptr)|*ptr).collect();
+        for d in dead.clone() {
+            let m = self.pointers.get_mut(d).unwrap();
+            for (_,ar) in &m.array {
+                dead.push(*ar);
+            }
+        }
+
+        for d in dead {
+            let m = self.pointers.get_mut(d).unwrap();
 
             if !m.tags.contains_key("borrowed") {
                 if let Some(vals) = m.tags.get("marked") {
@@ -130,6 +141,14 @@ impl Stack {
     }
 
     fn local(&mut self, typ: Option<ast::Typed>, name: Name, loc: ast::Location, tags: Tags) -> usize {
+        if let Some(ptr) = self.cur().locals.get(&name) {
+            error!("redeclation of local name '{}'\n{}", name,
+                   parser::make_error(&loc, "this declaration would shadow a previous name"),
+                   );
+            ABORT.store(true, Ordering::Relaxed);
+        }
+
+
         let ptr  = self.pointers.len();
         self.pointers.push(Storage{
             typ,
@@ -138,6 +157,7 @@ impl Stack {
             value:          Lifetime::Uninitialized,
             tags:           tags,
             changed_here:   None,
+            array:          HashMap::new(),
         });
 
         debug!("    let {} = {}", name, ptr);
@@ -194,7 +214,7 @@ impl Stack {
 
         match &storage.value {
             Lifetime::Uninitialized => {
-                error!("illegal read access to unitialized variable {}\n{}",
+                error!("illegal read access to unitialized local {}\n{}",
                        storage.name,
                        parser::make_error(&used_here, "used here"),
                        );
@@ -279,6 +299,9 @@ impl Stack {
                     return;
                 },
                 Lifetime::Static => {
+                    if callsite_storage.tags.contains("safe") {
+                        return;
+                    }
                     if let Some(change) = &callsite_storage.changed_here {
                         error!("incompatible argument\n{}\n{}\n{}",
                                parser::make_error(&callsite.loc(), "this expression has a different pointer depth"),
@@ -474,14 +497,132 @@ impl Stack {
                 }
                 self.check_name(&name.name, &name.loc, access)
             }
-            ast::Expression::MemberAccess {lhs, rhs, op, ..} => {
-                //TODO
-
-                if op == "->" {
-                    self.check_expr(lhs, Access::Value)
-                } else {
-                    self.check_expr(lhs, access)
+            ast::Expression::MemberAccess {loc, lhs, rhs, op, ..} => {
+                let ptr = match self.check_expr(lhs, Access::Storage) {
+                    Lifetime::Pointer(to) => {
+                        if op == "->" {
+                            match self.read(to, loc, Access::Value) {
+                                Lifetime::Pointer(to) => {
+                                    to
+                                }
+                                Lifetime::Uninitialized | Lifetime::Moved{..} => {
+                                    ABORT.store(true, Ordering::Relaxed);
+                                    return Lifetime::Uninitialized;
+                                }
+                                _ => {
+                                    if let Some(assigned_here) = &self.pointers.get(to).unwrap().changed_here {
+                                        error!("lvalue expression is not a storage location\n{}\n{}",
+                                               parser::make_error(&lhs.loc(), "cannot be accessed"),
+                                               parser::make_error(assigned_here, "value assigned here is not a struct"),
+                                               );
+                                    } else {
+                                        error!("lvalue expression is not a storage location\n{}",
+                                               parser::make_error(&lhs.loc(), "cannot be accessed"),
+                                               );
+                                    }
+                                    ABORT.store(true, Ordering::Relaxed);
+                                    return Lifetime::Uninitialized;
+                                }
+                            }
+                        } else {
+                            to
+                        }
+                    },
+                    _ => {
+                        error!("lvalue expression is not a storage location\n{}",
+                               parser::make_error(&lhs.loc(), "cannot be accessed"),
+                               );
+                        ABORT.store(true, Ordering::Relaxed);
+                        return Lifetime::Uninitialized;
+                    }
+                };
+                let mut storage = self.pointers.get(ptr).unwrap().clone();
+                if storage.tags.contains_key("unsafe") {
+                    error!("illegal read access to unsafe storage {}\n{}\n{}",
+                           storage.name,
+                           parser::make_error(&loc, "used here"),
+                           parser::make_error(&storage.stored_here, "suggestion: add a runtime check for this value and mark it safe"),
+                           );
+                    ABORT.store(true, Ordering::Relaxed);
+                    return Lifetime::Uninitialized;
                 }
+
+
+                match &storage.typ {
+                    None => {
+                        error!("unknown type cannot be accessed\n{}",
+                               parser::make_error(&lhs.loc(), format!("type of '{}' is not known", storage.name)),
+                               );
+                        ABORT.store(true, Ordering::Relaxed);
+                        return Lifetime::Uninitialized;
+                    },
+                    Some(t) => {
+                        let def = self.defs.get(&t.name).cloned();
+                        match def {
+                            Some(ast::Def::Struct{fields,..}) => {
+                                for (i, field) in fields.iter().enumerate() {
+                                    if &field.name == rhs {
+                                        if !storage.array.contains_key(&i) {
+                                            let mut tags = field.tags.clone();
+
+                                            let m_ptr  = self.pointers.len();
+                                            self.pointers.push(Storage{
+                                                typ:            Some(field.typed.clone()),
+                                                name:           Name::from(
+                                                    &format!("member access of {}@{}->{}", storage.name, ptr, field.name)
+                                                ),
+                                                stored_here:    field.loc.clone(),
+                                                value:          Lifetime::Uninitialized,
+                                                tags:           tags.clone(),
+                                                changed_here:   None,
+                                                array:          HashMap::new(),
+                                            });
+                                            storage.array.insert(i, m_ptr);
+                                            *self.pointers.get_mut(ptr).unwrap() = storage.clone();
+
+                                            if field.typed.ptr.len() > 0 {
+                                                tags.insert("unsafe".to_string(), String::new(), loc.clone());
+                                                let ptr3 = self.pointers.len();
+                                                self.pointers.push(Storage{
+                                                    typ:            Some(field.typed.clone()),
+                                                    name:           Name::from(
+                                                        &format!("member access to unsafe memory {}@{}->{}",
+                                                                 storage.name, ptr3, field.name)
+                                                        ),
+                                                        stored_here:    field.loc.clone(),
+                                                        value:          Lifetime::Uninitialized,
+                                                        tags:           tags.clone(),
+                                                        changed_here:   None,
+                                                        array:          HashMap::new(),
+                                                });
+                                                self.write(m_ptr, Lifetime::Pointer(ptr3), &field.loc);
+                                            } else {
+                                                self.write(m_ptr, Lifetime::Static, &field.loc);
+                                            }
+
+                                        }
+
+                                        return self.read(*storage.array.get(&i).unwrap(), loc, access);
+                                    }
+                                }
+                                error!("struct '{}' has no member named '{}' \n{}",
+                                       t.name, rhs,
+                                       parser::make_error(&loc, format!("unresolveable member access of '{}' here", storage.name)),
+                                       );
+                                ABORT.store(true, Ordering::Relaxed);
+                                return Lifetime::Uninitialized;
+                            },
+                            _ =>  {
+                                error!("{} is not a struct\n{}",
+                                       t.name,
+                                       parser::make_error(&lhs.loc(), format!("'{}' is not accessible as struct", t.name)),
+                                       );
+                                ABORT.store(true, Ordering::Relaxed);
+                                return Lifetime::Uninitialized;
+                            },
+                        }
+                    }
+                };
             }
             ast::Expression::ArrayAccess {lhs, rhs, ..} => {
                 //TODO
@@ -592,12 +733,12 @@ impl Stack {
             ast::Expression::UnaryPost {expr, ref mut op, ..}=> {
                 self.check_expr(expr, access)
             }
-            ast::Expression::UnaryPre {expr, op,..} => {
+            ast::Expression::UnaryPre {expr, op, loc}=> {
                 if op == "&" {
 
                     let lf = self.check_expr(expr, Access::Storage);
                     let temp_ptr = self.local(None, Name::from(
-                            &format!("temporary access at {:?}", expr.loc().span.start_pos().line_col())),
+                            &format!("temporary access {}", self.pointers.len())),
                             expr.loc().clone(),
                             Tags::new());
                     self.write(temp_ptr, lf, &expr.loc());
@@ -676,14 +817,33 @@ impl Stack {
                 let lhs_lf = self.check_expr(lhs, Access::Storage);
                 match lhs_lf {
                     Lifetime::Pointer(to)  => {
-                        let storage = self.pointers.get_mut(to).unwrap();
+                        let xep = self.pointers.len();
+                        let mut storage = self.pointers.get(to).unwrap().clone();
+
                         if key == "safe" {
                             storage.tags.remove("unsafe", None);
+                            storage.tags.insert("safe".to_string(), String::new(), loc.clone());
+
+                            storage.value = Lifetime::Static;
+                            storage.changed_here = Some(loc.clone());
+                            if let Some(typ) = &storage.typ {
+                                if typ.ptr.len() > 0 {
+                                    let site = self.local(
+                                        Some(typ.clone()),
+                                        Name::from(&format!("safe pointer @{}", xep)),
+                                        typ.ptr[0].loc.clone(), typ.ptr[0].tags.clone()
+                                        );
+                                    storage.value = Lifetime::Pointer(site);
+                                }
+                            }
+
                         } else if key == "pure" {
                             storage.tags.remove("marked", None);
                         } else {
                             storage.tags.insert(key.clone(), value.clone(), loc.clone());
                         }
+
+                        *self.pointers.get_mut(to).unwrap() = storage;
                     },
                     _ => {
                         error!("lvalue is not a storage location\n{}",
@@ -723,10 +883,10 @@ impl Stack {
             ast::Statement::Expr{loc, expr} => {
                 self.check_expr(expr, Access::Value);
             }
-            ast::Statement::Var{name, assign, tags, loc, ..} => {
+            ast::Statement::Var{name, assign, tags, loc, typed, ..} => {
                 let mut tags = tags.clone();
                 tags.insert("stack".to_string(), String::new(), loc.clone());
-                let ptr = self.local(None, Name::from(&*name), loc.clone(), tags);
+                let ptr = self.local(Some(typed.clone()), Name::from(&*name), loc.clone(), tags);
 
                 if let Some(assign) = assign {
                     let rhs_rf = self.check_expr(assign, Access::Value);
@@ -839,6 +999,7 @@ pub fn check(md: &mut flatten::Module) {
             flatten::D::Include(_) => continue,
             flatten::D::Local(v) => v,
         };
+        stack.defs.insert(Name::from(&local.name), local.def.clone());
         match &mut local.def {
             ast::Def::Macro{args, body} => {
                 let localname = Name::from(&local.name);
@@ -912,7 +1073,7 @@ pub fn check(md: &mut flatten::Module) {
                     }
 
                     let site = stack.local(Some(arg.typed.clone()),
-                        Name::from(&format!("__builtin::callstack::{}", storage)), arg.loc.clone(), arg.tags.clone()
+                        Name::from(&format!("callsite of {}({})",local.name, storage)), arg.loc.clone(), arg.tags.clone()
                     );
                     stack.write(storage, Lifetime::Pointer(site), &arg.loc);
                 }

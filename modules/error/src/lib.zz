@@ -6,7 +6,7 @@ using <stdlib.h>::{abort as cabort};
 using <stdarg.h>::{va_list, va_start};
 
 export struct Error {
-    uint8_t error;
+    uint8_t mut error;
     char    description[255];
     char    locations[255];
 };
@@ -18,13 +18,18 @@ pub fn check(
         int   callsite_macro<__LINE__>      line,
         ) -> int {
     if ((err)->error != 0) {
-        snprintf(
-                (char mut*)(&((err)->locations)) + strlen((err)->locations),
-                sizeof((err)->locations) - strlen((err)->locations),
-                "\n  %s:%d \t%s", file, line, scope);
+        backtrace(err, file, scope, line);
         return (err)->error;
     }
     return 0;
+}
+
+
+pub fn backtrace(Error allow<error> mut* err, char* file, char* scope, int line) {
+    snprintf(
+            (char mut*)(&((err)->locations)) + strlen((err)->locations),
+            sizeof((err)->locations) - strlen((err)->locations),
+            "\n  %s:%d \t%s", file, line, scope);
 }
 
 pub fn fail_with_errno(
@@ -47,10 +52,7 @@ pub fn fail_with_errno(
 
     memset((err)->locations, 0, sizeof((err)->locations));
 
-    snprintf(
-            (char mut*)(&((err)->locations)) + strlen((err)->locations),
-            sizeof((err)->locations) - strlen((err)->locations),
-            "\n  %s:%d \t%s", file, line, scope);
+    backtrace(err, file, scope, line);
 }
 
 pub fn fail(
@@ -71,10 +73,7 @@ pub fn fail(
 
     memset((err)->locations, 0, sizeof((err)->locations));
 
-    snprintf(
-            (char mut*)(&((err)->locations)) + strlen((err)->locations),
-            sizeof((err)->locations) - strlen((err)->locations),
-            "\n  %s:%d \t%s", file, line, scope);
+    backtrace(err, file, scope, line);
 }
 
 export fn abort(
@@ -84,10 +83,7 @@ export fn abort(
         int   callsite_macro<__LINE__>      line,
 ) {
     if (err->error != 0) {
-        snprintf(
-                (char mut*)&((err)->locations) + strlen((err)->locations),
-                sizeof((err)->locations) - strlen((err)->locations),
-                "\n  %s:%d \t%s", file, line, scope);
+        backtrace(err, file, scope, line);
         fprintf(stderr, "fatal error: %s%s\n", err->description, err->locations);
         cabort();
     }

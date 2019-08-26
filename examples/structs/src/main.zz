@@ -1,0 +1,41 @@
+using <stdio.h>::{printf};
+
+
+
+struct A{
+    int mut a;
+    int mut b;
+    C   c;
+    C mut* mut x;
+};
+
+
+struct C{
+    int mut m;
+};
+
+
+
+
+fn foo(A mut * a) {
+    if a->x {
+        a->x is safe;
+        C mut* beep = a->x;
+        beep->m = a->b;
+        (a->x)->m = 3;
+    }
+
+}
+
+export fn main() -> int {
+
+    C mut c = {0};
+
+    A mut b = {0};
+    //b.x = &c;
+    b.b = 3;
+    foo(&b);
+
+    printf("hello structs %d\n", c.m);
+    return 0;
+}

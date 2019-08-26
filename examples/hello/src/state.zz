@@ -11,7 +11,7 @@ pub struct State {
         uint8_t yalla;
     #endif
 #endif
-    uint8_t counter;
+    uint8_t mut counter;
 }
 
 #if 0

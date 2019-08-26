@@ -3,7 +3,7 @@ using <stdio.h>::{printf};
 
 
 struct Socket {
-    int fd;
+    int mut fd;
 }
 
 
