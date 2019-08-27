@@ -41,6 +41,7 @@ pub fn load(
     }
 
     let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(files.len() as u64)));
+    pb.lock().unwrap().show_speed = false;
     let om : HashMap<Name, Module> = files.into_par_iter().map(|path| {
         pb.lock().unwrap().message(&format!("parsing {:?} ", path));
         let mut m = parser::parse(&path);

@@ -8,7 +8,10 @@ use pbr;
 
 pub struct Step {
     source: PathBuf,
-    args:   Vec<String>
+    args:   Vec<String>,
+
+    deps:   HashSet<PathBuf>,
+    outp:   String,
 }
 
 pub struct Make {
@@ -104,26 +107,6 @@ impl Make {
         m
     }
 
-
-    fn is_dirty(&self, sources: &HashSet<PathBuf>, target: &str) -> bool {
-        let itarget = match std::fs::metadata(target) {
-            Ok(v)  => v,
-            Err(_) => return true,
-        };
-        let itarget = itarget.modified().expect(&format!("cannot stat {}", target));
-
-        for source in sources {
-            let isource = std::fs::metadata(source).expect(&format!("cannot stat {:?}", source));
-
-            let isource = isource.modified().expect(&format!("cannot stat {:?}", source));
-
-            if isource > itarget {
-                return true;
-            }
-        }
-        return false;
-    }
-
     pub fn cobject(&mut self, inp: &Path) {
 
         let mut args = self.cflags.clone();
@@ -141,12 +124,13 @@ impl Make {
 
         let mut sources = HashSet::new();
         sources.insert(inp.into());
-        if self.is_dirty(&sources, &outp) {
-            self.steps.push(Step{
-                source: inp.into(),
-                args,
-            });
-        }
+
+        self.steps.push(Step{
+            source: inp.into(),
+            args,
+            deps: sources,
+            outp: outp.clone(),
+        });
 
         self.lflags.insert(0, outp);
     }
@@ -171,12 +155,12 @@ impl Make {
         let outp = format!("./target/zz/{}_{:x}.o", cf.name, hash);
         args.push(outp.clone());
 
-        if self.is_dirty(&cf.sources, &outp) {
-            self.steps.push(Step{
-                source: Path::new(&cf.filepath).into(),
-                args,
-            });
-        }
+        self.steps.push(Step{
+            source: Path::new(&cf.filepath).into(),
+            args,
+            deps: cf.sources.clone(),
+            outp: outp.clone(),
+        });
         self.lflags.insert(0, outp);
     }
 
@@ -186,16 +170,19 @@ impl Make {
         use std::sync::{Arc, Mutex};
 
         let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(self.steps.len() as u64)));
+        pb.lock().unwrap().show_speed = false;
         self.steps.par_iter().for_each(|step|{
             pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
-            let status = Command::new(&self.cc)
-                .args(&step.args)
-                .status()
-                .expect("failed to execute cc");
-            if !status.success() {
-                error!("error compiling {:?}", step.source);
-                std::process::exit(status.code().unwrap_or(3));
+            if step.is_dirty() {
+                let status = Command::new(&self.cc)
+                    .args(&step.args)
+                    .status()
+                    .expect("failed to execute cc");
+                if !status.success() {
+                    error!("error compiling {:?}", step.source);
+                    std::process::exit(status.code().unwrap_or(3));
+                }
             }
             pb.lock().unwrap().inc();
         });
@@ -220,7 +207,9 @@ impl Make {
         }
         self.lflags.push("-fvisibility=hidden".into());
 
-        pb.lock().unwrap().message(&format!("[WORK] ld [{:?}] {}", self.artifact.typ, self.artifact.name));
+        pb.lock().unwrap().message(&format!("ld [{:?}] {} ", self.artifact.typ, self.artifact.name));
+        pb.lock().unwrap().tick();
+
         debug!("{:?}", self.lflags);
 
         let status = Command::new(&self.cc)
@@ -231,6 +220,28 @@ impl Make {
             std::process::exit(status.code().unwrap_or(3));
         }
 
-        pb.lock().unwrap().finish_print("done linking");
+        pb.lock().unwrap().finish_print(&format!("finished [{:?}] {}", self.artifact.typ, self.artifact.name));
+        println!("");
+    }
+}
+
+impl Step {
+    fn is_dirty(&self) -> bool {
+        let itarget = match std::fs::metadata(&self.outp) {
+            Ok(v)  => v,
+            Err(_) => return true,
+        };
+        let itarget = itarget.modified().expect(&format!("cannot stat {}", self.outp));
+
+        for source in &self.deps {
+            let isource = std::fs::metadata(source).expect(&format!("cannot stat {:?}", source));
+
+            let isource = isource.modified().expect(&format!("cannot stat {:?}", source));
+
+            if isource > itarget {
+                return true;
+            }
+        }
+        return false;
     }
 }

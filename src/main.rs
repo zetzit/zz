@@ -74,7 +74,7 @@ fn main() {
                             }
                         }
                     }
-                    info!("running \"./target/{}\"\n", artifact.name);
+                    println!("running \"./target/{}\"\n", artifact.name);
                     let status = Command::new(format!("./target/{}", artifact.name))
                         .status()
                         .expect("failed to execute process");
@@ -108,7 +108,7 @@ fn main() {
                 std::process::exit(9);
             }
 
-            info!("running \"./target/{}\"\n", exes[0].name);
+            println!("running \"./target/{}\"\n", exes[0].name);
             let status = Command::new(format!("./target/{}", exes[0].name))
                 .status()
                 .expect("failed to execute process");
@@ -190,6 +190,7 @@ fn build(tests: bool, check: bool) {
     }
 
     let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(flat.len() as u64)));
+    pb.lock().unwrap().show_speed = false;
     let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
         lifetimes::check(&mut module);
         pb.lock().unwrap().message(&format!("emitting {} ", module.name));
