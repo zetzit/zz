@@ -46,7 +46,10 @@ fn main() {
                     .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
                     )
         .subcommand(SubCommand::with_name("init").about("init zz project in current directory"))
-        .subcommand(SubCommand::with_name("run").about("build and run"))
+        .subcommand(
+            SubCommand::with_name("run").about("build and run")
+            .arg(Arg::with_name("args").takes_value(true).multiple(true).required(false).index(1)),
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -88,7 +91,7 @@ fn main() {
             }
 
         }
-        ("run", Some(_submatches)) => {
+        ("run", Some(submatches)) => {
             build(false, false);
             let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
@@ -110,6 +113,7 @@ fn main() {
 
             println!("running \"./target/{}\"\n", exes[0].name);
             let status = Command::new(format!("./target/{}", exes[0].name))
+                .args(submatches.values_of("args").unwrap_or_default())
                 .status()
                 .expect("failed to execute process");
             std::process::exit(status.code().expect("failed to execute process"));
