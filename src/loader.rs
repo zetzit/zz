@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use super::name::Name;
-
+use pbr;
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
 pub enum Module {
     C(PathBuf),
@@ -16,6 +18,9 @@ pub fn load(
     artifact_name: &Name,
     src:          &Path
 ) {
+
+
+    let mut files = Vec::new();
     for entry in std::fs::read_dir(src).expect(&format!("cannot open src directory {:?} ", src)) {
         let entry = entry.unwrap();
         let path  = entry.path();
@@ -28,17 +33,27 @@ pub fn load(
                     modules.insert(name, Module::C(path.into()));
                 },
                 Some("zz") => {
-                    let mut m = parser::parse(&path);
-                    m.name = artifact_name.clone();
-                    let stem = path.file_stem().unwrap().to_string_lossy().to_string();
-                    if stem != "lib" {
-                        m.name.push(stem);
-                    }
-                    debug!("loaded {:?} as {}", path, m.name);
-                    modules.insert(m.name.clone(), Module::ZZ(m));
+                    files.push(path.clone());
                 },
                 _ => {},
             }
         }
     }
+
+    let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(files.len() as u64)));
+    let om : HashMap<Name, Module> = files.into_par_iter().map(|path| {
+        pb.lock().unwrap().message(&format!("parsing {:?} ", path));
+        let mut m = parser::parse(&path);
+        m.name = artifact_name.clone();
+        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        if stem != "lib" {
+            m.name.push(stem);
+        }
+        debug!("loaded {:?} as {}", path, m.name);
+        pb.lock().unwrap().inc();
+        (m.name.clone(), Module::ZZ(m))
+    }).collect();
+    modules.extend(om);
+    pb.lock().unwrap().finish_print("finished parsing");
+
 }

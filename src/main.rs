@@ -3,6 +3,8 @@ extern crate fasthash;
 extern crate clap;
 #[macro_use] extern crate log;
 extern crate env_logger;
+extern crate pbr;
+extern crate rayon;
 
 mod ast;
 mod parser;
@@ -126,6 +128,8 @@ fn main() {
 
 
 fn build(tests: bool, check: bool) {
+    use rayon::prelude::*;
+    use std::sync::{Arc, Mutex};
 
     let (root, mut project) = project::load_cwd();
     std::env::set_current_dir(root).unwrap();
@@ -136,6 +140,8 @@ fn build(tests: bool, check: bool) {
 
     let project_name        = Name(vec![String::new(), project.project.name.clone()]);
     let project_tests_name  = Name(vec![String::new(), project.project.name.clone(), "tests".to_string()]);
+
+
 
     let mut modules = HashMap::new();
     if std::path::Path::new("./src").exists() {
@@ -183,16 +189,21 @@ fn build(tests: bool, check: bool) {
         modules.insert(name.clone(), md);
     }
 
-    let mut cfiles = HashMap::new();
-    for mut module in flat {
+    let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(flat.len() as u64)));
+    let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
         lifetimes::check(&mut module);
+        pb.lock().unwrap().message(&format!("emitting {} ", module.name));
         let header  = emitter::Emitter::new(&project.project, module.clone(), true);
         let header  = header.emit();
 
         let em = emitter::Emitter::new(&project.project, module, false);
         let cf = em.emit();
-        cfiles.insert(cf.name.clone(), cf);
-    }
+
+        pb.lock().unwrap().inc();
+        (cf.name.clone(), cf)
+    }).collect();
+
+    pb.lock().unwrap().finish_print("done emitting");
 
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
         if let project::ArtifactType::Test = artifact.typ {

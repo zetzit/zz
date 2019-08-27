@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
 use std::process::Command;
+use pbr;
 
 pub struct Step {
     source: PathBuf,
@@ -181,17 +182,23 @@ impl Make {
 
 
     pub fn link(mut self) {
-        for step in self.steps {
-            info!("{} {:?}", self.cc, step.source);
+        use rayon::prelude::*;
+        use std::sync::{Arc, Mutex};
+
+        let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(self.steps.len() as u64)));
+        self.steps.par_iter().for_each(|step|{
+            pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
+
             let status = Command::new(&self.cc)
-                .args(step.args)
+                .args(&step.args)
                 .status()
                 .expect("failed to execute cc");
             if !status.success() {
                 error!("error compiling {:?}", step.source);
                 std::process::exit(status.code().unwrap_or(3));
             }
-        }
+            pb.lock().unwrap().inc();
+        });
 
         match self.artifact.typ {
             super::project::ArtifactType::Lib => {
@@ -213,7 +220,7 @@ impl Make {
         }
         self.lflags.push("-fvisibility=hidden".into());
 
-        info!("ld [{:?}] {}", self.artifact.typ, self.artifact.name);
+        pb.lock().unwrap().message(&format!("[WORK] ld [{:?}] {}", self.artifact.typ, self.artifact.name));
         debug!("{:?}", self.lflags);
 
         let status = Command::new(&self.cc)
@@ -223,5 +230,7 @@ impl Make {
         if !status.success() {
             std::process::exit(status.code().unwrap_or(3));
         }
+
+        pb.lock().unwrap().finish_print("done linking");
     }
 }
