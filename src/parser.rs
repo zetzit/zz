@@ -1078,16 +1078,12 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
                     loc,
                 });
             }
-            Rule::key_mut  => {
-                tags.insert(
-                    "mutable".to_string(),
-                    String::new(),
-                    loc,
-                );
-            },
             Rule::tag_name => {
                 let mut part = part.into_inner();
-                let name  = part.next().unwrap().as_str().into();
+                let mut name  = part.next().unwrap().as_str().into();
+                if name == "mut" {
+                    name = "mutable".to_string();
+                }
                 let value = part.next().as_ref().map(|s|s.as_str().to_string()).unwrap_or(String::new());
                 tags.insert(name, value, loc);
             }
@@ -1135,16 +1131,12 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
                     loc,
                 });
             }
-            Rule::key_mut  => {
-                tags.insert(
-                    "mutable".to_string(),
-                    String::new(),
-                    loc,
-                );
-            },
             Rule::tag_name => {
                 let mut part = part.into_inner();
-                let name  = part.next().unwrap().as_str().into();
+                let mut name  = part.next().unwrap().as_str().into();
+                if name == "mut" {
+                    name = "mutable".to_string();
+                }
                 let value = part.next().as_ref().map(|s|s.as_str().to_string()).unwrap_or(String::new());
                 tags.insert(name, value, loc);
             }
