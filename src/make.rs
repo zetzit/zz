@@ -80,6 +80,12 @@ impl Make {
         cflags.push("-fvisibility=hidden".to_string());
 
 
+        //if debug
+        cflags.push("-fsanitize=address".into());
+        lflags.push("-fsanitize=address".into());
+        cflags.push("-fstack-protector-strong".into());
+
+
         let cobjects = std::mem::replace(&mut project.cobjects, None);
 
         if let Some(pcflags) = &project.cflags{
