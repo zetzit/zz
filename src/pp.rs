@@ -3,11 +3,13 @@ use super::parser::{Rule, emit_warn, emit_error};
 use super::ast;
 use super::name::Name;
 use std::path::{Path, PathBuf};
+use std::collections::HashMap;
 
 pub struct PP {
-    decl:   pest::iterators::Pairs<'static, Rule>,
-    n:      PathBuf,
-    stack:  Vec<bool>,
+    decl:       pest::iterators::Pairs<'static, Rule>,
+    n:          PathBuf,
+    stack:      Vec<bool>,
+    features:   HashMap<String,bool>,
 }
 
 #[derive(Debug)]
@@ -18,8 +20,9 @@ pub enum Value {
 
 
 impl PP {
-    pub fn new(n: &Path, decl: pest::iterators::Pairs<'static, Rule>) -> PP {
+    pub fn new(n: &Path, features: HashMap<String,bool>, decl: pest::iterators::Pairs<'static, Rule>) -> PP {
         PP {
+            features,
             decl,
             n: n.into(),
             stack: Vec::new(),
@@ -62,9 +65,38 @@ impl PP {
                 };
 
                 match name.0.join("::").as_str() {
+                    "feature" => {
+                        if args.len() != 1 {
+                            emit_error("wrong number of arguments to feature. expected 1", &[
+                                   (loc, "called here"),
+                            ]);
+                            std::process::exit(9);
+                        }
+
+                        let s = match &args[0] {
+                            Value::String(s) => s,
+                            _ => {
+                                emit_error("argument to feature must be a string", &[
+                                           (loc, "called here"),
+                                ]);
+                                std::process::exit(9);
+                            },
+                        };
+
+                        match self.features.get(s) {
+                            None => {
+                                emit_warn("undefined feature defaults to false", &[
+                                          (loc, "avoid this warning by defining it explicitly in zz.toml"),
+                                ]);
+                                Value::Bool(false)
+                            },
+                            Some(v) => Value::Bool(*v),
+                        }
+
+                    },
                     "def" => {
                         if args.len() != 1 {
-                            emit_error("wrong number of arguments to cfg. expected 1", &[
+                            emit_error("wrong number of arguments to def. expected 1", &[
                                    (loc, "called here"),
                             ]);
                             std::process::exit(9);

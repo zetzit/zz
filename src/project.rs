@@ -22,16 +22,26 @@ pub struct Artifact {
     pub typ:    ArtifactType,
 }
 
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Feature {
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Project {
     pub version:    String,
     pub name:       String,
     pub std:        Option<String>,
-    pub cincludes:  Option<Vec<String>>,
-    pub cobjects:   Option<Vec<String>>,
-    pub pkgconfig:  Option<Vec<String>>,
-    pub cflags:     Option<Vec<String>>,
-    pub lflags:     Option<Vec<String>>,
+    #[serde(default)]
+    pub cincludes:  Vec<String>,
+    #[serde(default)]
+    pub cobjects:   Vec<String>,
+    #[serde(default)]
+    pub pkgconfig:  Vec<String>,
+    #[serde(default)]
+    pub cflags:     Vec<String>,
+    #[serde(default)]
+    pub lflags:     Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,18 +55,25 @@ pub struct Config {
     pub project:        Project,
     pub artifacts:      Option<Vec<Artifact>>,
     pub dependencies:   Option<HashMap<String, Value>>,
+
+    pub features:       Option<HashMap<String, Feature>>,
+    #[serde(default)]
+    pub variants:       HashMap<String, Vec<String>>,
 }
 
 pub fn init() {
-    let c  = Config {
+    let mut c  = Config {
         artifacts: None,
         project: Project {
             name: std::env::current_dir().unwrap().file_name().unwrap().to_string_lossy().into(),
             version: "0.1.0".to_string(),
             ..Default::default()
         },
-        dependencies: Some(HashMap::new()),
+        dependencies:   Some(HashMap::new()),
+        features:       None,
+        variants:       HashMap::new(),
     };
+    c.variants.insert("default".to_string(), Vec::new());
 
     if !std::env::current_dir().unwrap().join("zz.toml").exists() {
         let s = toml::to_string(&c).unwrap();
@@ -114,6 +131,21 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
     let mut c : Config = toml::from_str(&mut s).expect(&format!("cannot read {:?}", search));
 
 
+    // implicit features
+    if !c.variants.contains_key("default") {
+        c.variants.insert("default".to_string(), Default::default());
+    }
+    for (_,features) in &c.variants {
+        for f in features {
+            if c.features.is_none() {
+                c.features = Some(HashMap::new());
+            }
+            if !c.features.as_mut().unwrap().contains_key(f) {
+                c.features.as_mut().unwrap().insert(f.to_string(), Default::default());
+            }
+        }
+    }
+
     if c.artifacts.is_none() {
         let mut a = Vec::new();
         if search.join("./src/main.zz").exists() {
@@ -153,4 +185,30 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
     }
 
     (search.into(), c)
+}
+
+
+impl Config {
+    pub fn features(&self, variant: &str) -> HashMap<String, bool> {
+
+        match self.variants.get(variant) {
+            None => {
+                eprintln!("variant {} not defined", variant);
+                std::process::exit(9);
+            },
+            Some(v) => {
+                let mut r = HashMap::new();
+                if let Some(features) = &self.features {
+                    for (feature,_) in features {
+                        r.insert(feature.to_string(), false);
+                    }
+                }
+                for v in v {
+                    r.insert(v.to_string(), true);
+                }
+                r
+            }
+        }
+
+    }
 }

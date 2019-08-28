@@ -40,7 +40,9 @@ fn main() {
         .version(clap::crate_version!())
         .setting(clap::AppSettings::UnifiedHelpMessage)
         .subcommand(SubCommand::with_name("check").about("check the current project"))
-        .subcommand(SubCommand::with_name("build").about("build the current project"))
+        .subcommand(SubCommand::with_name("build").about("build the current project")
+            .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
+        )
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
         .subcommand(SubCommand::with_name("test").about("execute tests/*.zz")
                     .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
@@ -48,7 +50,8 @@ fn main() {
         .subcommand(SubCommand::with_name("init").about("init zz project in current directory"))
         .subcommand(
             SubCommand::with_name("run").about("build and run")
-            .arg(Arg::with_name("args").takes_value(true).multiple(true).required(false).index(1)),
+            .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
+            .arg(Arg::with_name("args").takes_value(true).multiple(true).required(false).index(1))
         )
         .get_matches();
 
@@ -64,7 +67,7 @@ fn main() {
             }
         },
         ("test", Some(submatches)) => {
-            build(true, false);
+            build(true, false, submatches.value_of("variant").unwrap_or("default"));
             let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -92,7 +95,7 @@ fn main() {
 
         }
         ("run", Some(submatches)) => {
-            build(false, false);
+            build(false, false, submatches.value_of("variant").unwrap_or("default"));
             let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -118,12 +121,15 @@ fn main() {
                 .expect("failed to execute process");
             std::process::exit(status.code().expect("failed to execute process"));
         },
-        ("check", _) => {
+        ("check", Some(submatches)) => {
             parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
-            build(false, true)
+            build(false, true, submatches.value_of("variant").unwrap_or("default"))
         },
-        ("build", _) | ("", None) => {
-            build(false, false)
+        ("build", Some(submatches)) => {
+            build(false, false, submatches.value_of("variant").unwrap_or("default"))
+        },
+        ("", None) => {
+            build(false, false, "default");
         },
         _ => unreachable!(),
     }
@@ -131,7 +137,7 @@ fn main() {
 
 
 
-fn build(tests: bool, check: bool) {
+fn build(tests: bool, check: bool, variant: &str) {
     use rayon::prelude::*;
     use std::sync::{Arc, Mutex};
 
@@ -149,10 +155,10 @@ fn build(tests: bool, check: bool) {
 
     let mut modules = HashMap::new();
     if std::path::Path::new("./src").exists() {
-        loader::load(&mut modules, &project_name, &Path::new("./src"));
+        loader::load(&mut modules, &project_name, &Path::new("./src"), project.features(variant));
     }
     if std::path::Path::new("./tests").exists() {
-        loader::load(&mut modules, &project_tests_name, &Path::new("./tests"));
+        loader::load(&mut modules, &project_tests_name, &Path::new("./tests"), project.features(variant));
     }
 
 
@@ -275,7 +281,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
 
     let mut found = None;
     for searchpath in &searchpaths {
-        let modpath = searchpath.join(name).join("zz.toml");;
+        let modpath = searchpath.join(name).join("zz.toml");
         if modpath.exists() {
             found = Some(searchpath.join(name));
         }
@@ -294,7 +300,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
     let (_root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
     if found.join("./src").exists() {
-        loader::load(modules, &project_name, &found.join("./src"));
+        loader::load(modules, &project_name, &found.join("./src"), project.features("default"));
     }
     //std::env::set_current_dir(pp).unwrap();
 

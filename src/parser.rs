@@ -5,6 +5,7 @@ use std::path::Path;
 use std::io::{Read};
 use super::pp::PP;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
 
 #[derive(Parser)]
 #[grammar = "zz.pest"]
@@ -14,9 +15,9 @@ pub static ERRORS_AS_JSON : AtomicBool = AtomicBool::new(false);
 
 
 
-pub fn parse(n: &Path) -> Module
+pub fn parse(n: &Path, features: HashMap<String, bool> ) -> Module
 {
-    match p(&n){
+    match p(&n, features){
         Err(e) => {
             let e = e.with_path(&n.to_string_lossy());
             if ERRORS_AS_JSON.load(Ordering::SeqCst) {
@@ -53,7 +54,7 @@ pub fn parse(n: &Path) -> Module
     }
 }
 
-fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
+fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::Error<Rule>> {
 
     let mut module = Module::default();
     module.source = n.to_path_buf();
@@ -67,7 +68,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
     let mut file = ZZParser::parse(Rule::file, file_str)?;
 
 
-    for decl in PP::new(n, file.next().unwrap().into_inner()) {
+    for decl in PP::new(n, features.clone(), file.next().unwrap().into_inner()) {
         match decl.as_rule() {
             Rule::imacro => {
                 let loc = Location{
@@ -96,7 +97,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             }
                         }
                         Rule::block if body.is_none() => {
-                            body = Some(parse_block((file_str, n), part));
+                            body = Some(parse_block((file_str, n), features.clone(),  part));
                         },
                         e => panic!("unexpected rule {:?} in macro ", e),
                     }
@@ -166,7 +167,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                             }
                         },
                         Rule::block => {
-                            body = Some(parse_block((file_str, n), part));
+                            body = Some(parse_block((file_str, n), features.clone(), part));
                         },
                         e => panic!("unexpected rule {:?} in function", e),
                     }
@@ -193,7 +194,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut names  = Vec::new();
                 let mut loc    = None;
 
-                for part in PP::new(n, decl) {
+                for part in PP::new(n, features.clone(), decl) {
                     match part.as_rule() {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
@@ -257,7 +258,7 @@ fn p(n: &Path) -> Result<Module, pest::error::Error<Rule>> {
                 let mut loc    = None;
                 let mut packed = false;
 
-                for part in PP::new(n, decl) {
+                for part in PP::new(n,features.clone(), decl) {
                     match part.as_rule() {
                         Rule::key_packed => {
                             packed = true;
@@ -730,7 +731,11 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
     }
 }
 
-pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pair<'static, Rule>) -> Statement  {
+pub(crate) fn parse_statement(
+    n: (&'static str, &Path),
+    features: HashMap<String, bool>,
+    stm: pest::iterators::Pair<'static, Rule>
+) -> Statement  {
     let loc = Location{
         file: n.1.to_string_lossy().into(),
         span: stm.as_span(),
@@ -783,7 +788,7 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             }
         },
         Rule::block => {
-            Statement::Block(Box::new(parse_block(n, stm)))
+            Statement::Block(Box::new(parse_block(n, features, stm)))
         },
         Rule::return_stm  => {
             let mut stm = stm.into_inner();
@@ -814,7 +819,7 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             let part    = stm.next().unwrap();
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, part);
+            let body    = parse_block(n, features, part);
             Statement::Cond{
                 op: "if".to_string(),
                 expr: Some(expr),
@@ -826,7 +831,7 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             let part    = stm.next().unwrap();
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, part);
+            let body    = parse_block(n, features, part);
             Statement::Cond{
                 op: "while".to_string(),
                 expr: Some(expr),
@@ -838,7 +843,7 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             let part    = stm.next().unwrap();
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, part);
+            let body    = parse_block(n, features, part);
             Statement::Cond{
                 op: "else if".to_string(),
                 expr: Some(expr),
@@ -848,7 +853,7 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
         Rule::else_stm => {
             let mut stm = stm.into_inner();
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, part);
+            let body    = parse_block(n, features, part);
             Statement::Cond{
                 op: "else".to_string(),
                 expr: None,
@@ -874,16 +879,16 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                         cur += 1;
                     },
                     Rule::block if cur == 3 && block.is_none() => {
-                        block = Some(parse_block(n, part));
+                        block = Some(parse_block(n, features.clone(), part));
                     },
                     _ if cur == 1 => {
-                        expr1.push(Box::new(parse_statement(n, part)));
+                        expr1.push(Box::new(parse_statement(n, features.clone(), part)));
                     },
                     _ if cur == 2 => {
-                        expr2.push(Box::new(parse_statement(n, part)));
+                        expr2.push(Box::new(parse_statement(n, features.clone(), part)));
                     },
                     _ if cur == 3 => {
-                        expr3.push(Box::new(parse_statement(n, part)));
+                        expr3.push(Box::new(parse_statement(n, features.clone(), part)));
                     },
                     e => panic!("unexpected rule {:?} in for ", e),
                 }
@@ -976,11 +981,11 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
                         ]);
                         std::process::exit(9);
                     } else {
-                        default = Some(parse_block(n, part.next().unwrap()));
+                        default = Some(parse_block(n, features.clone(), part.next().unwrap()));
                     }
                 } else {
                     let expr  = parse_expr(n, ppart);
-                    let block = parse_block(n, part.next().unwrap());
+                    let block = parse_block(n, features.clone(), part.next().unwrap());
                     cases.push((expr,block));
                 }
             }
@@ -993,13 +998,17 @@ pub(crate) fn parse_statement(n: (&'static str, &Path), stm: pest::iterators::Pa
             }
         },
         Rule::unsafe_block => {
-            Statement::Unsafe(Box::new(parse_block(n, stm.into_inner().next().unwrap())))
+            Statement::Unsafe(Box::new(parse_block(n, features, stm.into_inner().next().unwrap())))
         },
         e => panic!("unexpected rule {:?} in block", e),
     }
 }
 
-pub(crate) fn parse_block(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Block {
+pub(crate) fn parse_block(
+        n: (&'static str, &Path),
+        features: HashMap<String,bool>,
+        decl: pest::iterators::Pair<'static, Rule>
+) -> Block {
     match decl.as_rule() {
         Rule::block => { }
         _ => { panic!("parse_block called with {:?}", decl); }
@@ -1011,8 +1020,8 @@ pub(crate) fn parse_block(n: (&'static str, &Path), decl: pest::iterators::Pair<
     };
 
     let mut statements = Vec::new();
-    for stm in PP::new(n.1, decl.into_inner()) {
-        statements.push(parse_statement(n, stm));
+    for stm in PP::new(n.1, features.clone(), decl.into_inner()) {
+        statements.push(parse_statement(n, features.clone(), stm));
     }
     Block{
         statements,

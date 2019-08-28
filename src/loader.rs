@@ -14,9 +14,10 @@ pub enum Module {
 }
 
 pub fn load(
-    modules:       &mut HashMap<Name, Module>,
-    artifact_name: &Name,
-    src:          &Path
+    modules:        &mut HashMap<Name, Module>,
+    artifact_name:  &Name,
+    src:            &Path,
+    features:       HashMap<String, bool>,
 ) {
 
 
@@ -44,7 +45,7 @@ pub fn load(
     pb.lock().unwrap().show_speed = false;
     let om : HashMap<Name, Module> = files.into_par_iter().map(|path| {
         pb.lock().unwrap().message(&format!("parsing {:?} ", path));
-        let mut m = parser::parse(&path);
+        let mut m = parser::parse(&path, features.clone());
         m.name = artifact_name.clone();
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
         if stem != "lib" {

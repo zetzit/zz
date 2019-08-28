@@ -40,38 +40,34 @@ impl Make {
             }
         }
 
-        if let Some(cincs) = &project.cincludes {
-            for cinc in cincs {
-                cflags.push("-I".into());
-                cflags.push(cinc.clone());
-            }
+        for cinc in &project.cincludes{
+            cflags.push("-I".into());
+            cflags.push(cinc.clone());
         }
 
-        if let Some(pkgs) = &project.pkgconfig {
-            for pkg in pkgs {
-                let flags = Command::new("pkg-config")
-                    .arg("--cflags")
-                    .arg(pkg)
-                    .output()
-                    .expect(&format!("failed to execute pkg-config --cflags {}", pkg));
+        for pkg in &project.pkgconfig {
+            let flags = Command::new("pkg-config")
+                .arg("--cflags")
+                .arg(pkg)
+                .output()
+                .expect(&format!("failed to execute pkg-config --cflags {}", pkg));
 
-                let flags = String::from_utf8_lossy(&flags.stdout);
-                let flags = flags.split_whitespace();
-                for flag in flags {
-                    cflags.push(flag.to_string());
-                }
+            let flags = String::from_utf8_lossy(&flags.stdout);
+            let flags = flags.split_whitespace();
+            for flag in flags {
+                cflags.push(flag.to_string());
+            }
 
-                let flags = Command::new("pkg-config")
-                    .arg("--libs")
-                    .arg(pkg)
-                    .output()
-                    .expect(&format!("failed to execute pkg-config --lflags {}", pkg));
+            let flags = Command::new("pkg-config")
+                .arg("--libs")
+                .arg(pkg)
+                .output()
+                .expect(&format!("failed to execute pkg-config --lflags {}", pkg));
 
-                let flags = String::from_utf8_lossy(&flags.stdout);
-                let flags = flags.split_whitespace();
-                for flag in flags {
-                    lflags.push(flag.to_string());
-                }
+            let flags = String::from_utf8_lossy(&flags.stdout);
+            let flags = flags.split_whitespace();
+            for flag in flags {
+                lflags.push(flag.to_string());
             }
         }
 
@@ -89,14 +85,9 @@ impl Make {
         cflags.push("-fstack-protector-strong".into());
 
 
-        let cobjects = std::mem::replace(&mut project.cobjects, None);
 
-        if let Some(pcflags) = &project.cflags{
-            cflags.extend(pcflags.clone());
-        }
-        if let Some(plflags) = &project.lflags{
-            lflags.extend(plflags.clone());
-        }
+        cflags.extend(project.cflags.clone());
+        lflags.extend(project.lflags.clone());
 
         let mut m = Make {
             cc,
@@ -107,10 +98,9 @@ impl Make {
             steps: Vec::new(),
         };
 
-        if let Some(c) = cobjects {
-            for c in c {
-                m.cobject(Path::new(&c));
-            }
+        let cobjects = std::mem::replace(&mut project.cobjects, Vec::new());
+        for c in cobjects {
+            m.cobject(Path::new(&c));
         }
 
         m
