@@ -278,15 +278,16 @@ impl Emitter {
 
         self.emit_loc(&ast.loc);
 
-        write!(self.f, "static const ").unwrap();
-        write!(self.f, " __attribute__ ((unused)) ").unwrap();
+
+        write!(self.f, "#define {} ((", self.to_local_name(&Name::from(&ast.name))).unwrap();
         write!(self.f, "{} ", self.to_local_name(&typed.name)).unwrap();
         self.emit_pointer(&typed.ptr);
 
-        write!(self.f, "{} = ", self.to_local_name(&Name::from(&ast.name))).unwrap();
 
+
+        write!(self.f, ")").unwrap();
         self.emit_expr(&expr);
-        write!(self.f, ";\n").unwrap();
+        write!(self.f, ")\n").unwrap();
     }
 
     pub fn emit_enum(&mut self, ast: &ast::Local) {
