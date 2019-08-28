@@ -5,6 +5,9 @@ use std::path::PathBuf;
 use std::collections::HashSet;
 use std::process::Command;
 use pbr;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static ABORT: AtomicBool = AtomicBool::new(false);
 
 pub struct Step {
     source: PathBuf,
@@ -156,7 +159,11 @@ impl Make {
         args.push(cf.filepath.clone());
         args.push("-o".to_string());
 
-        let hash = metro::hash128(args.join(" ").as_bytes());
+
+        let mut b = args.join(" ").as_bytes().to_vec();
+        b.extend(self.cc.as_bytes());
+
+        let hash = metro::hash128(b);
 
         let outp = format!("./target/zz/{}_{:x}.o", cf.name, hash);
         args.push(outp.clone());
@@ -178,6 +185,9 @@ impl Make {
         let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(self.steps.len() as u64)));
         pb.lock().unwrap().show_speed = false;
         self.steps.par_iter().for_each(|step|{
+            if ABORT.load(Ordering::Relaxed) {
+                return;
+            };
             pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
             if step.is_dirty() {
@@ -186,12 +196,17 @@ impl Make {
                     .status()
                     .expect("failed to execute cc");
                 if !status.success() {
-                    error!("error compiling {:?}", step.source);
-                    std::process::exit(status.code().unwrap_or(3));
+                    error!("{} {}", self.cc, step.args.join(" "));
+                    ABORT.store(true, Ordering::Relaxed);
                 }
             }
             pb.lock().unwrap().inc();
         });
+
+        if ABORT.load(Ordering::Relaxed) {
+            pb.lock().unwrap().finish_print(&format!("failed [{:?}] {}", self.artifact.typ, self.artifact.name));
+            std::process::exit(11);
+        }
 
         match self.artifact.typ {
             super::project::ArtifactType::Lib => {
