@@ -1,4 +1,4 @@
-use super::project::{Project, Artifact};
+use super::project::{Config, Artifact};
 use fasthash::metro;
 use std::path::Path;
 use std::path::PathBuf;
@@ -23,29 +23,53 @@ pub struct Make {
     cc:         String,
     cflags:     Vec<String>,
     lflags:     Vec<String>,
+    variant:    String,
 }
 
 impl Make {
-    pub fn new(mut project: Project, artifact: Artifact) -> Self {
+    pub fn new(mut config: Config, variant: &str, artifact: Artifact) -> Self {
+
+
+        let features = config.features(variant);
 
         let mut lflags = Vec::new();
         let mut cflags = Vec::new();
 
         let mut cc = std::env::var("CC").unwrap_or("clang".to_string());
 
-        if let Some(std) = project.std {
+        if let Some(std) = config.project.std {
             cflags.push(format!("-std={}", std));
             if std.contains("c++") {
                 cc = std::env::var("CXX").unwrap_or("clang++".to_string());
             }
         }
 
-        for cinc in &project.cincludes{
-            cflags.push("-I".into());
-            cflags.push(cinc.clone());
+        let mut cincludes   = config.project.cincludes.clone();
+        let mut pkgconfig   = config.project.pkgconfig.clone();
+        let mut cobjects    = std::mem::replace(&mut config.project.cobjects, Vec::new());
+        let mut user_cflags = config.project.cflags.clone();
+        let mut user_lflags = config.project.lflags.clone();
+
+
+        for (_,(enabled,feature)) in &features {
+            if !enabled {
+                continue;
+            }
+            cincludes.extend(feature.cincludes.clone());
+            pkgconfig.extend(feature.pkgconfig.clone());
+            cobjects.extend(feature.cobjects.clone());
+            user_cflags.extend(feature.cflags.clone());
+            user_lflags.extend(feature.lflags.clone());
         }
 
-        for pkg in &project.pkgconfig {
+
+
+        for cinc in cincludes{
+            cflags.push("-I".into());
+            cflags.push(cinc);
+        }
+
+        for pkg in &pkgconfig {
             let flags = Command::new("pkg-config")
                 .arg("--cflags")
                 .arg(pkg)
@@ -75,21 +99,21 @@ impl Make {
         cflags.push("-I".into());
         cflags.push(".".into());
         cflags.push("-I".into());
-        cflags.push("./target/include/".into());
+        cflags.push(format!("./target/{}/include/", variant));
         cflags.push("-fvisibility=hidden".to_string());
 
 
-        //if debug
-        cflags.push("-fsanitize=address".into());
-        lflags.push("-fsanitize=address".into());
-        cflags.push("-fstack-protector-strong".into());
+        if config.project.asan.unwrap_or(true) {
+            cflags.push("-fsanitize=address".into());
+            lflags.push("-fsanitize=address".into());
+            cflags.push("-fstack-protector-strong".into());
+        }
 
-
-
-        cflags.extend(project.cflags.clone());
-        lflags.extend(project.lflags.clone());
+        cflags.extend(user_cflags);
+        lflags.extend(user_lflags);
 
         let mut m = Make {
+            variant: variant.to_string(),
             cc,
             artifact,
             //project,
@@ -98,7 +122,6 @@ impl Make {
             steps: Vec::new(),
         };
 
-        let cobjects = std::mem::replace(&mut project.cobjects, Vec::new());
         for c in cobjects {
             m.cobject(Path::new(&c));
         }
@@ -117,7 +140,7 @@ impl Make {
 
         let outp = inp.to_string_lossy().replace(|c: char| !c.is_alphanumeric(), "_");
         let outp = format!("{}_{:x}", outp, hash);
-        let outp = String::from("./target/c/") + &outp + ".o";
+        let outp = format!("./target/{}/c/", self.variant) + &outp + ".o";
 
         args.push(outp.clone());
 
@@ -155,7 +178,7 @@ impl Make {
 
         let hash = metro::hash128(b);
 
-        let outp = format!("./target/zz/{}_{:x}.o", cf.name, hash);
+        let outp = format!("./target/{}/zz/{}_{:x}.o", self.variant, cf.name, hash);
         args.push(outp.clone());
 
         self.steps.push(Step{
@@ -202,15 +225,15 @@ impl Make {
             super::project::ArtifactType::Lib => {
                 self.lflags.push("-shared".into());
                 self.lflags.push("-o".into());
-                self.lflags.push(format!("./target/{}.so", self.artifact.name));
+                self.lflags.push(format!("./target/{}/{}.so", self.variant, self.artifact.name));
             },
             super::project::ArtifactType::Exe => {
                 self.lflags.push("-o".into());
-                self.lflags.push(format!("./target/{}", self.artifact.name));
+                self.lflags.push(format!("./target/{}/{}", self.variant, self.artifact.name));
             }
             super::project::ArtifactType::Test  => {
                 self.lflags.push("-o".into());
-                self.lflags.push(format!("./target/{}", self.artifact.name));
+                self.lflags.push(format!("./target/{}/{}", self.variant, self.artifact.name));
             }
             super::project::ArtifactType::Header  => {
                 panic!("cannot link header yet");

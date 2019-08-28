@@ -26,7 +26,7 @@ pub struct Emitter{
 }
 
 
-fn outname(project: &Project, module: &flatten::Module, header: bool) -> (bool, String) {
+fn outname(project: &Project, variant: &str, module: &flatten::Module, header: bool) -> (bool, String) {
     let mut cxx = false;
     if let Some(std) = &project.std {
         if std.contains("c++") {
@@ -37,18 +37,18 @@ fn outname(project: &Project, module: &flatten::Module, header: bool) -> (bool, 
     if header {
         let mut ns = module.name.0.clone();
         ns.remove(0);
-        (cxx, format!("target/include/{}.h", ns.join("_")))
+        (cxx, format!("target/{}/include/{}.h", variant, ns.join("_")))
     } else if cxx {
-        (cxx, format!("target/zz/{}.cpp", module.name))
+        (cxx, format!("target/{}/zz/{}.cpp", variant, module.name))
     } else {
-        (cxx, format!("target/zz/{}.c", module.name))
+        (cxx, format!("target/{}/zz/{}.c", variant, module.name))
     }
 }
 
 impl Emitter {
-    pub fn new(project: &Project, module: flatten::Module, header: bool) -> Self {
+    pub fn new(project: &Project, variant: &str, module: flatten::Module, header: bool) -> Self {
 
-        let (cxx, p) = outname(project, &module, header);
+        let (cxx, p) = outname(project, variant, &module, header);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
 

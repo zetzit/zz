@@ -67,7 +67,8 @@ fn main() {
             }
         },
         ("test", Some(submatches)) => {
-            build(true, false, submatches.value_of("variant").unwrap_or("default"));
+            let variant = submatches.value_of("variant").unwrap_or("default");
+            build(true, false, variant);
             let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -80,8 +81,8 @@ fn main() {
                             }
                         }
                     }
-                    println!("running \"./target/{}\"\n", artifact.name);
-                    let status = Command::new(format!("./target/{}", artifact.name))
+                    println!("running \"./target/{}/{}\"\n", variant, artifact.name);
+                    let status = Command::new(format!("./target/{}/{}", variant, artifact.name))
                         .status()
                         .expect("failed to execute process");
                     if let Some(0) = status.code()  {
@@ -95,7 +96,8 @@ fn main() {
 
         }
         ("run", Some(submatches)) => {
-            build(false, false, submatches.value_of("variant").unwrap_or("default"));
+            let variant = submatches.value_of("variant").unwrap_or("default");
+            build(false, false, variant);
             let (root, mut project) = project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -114,8 +116,8 @@ fn main() {
                 std::process::exit(9);
             }
 
-            println!("running \"./target/{}\"\n", exes[0].name);
-            let status = Command::new(format!("./target/{}", exes[0].name))
+            println!("running \"./target/{}/{}\"\n", variant, exes[0].name);
+            let status = Command::new(format!("./target/{}/{}", variant, exes[0].name))
                 .args(submatches.values_of("args").unwrap_or_default())
                 .status()
                 .expect("failed to execute process");
@@ -144,9 +146,9 @@ fn build(tests: bool, check: bool, variant: &str) {
     let (root, mut project) = project::load_cwd();
     std::env::set_current_dir(root).unwrap();
 
-    std::fs::create_dir_all("./target/c/").expect("create target dir");
-    std::fs::create_dir_all("./target/zz/").expect("create target dir");
-    std::fs::create_dir_all("./target/include/").expect("create target dir");
+    std::fs::create_dir_all(format!("./target/{}/c/", variant)).expect("create target dir");
+    std::fs::create_dir_all(format!("./target/{}/zz/", variant)).expect("create target dir");
+    std::fs::create_dir_all(format!("./target/{}/include/", variant)).expect("create target dir");
 
     let project_name        = Name(vec![String::new(), project.project.name.clone()]);
     let project_tests_name  = Name(vec![String::new(), project.project.name.clone(), "tests".to_string()]);
@@ -155,10 +157,12 @@ fn build(tests: bool, check: bool, variant: &str) {
 
     let mut modules = HashMap::new();
     if std::path::Path::new("./src").exists() {
-        loader::load(&mut modules, &project_name, &Path::new("./src"), project.features(variant));
+        loader::load(&mut modules, &project_name, &Path::new("./src"),
+            project.features(variant).into_iter().map(|(n,(e,_))|(n,e)).collect());
     }
     if std::path::Path::new("./tests").exists() {
-        loader::load(&mut modules, &project_tests_name, &Path::new("./tests"), project.features(variant));
+        loader::load(&mut modules, &project_tests_name, &Path::new("./tests"),
+            project.features(variant).into_iter().map(|(n,(e,_))|(n,e)).collect());
     }
 
 
@@ -204,10 +208,10 @@ fn build(tests: bool, check: bool, variant: &str) {
     let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
         lifetimes::check(&mut module);
         pb.lock().unwrap().message(&format!("emitting {} ", module.name));
-        let header  = emitter::Emitter::new(&project.project, module.clone(), true);
+        let header  = emitter::Emitter::new(&project.project, variant, module.clone(), true);
         let header  = header.emit();
 
-        let em = emitter::Emitter::new(&project.project, module, false);
+        let em = emitter::Emitter::new(&project.project, variant, module, false);
         let cf = em.emit();
 
         pb.lock().unwrap().inc();
@@ -222,7 +226,7 @@ fn build(tests: bool, check: bool, variant: &str) {
                 continue;
             }
         }
-        let mut make = make::Make::new(project.project.clone(), artifact.clone());
+        let mut make = make::Make::new(project.clone(), variant, artifact.clone());
 
         let mut main = Name::from(&artifact.main);
         if !main.is_absolute() {
@@ -300,7 +304,8 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
     let (_root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
     if found.join("./src").exists() {
-        loader::load(modules, &project_name, &found.join("./src"), project.features("default"));
+        loader::load(modules, &project_name, &found.join("./src"),
+            project.features("default").into_iter().map(|(n,(e,_))|(n,e)).collect());
     }
     //std::env::set_current_dir(pp).unwrap();
 

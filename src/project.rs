@@ -25,6 +25,16 @@ pub struct Artifact {
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Feature {
+    #[serde(default)]
+    pub cincludes:  Vec<String>,
+    #[serde(default)]
+    pub cobjects:   Vec<String>,
+    #[serde(default)]
+    pub pkgconfig:  Vec<String>,
+    #[serde(default)]
+    pub cflags:     Vec<String>,
+    #[serde(default)]
+    pub lflags:     Vec<String>,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -32,6 +42,9 @@ pub struct Project {
     pub version:    String,
     pub name:       String,
     pub std:        Option<String>,
+    
+    pub asan:       Option<bool>,
+
     #[serde(default)]
     pub cincludes:  Vec<String>,
     #[serde(default)]
@@ -50,7 +63,7 @@ pub enum Dependency {
 }
 
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     pub project:        Project,
     pub artifacts:      Option<Vec<Artifact>>,
@@ -111,7 +124,7 @@ pub fn load_cwd() -> (PathBuf, Config) {
             search = match search.parent() {
                 Some(v) => v.into(),
                 None => {
-                    eprintln!("error: could not find \"zz.toml\" in {:?} or any parent directory",
+                    error!("error: could not find \"zz.toml\" in {:?} or any parent directory",
                               std::env::current_dir().unwrap());
                     std::process::exit(9);
                 }
@@ -189,22 +202,22 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
 
 
 impl Config {
-    pub fn features(&self, variant: &str) -> HashMap<String, bool> {
+    pub fn features(&self, variant: &str) -> HashMap<String, (bool, Feature)> {
 
         match self.variants.get(variant) {
             None => {
-                eprintln!("variant {} not defined", variant);
+                error!("variant {} not defined", variant);
                 std::process::exit(9);
             },
             Some(v) => {
                 let mut r = HashMap::new();
                 if let Some(features) = &self.features {
-                    for (feature,_) in features {
-                        r.insert(feature.to_string(), false);
+                    for (n,feature) in features {
+                        r.insert(n.to_string(), (false, feature.clone()));
                     }
                 }
                 for v in v {
-                    r.insert(v.to_string(), true);
+                    r.get_mut(v).unwrap().0 = true;
                 }
                 r
             }
