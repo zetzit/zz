@@ -60,7 +60,7 @@ key_unsafe  = { "unsafe" }
 
 // type identifiers
 
-ident       = @{!(keyword ~ !alpha) ~ ((alpha | "_") ~ (alpha | digit | "_")*)}
+ident       = @{!(keyword ~ !(alpha | "_")) ~ ((alpha | "_") ~ (alpha | digit | "_")*)}
 qident_inner= ${( (!")" ~ ANY) )*}
 qident      = @{ "(" ~ qident_inner ~ ")" }
 star        = @{ "*" }
@@ -174,7 +174,7 @@ takeref         = { "&"  ~ termish}
 member_access   = { (type_name | "(" ~ expr ~ ")") ~ "." ~ ident }
 ptr_access      = { (type_name | "(" ~ expr ~ ")") ~ "->" ~ ident}
 array_access    = { (type_name | "(" ~ expr ~ ")") ~ array }
-cast            = { "(" ~ anon_type ~ ")" ~ termish }
+cast            = { "as" ~ "<" ~ anon_type ~ ">" ~ termish | "(" ~ anon_type ~ ")" ~ termish }
 
 struct_init_field_name = _{ "." ~ ident }
 struct_init_field = { struct_init_field_name ~ "=" ~ termish }
