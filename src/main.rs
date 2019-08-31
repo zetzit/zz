@@ -205,20 +205,28 @@ fn build(tests: bool, check: bool, variant: &str) {
 
     let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(flat.len() as u64)));
     pb.lock().unwrap().show_speed = false;
+    let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
+
     let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
         lifetimes::check(&mut module);
-        pb.lock().unwrap().message(&format!("emitting {} ", module.name));
+        if !silent {
+            pb.lock().unwrap().message(&format!("emitting {} ", module.name));
+        }
         let header  = emitter::Emitter::new(&project.project, variant, module.clone(), true);
         let header  = header.emit();
 
         let em = emitter::Emitter::new(&project.project, variant, module, false);
         let cf = em.emit();
 
-        pb.lock().unwrap().inc();
+        if !silent {
+            pb.lock().unwrap().inc();
+        }
         (cf.name.clone(), cf)
     }).collect();
 
-    pb.lock().unwrap().finish_print("done emitting");
+    if !silent {
+        pb.lock().unwrap().finish_print("done emitting");
+    }
 
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
         if let project::ArtifactType::Test = artifact.typ {

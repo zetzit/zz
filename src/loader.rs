@@ -7,6 +7,7 @@ use super::name::Name;
 use pbr;
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{Ordering};
 
 pub enum Module {
     C(PathBuf),
@@ -43,8 +44,12 @@ pub fn load(
 
     let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(files.len() as u64)));
     pb.lock().unwrap().show_speed = false;
+    let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
+
     let om : HashMap<Name, Module> = files.into_par_iter().map(|path| {
-        pb.lock().unwrap().message(&format!("parsing {:?} ", path));
+        if !silent{
+            pb.lock().unwrap().message(&format!("parsing {:?} ", path));
+        }
         let mut m = parser::parse(&path, features.clone());
         m.name = artifact_name.clone();
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
@@ -52,10 +57,14 @@ pub fn load(
             m.name.push(stem);
         }
         debug!("loaded {:?} as {}", path, m.name);
-        pb.lock().unwrap().inc();
+        if !silent{
+            pb.lock().unwrap().inc();
+        }
         (m.name.clone(), Module::ZZ(m))
     }).collect();
     modules.extend(om);
-    pb.lock().unwrap().finish_print("finished parsing");
+    if !silent{
+        pb.lock().unwrap().finish_print("finished parsing");
+    }
 
 }
