@@ -1,0 +1,14 @@
+[project]
+version = "0.1.0"
+name = "axons"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[dependencies]
+error = "1"
+
+[variants]
+default = []
