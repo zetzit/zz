@@ -49,6 +49,61 @@ impl Scope{
         }
 
         match t.name.to_string().as_str() {
+            "u8" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint8_t".to_string()]);
+                return;
+            },
+            "i8" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "int8_t".to_string()]);
+                return;
+            },
+            "u16" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint16_t".to_string()]);
+                return;
+            },
+            "i16" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "int16_t".to_string()]);
+                return;
+            },
+            "u32" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint32_t".to_string()]);
+                return;
+            },
+            "i32" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "int32_t".to_string()]);
+                return;
+            },
+            "u64" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint64_t".to_string()]);
+                return;
+            },
+            "i64" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "int64_t".to_string()]);
+                return;
+            },
+            "usize" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "size_t".to_string()]);
+                return;
+            },
+            "char"
+            | "void"
+            | "int"
+            | "float"
+            | "double"
+            | "sizeof"
+            | "unsigned"
+            | "size_t"
+            => {
+                let nuname = Name(vec![
+                    String::new(),
+                    "ext".to_string(),
+                    "<stddef.h>".to_string(),
+                    t.name.to_string(),
+                ]);
+                debug!("  {} => {}", t.name, nuname);
+                t.name = nuname;
+                return
+            }
             "char"
             | "void"
             | "int"

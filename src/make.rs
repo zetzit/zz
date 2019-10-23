@@ -104,6 +104,8 @@ impl Make {
 
 
         if config.project.asan.unwrap_or(true) {
+            cflags.push("-g".into());
+            lflags.push("-g".into());
             cflags.push("-fsanitize=address".into());
             lflags.push("-fsanitize=address".into());
             cflags.push("-fstack-protector-strong".into());
