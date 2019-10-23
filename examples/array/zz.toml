@@ -1,0 +1,13 @@
+[project]
+version = "0.1.0"
+name = "array"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[dependencies]
+
+[variants]
+default = []

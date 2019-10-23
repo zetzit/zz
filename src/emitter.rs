@@ -239,8 +239,8 @@ impl Emitter {
 
         self.emit_loc(&ast.loc);
 
-        let (typed, expr, tags, storage) = match &ast.def {
-            ast::Def::Static{typed, expr, tags, storage} => (typed, expr, tags, storage),
+        let (typed, expr, tags, storage, array) = match &ast.def {
+            ast::Def::Static{typed, expr, tags, storage, array} => (typed, expr, tags, storage, array),
             _ => unreachable!(),
         };
 
@@ -265,7 +265,17 @@ impl Emitter {
         write!(self.f, "{} ", self.to_local_name(&typed.name)).unwrap();
         self.emit_pointer(&typed.ptr);
 
-        write!(self.f, "{} = ", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        write!(self.f, "{} ", self.to_local_name(&Name::from(&ast.name))).unwrap();
+
+        if let Some(array) = &array {
+            write!(self.f, " [ ").unwrap();
+            if let Some(array) = &array {
+                self.emit_expr(array);
+            }
+            write!(self.f, " ] ").unwrap();
+        }
+
+        write!(self.f, "=").unwrap();
         self.emit_expr(&expr);
         write!(self.f, ";\n").unwrap();
     }

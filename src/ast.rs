@@ -58,6 +58,7 @@ pub enum Def {
         typed:      Typed,
         expr:       Expression,
         storage:    Storage,
+        array:      Option<Option<Expression>>,
     },
     Const {
         typed:      Typed,

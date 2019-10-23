@@ -1,0 +1,12 @@
+using <stdio.h>::{printf};
+
+
+
+static char s[] = {'h','e','l','l','o',0};
+
+
+export fn main() -> int {
+
+    printf("%s\n", s);
+    return 0;
+}

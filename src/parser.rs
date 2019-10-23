@@ -366,6 +366,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut vis     = Visibility::Object;
                 let mut typed   = None;
                 let mut expr    = None;
+                let mut array   = None;
 
                 for part in decl.into_inner() {
                     match part.as_rule() {
@@ -406,6 +407,13 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         Rule::expr if expr.is_none() => {
                             expr = Some(parse_expr((file_str, n), part));
                         }
+                        Rule::array => {
+                            if let Some(expr) = part.into_inner().next() {
+                                array = Some(Some(parse_expr((file_str, n), expr)));
+                            } else {
+                                array = Some(None);
+                            }
+                        }
                         e => panic!("unexpected rule {:?} in static", e),
                     }
                 }
@@ -437,6 +445,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             loc,
                             vis: Visibility::Object,
                             def: Def::Static {
+                                array,
                                 tags,
                                 storage,
                                 typed,

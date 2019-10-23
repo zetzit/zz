@@ -885,7 +885,7 @@ impl Stack {
             ast::Statement::Expr{loc, expr} => {
                 self.check_expr(expr, Access::Value);
             }
-            ast::Statement::Var{name, assign, tags, loc, typed, ..} => {
+            ast::Statement::Var{name, assign, tags, loc, typed, array, ..} => {
                 let mut tags = tags.clone();
                 tags.insert("stack".to_string(), String::new(), loc.clone());
                 let ptr = self.local(Some(typed.clone()), Name::from(&*name), loc.clone(), tags);
@@ -902,6 +902,11 @@ impl Stack {
                         _ => (),
                     };
                     self.write(ptr, rhs_rf, loc);
+                }
+                if let Some(array) = array {
+                    if let Some(expr) = array {
+                        self.check_expr(expr, Access::Value);
+                    }
                 }
             },
             ast::Statement::Assign{lhs, rhs, loc, ..} => {
@@ -1014,7 +1019,7 @@ pub fn check(md: &mut flatten::Module) {
                 let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), Tags::new());
                 stack.write(ptr, Lifetime::Static, &local.loc);
             },
-            ast::Def::Static{typed, expr, storage, tags} => {
+            ast::Def::Static{typed, expr, storage, tags, array} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), tags.clone());
                 stack.write(ptr, Lifetime::Static, &local.loc);

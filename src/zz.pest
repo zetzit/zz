@@ -116,7 +116,7 @@ key_thread_local = {"thread_local"}
 istatic     = {
     (exported | key_shared)? ~
     (key_static | key_atomic | key_thread_local) ~
-    named_type ~ "=" ~ expr ~ ";"
+    named_type  ~ array? ~ "=" ~ expr ~ ";"
 }
 
 comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
