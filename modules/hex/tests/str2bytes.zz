@@ -1,0 +1,52 @@
+using <string.h>::{memcmp, strlen};
+using <stdio.h>::{printf};
+using hex;
+
+
+
+
+fn t(char *str, u8 *expect, usize expect_size) -> int {
+    u8 mut out[1024];
+    out[0] = 0;
+    usize count = hex::str2bin(str, strlen(str), out, 1024);
+
+    printf("%x %x %d<>%d\n", out[0], out[1], count, expect_size);
+
+    if count != expect_size {
+        return 1;
+    }
+
+    return memcmp(expect, out, count);
+}
+
+pub fn main() -> int {
+
+    {
+        u8 expect[] = {0x76};
+        if t("76", expect, sizeof(expect)) {
+            return 1;
+        }
+    }
+
+    {
+        u8 expect[] = {0x76, 0x10};
+        if t("761", expect, sizeof(expect)) {
+            return 1;
+        }
+    }
+
+    {
+        u8 expect[] = {0x76, 0x12};
+        if t("7612", expect, sizeof(expect)) {
+            return 1;
+        }
+    }
+
+    {
+        if t("", 0,0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}

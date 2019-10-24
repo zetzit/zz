@@ -1,0 +1,22 @@
+using <string.h>::{memset};
+
+static u8 hashmap[] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567
+    0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 89:;<=>?
+    0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x00, // @ABCDEFG
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // HIJKLMNO
+};
+
+export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usize {
+    usize mut pos;
+    u8 mut idx0;
+    u8 mut idx1;
+
+    memset(out, 0, outlen);
+    for (pos = 0; ((pos < (outlen*2)) && (pos < inlen)); pos += 2) {
+        idx0 = (((u8)in[pos+0]) & 0x1f) ^ 0x10;
+        idx1 = (((u8)in[pos+1]) & 0x1f) ^ 0x10;
+        out[pos/2] = hashmap[idx0] << 4 | hashmap[idx1];
+    }
+    return pos/2;
+}
