@@ -85,6 +85,18 @@ impl Scope{
                 t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "size_t".to_string()]);
                 return;
             },
+            "bool" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdbool.h>".to_string(), "bool".to_string()]);
+                return;
+            },
+            "true" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdbool.h>".to_string(), "true".to_string()]);
+                return;
+            },
+            "false" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stdbool.h>".to_string(), "false".to_string()]);
+                return;
+            },
             "char"
             | "void"
             | "int"
@@ -93,24 +105,6 @@ impl Scope{
             | "sizeof"
             | "unsigned"
             | "size_t"
-            => {
-                let nuname = Name(vec![
-                    String::new(),
-                    "ext".to_string(),
-                    "<stddef.h>".to_string(),
-                    t.name.to_string(),
-                ]);
-                debug!("  {} => {}", t.name, nuname);
-                t.name = nuname;
-                return
-            }
-            "char"
-            | "void"
-            | "int"
-            | "float"
-            | "double"
-            | "sizeof"
-            | "unsigned"
             => {
                 let nuname = Name(vec![
                     String::new(),
