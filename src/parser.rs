@@ -291,7 +291,18 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             let array = match part.next() {
                                 None => None,
                                 Some(array) => {
-                                    let expr = array.into_inner().next().unwrap();
+                                    let loc  = Location{
+                                        file: n.to_string_lossy().into(),
+                                        span: array.as_span(),
+                                    };
+                                    let expr = match array.into_inner().next() {
+                                        Some(v) => v,
+                                        None => {
+                                            emit_error("syntax error", &[
+                                                       (loc, "array fields must have known size")]);
+                                            std::process::exit(9);
+                                        }
+                                    };
                                     Some(parse_expr((file_str, n), expr))
                                 }
                             };

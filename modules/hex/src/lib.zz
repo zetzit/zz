@@ -1,4 +1,5 @@
 using <string.h>::{memset};
+using <stdio.h>::{printf};
 
 static u8 hashmap[] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567
@@ -19,4 +20,14 @@ export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usiz
         out[pos/2] = hashmap[idx0] << 4 | hashmap[idx1];
     }
     return pos/2;
+}
+
+
+
+
+export fn dump(u8 *data, usize len) {
+    for (usize mut i = 0; i < len; i++) {
+        printf("%x ", data[i]);
+    }
+    printf("\n");
 }

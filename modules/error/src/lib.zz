@@ -11,6 +11,11 @@ export struct Error {
     char    locations[255];
 };
 
+
+pub fn clear(Error unset<error> mut* err) {
+    memset(err, 0, sizeof(Error));
+}
+
 pub fn check(
         Error unset<error> mut* err,
         char* callsite_macro<__FILE__>      file,
