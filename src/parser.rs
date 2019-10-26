@@ -124,6 +124,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut args = Vec::new();
                 let mut ret  = None;
                 let mut body = None;
+                let mut attr = Vec::new();
                 let mut vararg = false;
                 let mut vis = Visibility::Object;
 
@@ -143,6 +144,13 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             ret = Some(AnonArg{
                                 typed: parse_anon_type((file_str, n), part),
                             });
+                        },
+                        Rule::fn_attr => {
+                            let loc  = Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            };
+                            attr.push((part.as_str().into(), loc));
                         },
                         Rule::fn_args => {
                             for arg in part.into_inner() {
@@ -179,6 +187,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                     loc,
                     def:Def::Function{
                         ret,
+                        attr,
                         args,
                         body: body.unwrap(),
                         vararg,
@@ -340,6 +349,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut vis = Visibility::Object;
                 let mut importname = None;
                 let mut alias      = None;
+                let mut inline     = false;
                 for part in decl.into_inner() {
                     match part.as_rule() {
                         Rule::importname => {
@@ -351,6 +361,9 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         Rule::importalias => {
                             alias = Some(part.into_inner().next().unwrap().as_str().to_string());
                         }
+                        Rule::key_inline => {
+                            inline = true;
+                        }
                         e => panic!("unexpected rule {:?} in import ", e),
                     }
                 };
@@ -361,7 +374,8 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                     alias,
                     local,
                     vis,
-                    loc
+                    loc,
+                    inline,
                 });
 
 
@@ -1019,6 +1033,17 @@ pub(crate) fn parse_statement(
         },
         Rule::unsafe_block => {
             Statement::Unsafe(Box::new(parse_block(n, features, stm.into_inner().next().unwrap())))
+        },
+        Rule::cblock => {
+            let stm = stm.into_inner().next().unwrap();
+            let loc = Location{
+                file: n.1.to_string_lossy().into(),
+                span: stm.as_span(),
+            };
+            Statement::CBlock{
+                loc,
+                lit: stm.as_str().to_string()
+            }
         },
         e => panic!("unexpected rule {:?} in block", e),
     }

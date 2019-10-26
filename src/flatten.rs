@@ -113,6 +113,9 @@ fn stm_deps(stm: &ast::Statement) -> Vec<(Name, ast::Location)> {
         ast::Statement::Break{..} => {
             Vec::new()
         },
+        ast::Statement::CBlock{..} => {
+            Vec::new()
+        }
     }
 }
 
@@ -203,6 +206,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
     let mut collected = Locals::default();
     let mut incomming = Vec::new();
+    let mut inlined_includes = HashMap::new();
 
     for local in &md.locals {
         let mut ns = md.name.clone();
@@ -356,14 +360,13 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 None => {
                     debug!("    < none {}", import.name);
                     if import.name.0[1] == "ext" {
-                        //md.includes.push(ast::Include{
-                        //    loc: import.loc.clone(),
-                        //    expr: format!("<{}.h>", import.name.0[2..].join("/")),
-                        //});
                         for (local,_) in &import.local {
                             let mut nn = import.name.clone();
                             nn.push(local.clone());
                             flat.c_names.insert(nn, import.loc.clone());
+                        }
+                        if import.inline {
+                            inlined_includes.insert(import.name.clone(), import);
                         }
                     } else if import.name == md.name {
                         // self import. do nothing
@@ -442,6 +445,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 expr: name.0[2].clone(),
                 loc:  l.in_scope_here.clone(),
                 fqn:  Name(fqn),
+                inline: inlined_includes.contains_key(&name),
             };
 
             if included.insert(inc.expr.clone()) {
@@ -449,6 +453,22 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             }
 
         }
+    }
+
+
+    for (_ ,i) in inlined_includes {
+        if included.insert(i.name.0[2].clone()) {
+            let mut fqn = i.name.0.clone();
+            fqn.pop();
+            let inc = ast::Include{
+                expr: i.name.0[2].clone(),
+                loc:  i.loc.clone(),
+                fqn:  Name(fqn),
+                inline: true,
+            };
+            flat.d.push(D::Include(inc));
+        }
+
     }
 
 

@@ -2,7 +2,7 @@ use super::project::{Project};
 use std::fs;
 use super::flatten;
 use super::ast;
-use std::io::Write;
+use std::io::{Write, Read};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use super::name::Name;
@@ -200,6 +200,43 @@ impl Emitter {
 
     pub fn emit_include(&mut self, i: &ast::Include) {
         trace!("emit include {:?}", i.fqn);
+        if i.inline {
+
+            if !i.expr.starts_with("\"") || !i.expr.ends_with("\"") || i.expr.len() < 3 {
+                super::parser::emit_error(
+                    "cannot inline non-relative include",
+                    &[(i.loc.clone(), format!("'{}' is not a relative include", i.expr))]
+                    );
+                std::process::exit(9);
+            }
+
+            let path = &i.expr[1..i.expr.len() -1];
+            let path = std::path::Path::new(&i.loc.file).parent().expect("ICE: inline path resolver").join(path);
+
+            let mut f = match fs::File::open(&path) {
+                Err(e) => {
+                    super::parser::emit_error(
+                        format!("cannot inline {:?}", path),
+                        &[(i.loc.clone(), format!("{}", e))]
+                        );
+                    std::process::exit(9);
+
+                },
+                Ok(f) => f,
+            };
+
+
+            let mut v = Vec::new();
+            f.read_to_end(&mut v).expect(&format!("read {:?}", path));
+
+            if !self.inside_macro {
+                write!(self.f, "\n#line 1 {}\n", i.expr).unwrap();
+            }
+            self.f.write_all(&v).unwrap();
+
+
+            return;
+        }
         self.emit_loc(&i.loc);
 
         if self.cxx && i.expr.contains(".h>") {
@@ -371,8 +408,8 @@ impl Emitter {
     }
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {
-        let (ret, args, _body, vararg) = match &ast.def {
-            ast::Def::Function{ret, args, body, vararg} => (ret, args, body, *vararg),
+        let (ret, args, _body, vararg, attr) = match &ast.def {
+            ast::Def::Function{ret, args, body, vararg, attr} => (ret, args, body, *vararg, attr),
             _ => unreachable!(),
         };
 
@@ -399,6 +436,21 @@ impl Emitter {
             ast::Visibility::Object => (),
             ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
             ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
+        }
+
+        for (attr, loc) in attr {
+            match attr.as_str() {
+                "inline" => {
+                },
+                o => {
+                    super::parser::emit_error(
+                        "ICE: unsupported attr",
+                        &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
+                        );
+                    std::process::exit(9);
+
+                }
+            }
         }
 
         write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
@@ -461,8 +513,8 @@ impl Emitter {
     }
 
     pub fn emit_def(&mut self, ast: &ast::Local) {
-        let (ret, args, body, vararg) = match &ast.def {
-            ast::Def::Function{ret, args, body, vararg} => (ret, args, body, *vararg),
+        let (ret, args, body, vararg, attr) = match &ast.def {
+            ast::Def::Function{ret, args, body, vararg, attr} => (ret, args, body, *vararg, attr),
             _ => unreachable!(),
         };
 
@@ -495,8 +547,25 @@ impl Emitter {
                 ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
                 ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
             }
+            for (attr, loc) in attr {
+                match attr.as_str() {
+                    "inline" => {
+                        write!(self.f, "inline ").unwrap();
+                    },
+                    o => {
+                        super::parser::emit_error(
+                            "ICE: unsupported attr",
+                            &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
+                            );
+                        std::process::exit(9);
+
+                    }
+                }
+            }
             write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
         }
+
+
 
         self.function_args(args);
         if vararg {
@@ -507,7 +576,7 @@ impl Emitter {
         write!(self.f, "\n").unwrap();
     }
 
-    fn emit_statement(&mut self, stm: &ast::Statement) -> bool {
+    fn emit_statement(&mut self, stm: &ast::Statement) -> bool /* ends with semicolon */ {
         match stm {
             ast::Statement::Mark{..} => {false},
             ast::Statement::Break{loc} => {
@@ -532,6 +601,11 @@ impl Emitter {
             }
             ast::Statement::Unsafe(b2) => {
                 self.emit_zblock(b2, true);
+                false
+            }
+            ast::Statement::CBlock{loc,lit} => {
+                self.emit_loc(&loc);
+                write!(self.f, "{}", lit).unwrap();
                 false
             }
             ast::Statement::Block(b2) => {

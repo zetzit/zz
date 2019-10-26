@@ -378,7 +378,11 @@ fn abs_statement(
         ast::Statement::Mark{lhs,..} => {
             abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
         },
-        ast::Statement::Goto{..} |  ast::Statement::Label{..} | ast::Statement::Break{..} | ast::Statement::Continue{..}=> {
+        ast::Statement::Goto{..}
+        | ast::Statement::Label{..}
+        | ast::Statement::Break{..}
+        | ast::Statement::Continue{..}
+        | ast::Statement::CBlock{..} => {
         }
         ast::Statement::Block(b2) => {
             abs_block(b2, &scope, all_modules, self_md_name);

@@ -16,7 +16,6 @@ char_literal    = @{ "'" ~ ( "''" | (!"'" ~ ANY) )* ~ "'" }
 number_literal  = @{ hex_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
 int_literal     = @{ ("+" | "-")? ~ digit+ }
 hex_literal     = @{ "0x"  ~ hexdigit+ }
-cblock          = @{ "{" ~ ((!("}" | "{") ~ ANY) | cblock )* ~ "}" }
 
 // keywords
 
@@ -57,6 +56,7 @@ key_switch  = { "switch" }
 key_break   = { "break" }
 key_default = { "default" }
 key_unsafe  = { "unsafe" }
+key_inline  = { "inline" }
 
 // type identifiers
 
@@ -79,9 +79,10 @@ named_typei = _{ type_part  ~ named_typei | ident }
 
 // declarations
 
+fn_attr     = {"inline"}
 fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
-function    = { ( exported | key_shared)? ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
+function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
 
 
 enum_i      = { ident ~ ( "=" ~ int_literal)? }
@@ -91,12 +92,12 @@ ienum       = { (exported | key_shared)? ~ "enum" ~ ident ~ "{" ~ enum_list? ~ "
 cimport     = ${ ("<" ~ (!">" ~ ANY)* ~ ">") | ("\"" ~ (!"\"" ~ ANY)* ~ "\"")  }
 importalias = { "as" ~ ident }
 importname  = ${ ( ident | cimport ) ~ ( "::" ~ (local | importname))? }
-import      = { exported? ~  "using" ~ importname ~  importalias?  ~ ";"? }
+import      = { exported? ~  key_inline? ~ "using" ~  importname~ importalias?  ~ ";"? }
 path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
 
-pp          = { ppif | ppelse | ppelif | ppendif }
+pp          = { ppif | ppelse | ppelif | ppendif}
 ppif        = ${ "#if" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
 ppelif      = ${ "#elif" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
 ppelse      = ${ "#else" ~ WHITESPACE+ }
@@ -209,6 +210,9 @@ label       = ${ ident ~ ":"}
 mark_stm    = { lhs ~ "is" ~ tag_name }
 unsafe_block = {"unsafe" ~ block }
 
+cblock_inner = { ( (!"}}@" ~ ANY))*}
+cblock       = !{ "@{{" ~ cblock_inner ~ "}}@" }
+
 expr_stm = _{
     vardecl |
     assign |
@@ -233,6 +237,7 @@ statement = _{
     else_stm    |
     elseif_stm  |
     block       |
+    cblock      |
     unsafe_block |
     (term_statement ~ ";")
 }

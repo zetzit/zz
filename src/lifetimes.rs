@@ -853,6 +853,8 @@ impl Stack {
                     },
                 };
             }
+            ast::Statement::CBlock{..} => {
+            }
             ast::Statement::Unsafe(_) => {
             }
             ast::Statement::Block(block) => {

@@ -48,6 +48,7 @@ pub struct Import {
     pub local:  Vec<(String, Option<String>)>,
     pub vis:    Visibility,
     pub loc:    Location,
+    pub inline: bool,
 }
 
 
@@ -67,6 +68,7 @@ pub enum Def {
     Function {
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
+        attr:       Vec<(String, Location)>,
         body:       Block,
         vararg:     bool,
     },
@@ -98,6 +100,7 @@ pub struct Include {
     pub expr:   String,
     pub loc:    Location,
     pub fqn:    Name,
+    pub inline: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -282,6 +285,10 @@ pub enum Statement {
     },
     Block(Box<Block>),
     Unsafe(Box<Block>),
+    CBlock{
+        loc:        Location,
+        lit:        String,
+    }
 }
 
 #[derive(Clone)]

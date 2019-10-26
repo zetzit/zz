@@ -112,6 +112,41 @@ impl PP {
                             }
                         }
                     },
+                    "target" => {
+                        if args.len() != 2 {
+                            emit_error("wrong number of arguments to def. expected 2", &[
+                                   (loc, "called here"),
+                            ]);
+                            std::process::exit(9);
+                        }
+
+                        match &args[0] {
+                            Value::String(s) if s == "endian" => {
+                                match &args[1] {
+                                    Value::String(s) if s == "big"          => Value::Bool(false),
+                                    Value::String(s) if s == "little"       => Value::Bool(true),
+                                    _ => {
+                                        emit_warn("invalid attribute value defaults to false", &[
+                                                  (loc, "target attribute needs to be a string"),
+                                        ]);
+                                        Value::Bool(false)
+                                    }
+                                }
+                            },
+                            Value::String(s)  => {
+                                emit_warn("undefined target attribute defaults to false", &[
+                                          (loc, format!("{} is not a known target attribute", s)),
+                                ]);
+                                Value::Bool(false)
+                            },
+                            _ => {
+                                emit_warn("invalid target attribute defaults to false", &[
+                                          (loc, "target attribute needs to be a string"),
+                                ]);
+                                Value::Bool(false)
+                            }
+                        }
+                    },
                     n => {
                         emit_error(format!("function '{}' not available in preprocessor directive",n),  &[
                                (loc, "used here"),
@@ -200,7 +235,7 @@ impl Iterator for PP {
                     let invert = Value::Bool(!self.pop(&loc));
                     self.push(loc, invert);
                 },
-                Rule::ppendif=> {
+                Rule::ppendif => {
                     self.pop(&loc);
                 },
                 _ => panic!("unexpected rule {:?} in preprocessor", decl.as_rule()),
