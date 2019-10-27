@@ -773,19 +773,25 @@ impl Stack {
                 }
             }
             ast::Expression::StructInit {loc, typed, fields} => {
-                let mut all_static = true;
+                let mut combined_lf = Lifetime::Static;
+
                 for (_, field) in fields {
-                    if let Lifetime::Static = self.check_expr(field, Access::Value)  {
-                    } else {
-                        all_static = false
+                    match self.check_expr(field, Access::Value) {
+                        Lifetime::Static => {
+                        },
+                        Lifetime::Pointer(ptr) => {
+                            // TODO combined lifetimes dont actually exit yet, so we just use the
+                            // last field
+                            combined_lf = Lifetime::Pointer(ptr);
+                        }
+                        _ => {
+                            emit_warn("cannot determinte lifetime of field initialization", &[
+                                (field.loc().clone(), "this assignment is untraceable")
+                            ]);
+                        }
                     }
                 }
-
-                if all_static {
-                    Lifetime::Static
-                } else {
-                    Lifetime::Uninitialized
-                }
+                combined_lf
             }
             ast::Expression::ArrayInit {fields, ..} => {
                 let mut all_static = true;
@@ -1004,13 +1010,14 @@ pub fn check(md: &mut flatten::Module) {
         stack.write(ptr, Lifetime::Static, &loc);
     }
 
-    for d in &mut md.d {
-        let local  = match d {
-            flatten::D::Include(_) => continue,
-            flatten::D::Local(v) => v,
-        };
+
+    for (local,_) in &mut md.d {
+        let localname = Name::from(&local.name);
+        debug!("   def {}", localname);
+
         stack.defs.insert(Name::from(&local.name), local.def.clone());
         match &mut local.def {
+
             ast::Def::Macro{args, body} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
@@ -1036,7 +1043,6 @@ pub fn check(md: &mut flatten::Module) {
             },
             ast::Def::Function{body, args, ret, vararg, ..} => {
 
-                let localname = Name::from(&local.name);
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
 
                 let ret = match ret {

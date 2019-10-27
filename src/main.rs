@@ -207,7 +207,8 @@ fn build(tests: bool, check: bool, variant: &str) {
     pb.lock().unwrap().show_speed = false;
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
-    let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
+    //TODO flat.into_par_iter
+    let cfiles : HashMap<Name, emitter::CFile> = flat.into_iter().map(|mut module|{
         lifetimes::check(&mut module);
         if !silent {
             pb.lock().unwrap().message(&format!("emitting {} ", module.name));

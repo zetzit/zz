@@ -128,60 +128,54 @@ impl Emitter {
             write!(self.f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", headername, headername).unwrap();
         }
 
-        for v in &module.d {
-            match v {
-                flatten::D::Include(i) => {
-                    self.emit_include(&i);
-                },
-                flatten::D::Local(_) => (),
-            }
-        };
+        for inc in &module.cincludes {
+            self.emit_include(&inc);
+        }
 
-        for v in &module.d {
-            match v {
-                flatten::D::Include(_) => {},
-                flatten::D::Local(d) => {
-                    if self.header && d.vis != ast::Visibility::Export {
-                        continue
+        for (d,need) in &module.d {
+            if !need {
+                continue
+            }
+            if self.header && d.vis != ast::Visibility::Export {
+                continue
+            }
+            match d.def {
+                ast::Def::Macro{..} => {
+                    self.emit_macro(&d)
+                }
+                ast::Def::Const{..} => {
+                    self.emit_const(&d)
+                }
+                ast::Def::Static{..} => {
+                    self.emit_static(&d)
+                }
+                ast::Def::Struct{..} => {
+                    self.emit_struct(&d)
+                }
+                ast::Def::Enum{..} => {
+                    self.emit_enum(&d)
+                }
+                ast::Def::Function{..} => {
+                    if !d.name.ends_with("::main") {
+                        self.emit_decl(&d);
                     }
-                    match d.def {
-                        ast::Def::Macro{..} => {
-                            self.emit_macro(&d)
-                        }
-                        ast::Def::Const{..} => {
-                            self.emit_const(&d)
-                        }
-                        ast::Def::Static{..} => {
-                            self.emit_static(&d)
-                        }
-                        ast::Def::Struct{..} => {
-                            self.emit_struct(&d)
-                        }
-                        ast::Def::Enum{..} => {
-                            self.emit_enum(&d)
-                        }
-                        ast::Def::Function{..} => {
-                            if !d.name.ends_with("::main") {
-                                self.emit_decl(&d);
-                            }
-                        }
-                    }
-                    write!(self.f, "\n").unwrap();
                 }
             }
+            write!(self.f, "\n").unwrap();
         }
 
         if self.header {
             write!(self.f, "\n#endif\n").unwrap();
         } else {
-            for v in &module.d {
-                if let flatten::D::Local(d)  = v {
-                    if let ast::Def::Function{..} = d.def {
-                        let mut name = Name::from(&d.name);
-                        name.pop();
-                        if name == module.name {
-                            self.emit_def(&d);
-                        }
+            for (d, need) in &module.d {
+                if !need {
+                    continue
+                }
+                if let ast::Def::Function{..} = d.def {
+                    let mut name = Name::from(&d.name);
+                    name.pop();
+                    if name == module.name {
+                        self.emit_def(&d);
                     }
                 }
             }
@@ -199,7 +193,7 @@ impl Emitter {
 
 
     pub fn emit_include(&mut self, i: &ast::Include) {
-        trace!("emit include {:?}", i.fqn);
+        trace!("    emit include {} (inline? {})", i.fqn, i.inline);
         if i.inline {
 
             if !i.expr.starts_with("\"") || !i.expr.ends_with("\"") || i.expr.len() < 3 {
@@ -529,6 +523,22 @@ impl Emitter {
             };
         }
 
+        for (attr, loc) in attr {
+            match attr.as_str() {
+                "inline" => {
+                    write!(self.f, " inline __attribute__((always_inline)) ").unwrap();
+                },
+                o => {
+                    super::parser::emit_error(
+                        "ICE: unsupported attr",
+                        &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
+                        );
+                    std::process::exit(9);
+
+                }
+            }
+        }
+
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
@@ -546,21 +556,6 @@ impl Emitter {
                 ast::Visibility::Object => (),
                 ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
                 ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
-            }
-            for (attr, loc) in attr {
-                match attr.as_str() {
-                    "inline" => {
-                        write!(self.f, "inline ").unwrap();
-                    },
-                    o => {
-                        super::parser::emit_error(
-                            "ICE: unsupported attr",
-                            &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
-                            );
-                        std::process::exit(9);
-
-                    }
-                }
             }
             write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
         }
