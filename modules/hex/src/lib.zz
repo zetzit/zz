@@ -27,7 +27,10 @@ export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usiz
 
 export fn dump(u8 *data, usize len) {
     for (usize mut i = 0; i < len; i++) {
-        printf("%x ", data[i]);
+        printf("%02x ", data[i]);
+        if i % 16 == 15 {
+            printf("\n");
+        }
     }
     printf("\n");
 }

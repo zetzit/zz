@@ -746,7 +746,7 @@ impl Stack {
                             let v_ptr = match self.check_expr(expr, Access::Storage) {
                                 Lifetime::Pointer(u) => u,
                                 _ => {
-                                    emit_error(
+                                    emit_warn(
                                         "dereferencing something that is not a pointer",
                                         &[(expr.loc().clone(), "cannot determine lifetime of expression")]
                                         );
@@ -794,19 +794,26 @@ impl Stack {
                 combined_lf
             }
             ast::Expression::ArrayInit {fields, ..} => {
-                let mut all_static = true;
+                let mut combined_lf = Lifetime::Static;
+
                 for field in fields {
-                    if let Lifetime::Static = self.check_expr(field, Access::Value)  {
-                    } else {
-                        all_static = false
+                    match self.check_expr(field, Access::Value) {
+                        Lifetime::Static => {
+                        },
+                        Lifetime::Pointer(ptr) => {
+                            // TODO combined lifetimes dont actually exit yet, so we just use the
+                            // last field
+                            combined_lf = Lifetime::Pointer(ptr);
+                        },
+                        _ => {
+                            emit_warn("cannot determinte lifetime of array initialization", &[
+                                (field.loc().clone(), "this assignment is untraceable")
+                            ]);
+                        }
+
                     }
                 }
-
-                if all_static {
-                    Lifetime::Static
-                } else {
-                    Lifetime::Uninitialized
-                }
+                combined_lf
             }
         }
     }
@@ -902,8 +909,8 @@ impl Stack {
                     let rhs_rf = self.check_expr(assign, Access::Value);
                     match rhs_rf {
                         Lifetime::Uninitialized => {
-                            emit_error("rvalue has unknown lifetime", &[
-                                (assign.loc().clone(), "cannot determine lifetime of right hand side")
+                            emit_warn("rvalue has unknown lifetime", &[
+                                (assign.loc().clone(), "cannot determine lifetime of right hand side of initialization")
                             ]);
 
                         }
@@ -921,8 +928,8 @@ impl Stack {
                 let rhs_rf = self.check_expr(rhs, Access::Value);
                 match rhs_rf {
                     Lifetime::Uninitialized => {
-                        emit_error("rvalue has invalid lifetime", &[
-                            (rhs.loc().clone(), "cannot determine lifetime of right hand side")
+                        emit_warn("rvalue has invalid lifetime", &[
+                            (rhs.loc().clone(), "cannot determine lifetime of right hand side of assignment")
                         ]);
                     }
 

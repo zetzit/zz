@@ -8,8 +8,3 @@ pub fn memset(void mut unsafe * dest, u8 c, size_t n) {
     libc::memset(dest, c, n);
 }
 
-pub inline fn calloca(usize s) -> void static mut* {
-    void mut *m = libc::alloca(s);
-    memset(m, 0, s);
-    return m;
-}

@@ -526,7 +526,7 @@ impl Emitter {
         for (attr, loc) in attr {
             match attr.as_str() {
                 "inline" => {
-                    write!(self.f, " inline __attribute__((always_inline)) ").unwrap();
+                    write!(self.f, " inline ").unwrap();
                 },
                 o => {
                     super::parser::emit_error(
