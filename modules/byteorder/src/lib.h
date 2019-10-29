@@ -27,3 +27,18 @@
         #error cannot find a definition of BIG_ENDIAN
     #endif
 #endif
+
+#if BYTE_ORDER == LITTLE_ENDIAN
+    #if BYTE_ORDER == BIG_ENDIAN
+        #error "compiler says byte order is both little and big endian"
+    #endif
+#else
+    #if BYTE_ORDER == BIG_ENDIAN
+        
+    #else
+        #error "compiler says byte order is neither little nor big endian"
+    #endif
+#endif
+
+#if BYTE_ORDER == LITTLE_ENDIAN && BYTE_ORDER == BIG_ENDIAN
+#endif

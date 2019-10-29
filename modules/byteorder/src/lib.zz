@@ -1,5 +1,4 @@
-using <stdio.h>::{printf};
-inline using "lib.h";
+inline using "lib.h"::{BYTE_ORDER};
 
 pub inline fn bswap_16(u16 x) -> u16
 {
@@ -22,6 +21,7 @@ pub inline fn bswap_64(u64 x) -> u64
 // host to big endian
 
 pub inline fn to_be16(u16 x) -> u16 {
+    BYTE_ORDER;
     @{{
         #if BYTE_ORDER == LITTLE_ENDIAN
             return byteorder_bswap_16(x);
@@ -35,6 +35,7 @@ pub inline fn from_be16(u16 x) -> u16 {
 }
 
 pub inline fn to_be32(u32 x) -> u32{
+    BYTE_ORDER;
     @{{
         #if BYTE_ORDER == LITTLE_ENDIAN
             return byteorder_bswap_32(x);
@@ -48,6 +49,7 @@ pub inline fn from_be32(u32 x) -> u32 {
 }
 
 pub inline fn to_be64(u64 x) -> u64 {
+    BYTE_ORDER;
     @{{
         #if BYTE_ORDER == LITTLE_ENDIAN
             return byteorder_bswap_64(x);
@@ -65,8 +67,10 @@ pub inline fn from_be64(u64  x) -> u64 {
 // host to little endian
 
 pub inline fn to_le16(u16 x) -> u16 {
+    BYTE_ORDER;
     @{{
         #if BYTE_ORDER == BIG_ENDIAN
+            printf("BE\n");
             return byteorder_bswap_16(x);
         #else
             return x;
@@ -91,6 +95,7 @@ pub inline fn from_le32(u32 x) -> u32 {
 }
 
 pub inline fn to_le64(u64 x) -> u64 {
+    BYTE_ORDER;
     @{{
         #if BYTE_ORDER == BIG_ENDIAN
             return byteorder_bswap_64(x);

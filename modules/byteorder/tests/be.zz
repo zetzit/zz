@@ -1,10 +1,12 @@
+using <stdio.h>::{printf};
 using <assert.h>::{assert};
 using byteorder;
 
 pub fn main() -> int {
     assert(byteorder::from_be16(byteorder::to_be16(123)) == 123);
     assert(byteorder::from_be16(byteorder::to_be16(123)) == byteorder::to_be16(byteorder::from_be16(123)));
-    assert(byteorder::to_le16(123) != byteorder::to_be16(123));
+
+    assert(byteorder::to_le16(8) != byteorder::to_be16(8));
 
     assert(byteorder::from_be32(byteorder::to_be32(123123123)) == 123123123);
     assert(byteorder::from_be32(byteorder::to_be32(123)) == byteorder::to_be32(byteorder::from_be32(123)));
