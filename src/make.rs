@@ -7,7 +7,8 @@ use std::process::Command;
 use pbr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-static ABORT: AtomicBool = AtomicBool::new(false);
+static ABORT:           AtomicBool = AtomicBool::new(false);
+pub static BUILD_RS:    AtomicBool = AtomicBool::new(false);
 
 pub struct Step {
     source: PathBuf,
@@ -21,8 +22,10 @@ pub struct Make {
     artifact:   Artifact,
     steps:      Vec<Step>,
     cc:         String,
+    ar:         String,
     cflags:     Vec<String>,
     lflags:     Vec<String>,
+    lobjs:      Vec<String>,
     variant:    String,
 }
 
@@ -35,14 +38,21 @@ impl Make {
         let mut lflags = Vec::new();
         let mut cflags = Vec::new();
 
-        let mut cc = std::env::var("CC").unwrap_or("clang".to_string());
+        let mut cc = std::env::var("TARGET_CC")
+            .or(std::env::var("CC"))
+            .unwrap_or("clang".to_string());
 
         if let Some(std) = config.project.std {
             cflags.push(format!("-std={}", std));
             if std.contains("c++") {
-                cc = std::env::var("CXX").unwrap_or("clang++".to_string());
+                cc = std::env::var("TARGET_CXX")
+                    .or(std::env::var("CXX"))
+                    .unwrap_or("clang++".to_string());
             }
         }
+        let mut ar = std::env::var("TARGET_AR")
+            .or(std::env::var("AR"))
+            .unwrap_or("ar".to_string());
 
         let mut cincludes   = config.project.cincludes.clone();
         let mut pkgconfig   = config.project.pkgconfig.clone();
@@ -117,9 +127,11 @@ impl Make {
         let mut m = Make {
             variant: variant.to_string(),
             cc,
+            ar,
             artifact,
             //project,
             lflags,
+            lobjs: Vec::new(),
             cflags,
             steps: Vec::new(),
         };
@@ -156,7 +168,7 @@ impl Make {
             outp: outp.clone(),
         });
 
-        self.lflags.insert(0, outp);
+        self.lobjs.push(outp);
     }
 
     pub fn build(&mut self, cf: &super::emitter::CFile) {
@@ -189,7 +201,7 @@ impl Make {
             deps: cf.sources.clone(),
             outp: outp.clone(),
         });
-        self.lflags.insert(0, outp);
+        self.lobjs.push(outp);
     }
 
 
@@ -223,19 +235,42 @@ impl Make {
             std::process::exit(11);
         }
 
+        let mut cmd     = self.cc.clone();
+        let mut args    = Vec::new();
+
         match self.artifact.typ {
+            super::project::ArtifactType::Staticlib => {
+                cmd = self.ar.clone();
+                args = vec![
+                    "rcs".to_string(),
+                    format!("./target/{}/lib{}.a", self.variant, self.artifact.name)
+                ];
+                args.extend_from_slice(&self.lobjs);
+
+                if BUILD_RS.load(Ordering::Relaxed) {
+                    println!("\n\ncargo:rustc-link-lib=static={}\n\n", self.artifact.name);
+                    println!("\n\ncargo:rustc-link-search=native={}/target/{}\n\n", std::env::current_dir().unwrap().display(), self.variant);
+                }
+
+            },
             super::project::ArtifactType::Lib => {
-                self.lflags.push("-shared".into());
-                self.lflags.push("-o".into());
-                self.lflags.push(format!("./target/{}/{}.so", self.variant, self.artifact.name));
+                args.extend_from_slice(&self.lobjs);
+                args.extend_from_slice(&self.lflags);
+                args.push("-shared".into());
+                args.push("-o".into());
+                args.push(format!("./target/{}/lib{}.so", self.variant, self.artifact.name));
             },
             super::project::ArtifactType::Exe => {
-                self.lflags.push("-o".into());
-                self.lflags.push(format!("./target/{}/{}", self.variant, self.artifact.name));
+                args.extend_from_slice(&self.lobjs);
+                args.extend_from_slice(&self.lflags);
+                args.push("-o".into());
+                args.push(format!("./target/{}/{}", self.variant, self.artifact.name));
             }
             super::project::ArtifactType::Test  => {
-                self.lflags.push("-o".into());
-                self.lflags.push(format!("./target/{}/{}", self.variant, self.artifact.name));
+                args.extend_from_slice(&self.lobjs);
+                args.extend_from_slice(&self.lflags);
+                args.push("-o".into());
+                args.push(format!("./target/{}/{}", self.variant, self.artifact.name));
             }
             super::project::ArtifactType::Header  => {
                 panic!("cannot link header yet");
@@ -246,10 +281,10 @@ impl Make {
         pb.lock().unwrap().message(&format!("ld [{:?}] {} ", self.artifact.typ, self.artifact.name));
         pb.lock().unwrap().tick();
 
-        debug!("{:?}", self.lflags);
+        debug!("{:?}", args);
 
-        let status = Command::new(&self.cc)
-            .args(&self.lflags)
+        let status = Command::new(&cmd)
+            .args(&args)
             .status()
             .expect("failed to execute linker");
         if !status.success() {

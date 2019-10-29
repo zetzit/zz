@@ -8,17 +8,23 @@ use toml::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArtifactType {
+    #[serde(rename = "lib")]
     Lib,
+    #[serde(rename = "staticlib")]
+    Staticlib,
+    #[serde(rename = "exe")]
     Exe,
+    #[serde(rename = "test")]
     Test,
+    #[serde(rename = "header")]
     Header,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Artifact {
-    #[serde(rename = "type")]
     pub name:   String,
     pub main:   String,
+    #[serde(rename = "type")]
     pub typ:    ArtifactType,
 }
 

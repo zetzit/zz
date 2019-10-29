@@ -12,11 +12,11 @@ export struct Error {
 };
 
 
-pub fn clear(Error unset<error> mut* err) {
+export fn clear(Error unset<error> mut* err) {
     memset(err, 0, sizeof(Error));
 }
 
-pub fn check(
+export  fn check(
         Error unset<error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
@@ -30,14 +30,14 @@ pub fn check(
 }
 
 
-pub fn backtrace(Error allow<error> mut* err, char* file, char* scope, int line) {
+export fn backtrace(Error allow<error> mut* err, char* file, char* scope, int line) {
     snprintf(
             (char mut*)(&((err)->locations)) + strlen((err)->locations),
             sizeof((err)->locations) - strlen((err)->locations),
             "\n  %s:%d \t%s", file, line, scope);
 }
 
-pub fn fail_with_errno(
+export fn fail_with_errno(
         Error unset<error> set<error> mut* err,
         char* callsite_macro<__FILE__>      file,
         char* callsite_macro<__FUNCTION__>  scope,
@@ -60,7 +60,7 @@ pub fn fail_with_errno(
     backtrace(err, file, scope, line);
 }
 
-pub fn fail(
+export fn fail(
         Error unset<error> set<error> mut* err,
         uint8_t e,
         char* callsite_macro<__FILE__>      file,
@@ -92,4 +92,12 @@ export fn abort(
         fprintf(stderr, "fatal error: %s%s\n", err->description, err->locations);
         cabort();
     }
+}
+
+export fn to_str(
+        Error mut* err,
+        char mut *dest,
+        usize dest_len,
+) {
+    snprintf(dest, dest_len, "%s%s\n", err->description, err->locations);
 }

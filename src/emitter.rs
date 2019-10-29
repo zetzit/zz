@@ -132,8 +132,8 @@ impl Emitter {
             self.emit_include(&inc);
         }
 
-        for (d,need) in &module.d {
-            if !need {
+        for (d,decl_here,def_here) in &module.d {
+            if !decl_here{
                 continue
             }
             if self.header && d.vis != ast::Visibility::Export {
@@ -150,7 +150,7 @@ impl Emitter {
                     self.emit_static(&d)
                 }
                 ast::Def::Struct{..} => {
-                    self.emit_struct(&d)
+                    self.emit_struct(&d, *def_here)
                 }
                 ast::Def::Enum{..} => {
                     self.emit_enum(&d)
@@ -167,8 +167,11 @@ impl Emitter {
         if self.header {
             write!(self.f, "\n#endif\n").unwrap();
         } else {
-            for (d, need) in &module.d {
-                if !need {
+            for (d, decl_here, def_here) in &module.d {
+                if !decl_here{
+                    continue
+                }
+                if !def_here {
                     continue
                 }
                 if let ast::Def::Function{..} = d.def {
@@ -351,7 +354,7 @@ impl Emitter {
         write!(self.f, "\n}} {};\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
     }
 
-    pub fn emit_struct(&mut self, ast: &ast::Local) {
+    pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool) {
         let (fields, packed) = match &ast.def {
             ast::Def::Struct{fields, packed} => (fields, packed),
             _ => unreachable!(),
@@ -375,6 +378,16 @@ impl Emitter {
         }
 
         write!(self.f, "}} {} ;\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+
+
+        if def_here {
+            if ast.vis == ast::Visibility::Export {
+                write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
+                self.to_local_name(&Name::from(&ast.name)),
+                self.to_local_name(&Name::from(&ast.name)),
+                ).unwrap();
+            }
+        }
     }
 
 

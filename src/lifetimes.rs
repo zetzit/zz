@@ -1018,7 +1018,7 @@ pub fn check(md: &mut flatten::Module) {
     }
 
 
-    for (local,_) in &mut md.d {
+    for (local,_,_) in &mut md.d {
         let localname = Name::from(&local.name);
         debug!("   def {}", localname);
 

@@ -13,8 +13,8 @@ pub struct Module {
     pub sources:        HashSet<PathBuf>,
     pub c_names:        HashMap<Name, ast::Location>,
 
-                                        //vv emit in this object
-    pub d:              Vec<(ast::Local, bool)>,
+                                        //vv declare in this object, define in this object
+    pub d:              Vec<(ast::Local, bool,                       bool)>,
     pub cincludes:      Vec<ast::Include>,
 
 
@@ -428,8 +428,9 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
 
 
+    let impl_in_thisobject = std::mem::replace(&mut thisobject, HashSet::new());
     // collect implementation dependencies into this object
-    for name in std::mem::replace(&mut thisobject, HashSet::new()) {
+    for name in &impl_in_thisobject {
         let n = collected.0.get(&name).unwrap();
         thisobject.insert(name.clone());
         for (dep,_) in &n.impl_deps {
@@ -470,8 +471,9 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
     let mut included = HashMap::new();
     for (name, l) in sorted {
-        let need_in_obj = thisobject.contains(&name);
-        debug!(" {} {}", name, if need_in_obj {"<this object"} else {""});
+        let decl_in_obj = thisobject.contains(&name);
+        let def_in_obj  = impl_in_thisobject.contains(&name);
+        debug!(" {} {}", name, if decl_in_obj {"<this object"} else {""});
         for (dep, _) in &l.decl_deps {
             debug!("    <D {}", dep);
         }
@@ -479,12 +481,12 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             debug!("    <I {}", dep);
         }
         if let Some(ast) = &l.ast {
-            flat.d.push((ast.clone(), need_in_obj));
+            flat.d.push((ast.clone(), decl_in_obj, def_in_obj));
         } else if name.0[1] == "ext" {
             let mut fqn = name.0.clone();
             fqn.pop();
 
-            if need_in_obj {
+            if decl_in_obj {
                 included.entry(name.0[2].clone()).or_insert(ast::Include{
                     expr: name.0[2].clone(),
                     loc:  l.in_scope_here.clone(),
