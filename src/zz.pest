@@ -71,7 +71,7 @@ local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~
 namespace   = ${ ident ~ "::" ~ namespace? }
 
 type_name   = ${ namespace? ~ ident }
-tag_name    = ${ (ident | key_mut | key_unsafe) ~ ("<" ~ ident ~ ">")? }
+tag_name    = ${ (ident | key_mut | key_unsafe) ~ ("<" ~ (number_literal | ident ) ~ ">")? }
 ptr         = !{"*"}
 type_part   = _{ (tag_name | ptr ) }
 anon_type   = !{ type_name ~ type_part* }

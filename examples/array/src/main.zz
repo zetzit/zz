@@ -1,12 +1,14 @@
-using <stdio.h>::{printf};
+struct A {
+    u8 i;
+}
 
+pub fn memcpy(u8 mut* dst, u8 * src, usize bound<dst> bound<src> len) {
+    dst[len -1] = 3;
+}
 
-
-static char s[] = {'h','e','l','l','o',0};
-
-
-export fn main() -> int {
-
-    printf("%s\n", s);
+pub fn main() -> int {
+    u8 src[23] = {0};
+    u8 mut dst[20] = {0};
+    memcpy(dst, src, sizeof(A));
     return 0;
 }

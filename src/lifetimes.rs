@@ -12,16 +12,23 @@ static ABORT: AtomicBool = AtomicBool::new(false);
 
 
 //lvalue returns storage Address, rvalue returns Value
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 enum Access {
     Storage,
     Value,
 }
 
 #[derive(Clone)]
+struct Literal {
+    loc:    ast::Location,
+    val:    String,
+    tags:   Tags,
+}
+
+#[derive(Clone)]
 enum Lifetime {
     Uninitialized,
-    Static,
+    Static(Option<Literal>),
     Pointer(usize),
     Function {
         ret:  Option<(Box<Lifetime>, ast::Typed)>,
@@ -50,7 +57,8 @@ impl std::fmt::Display for Lifetime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Lifetime::Uninitialized     => write!(f, "uninitialized"),
-            Lifetime::Static            => write!(f, "static"),
+            Lifetime::Static(None)      => write!(f, "static"),
+            Lifetime::Static(Some(_))   => write!(f, "literal"),
             Lifetime::Pointer(to)       => write!(f, "ptr->{}", to),
             Lifetime::Function {..}     => write!(f, "function"),
             Lifetime::Moved{..}         => write!(f, "moved"),
@@ -173,7 +181,7 @@ impl Stack {
                     (used_here.clone(), format!("'{}' is not defined in this scope", name))
                 ]);
                 ABORT.store(true, Ordering::Relaxed);
-                return Lifetime::Static;
+                return Lifetime::Static(None);
             },
             Some(v) => v,
         };
@@ -226,6 +234,15 @@ impl Stack {
                 ABORT.store(true, Ordering::Relaxed);
                 return Lifetime::Uninitialized;
             }
+            Lifetime::Static(Some(l)) => {
+                let mut l = l.clone();
+                if let Some(bound) = storage.tags.get("bound") {
+                    for (k,v) in bound {
+                        l.tags.insert("bound".to_string(), k.clone(), v.clone());
+                    }
+                }
+                Lifetime::Static(Some(l))
+            }
             v => {
                 v.clone()
             }
@@ -243,7 +260,7 @@ impl Stack {
 
 
     fn check_call_arg(&mut self, stack: &ast::NamedArg, callsite: &mut ast::Expression) {
-        if let Lifetime::Static = self.check_expr(callsite, Access::Value) {
+        if let Lifetime::Static(_) = self.check_expr(callsite, Access::Value) {
             return;
         }
 
@@ -293,7 +310,7 @@ impl Stack {
                     ABORT.store(true, Ordering::Relaxed);
                     return;
                 },
-                Lifetime::Static => {
+                Lifetime::Static(_) => {
                     if callsite_storage.tags.contains("safe") {
                         return;
                     }
@@ -447,7 +464,7 @@ impl Stack {
         // leftmost pointer 
         match &callsite_storage.value {
             Lifetime::Uninitialized => {
-                emit_error("uninitialized arg passed as safe", &[
+                emit_error(format!("uninitialized var {} passed as safe arg", callsite_storage.name), &[
                        (callsite.loc().clone(), "this arg must be safe"),
                        (callsite_storage.stored_here.clone(), "but this value is unitialized"),
                 ]);
@@ -482,7 +499,7 @@ impl Stack {
             ast::Expression::Name(name) => {
                 if name.name.is_absolute() && name.name.0[1] == "ext" {
                     //TODO
-                    return Lifetime::Static;
+                    return Lifetime::Static(None);
                 }
                 self.check_name(&name.name, &name.loc, access)
             }
@@ -495,6 +512,9 @@ impl Stack {
                                     to
                                 }
                                 Lifetime::Uninitialized | Lifetime::Moved{..} => {
+                                    emit_warn("lvalue expression is not a storage location", &[
+                                        (loc.clone(), "cannot be accessed"),
+                                    ]);
                                     ABORT.store(true, Ordering::Relaxed);
                                     return Lifetime::Uninitialized;
                                 }
@@ -546,7 +566,7 @@ impl Stack {
                     },
                     Some(t) => {
                         if t.name.0[1] == "ext" {
-                            return Lifetime::Static;
+                            return Lifetime::Static(None);
                         }
 
                         let def = self.defs.get(&t.name).cloned();
@@ -589,7 +609,7 @@ impl Stack {
                                                 });
                                                 self.write(m_ptr, Lifetime::Pointer(ptr3), &field.loc);
                                             } else {
-                                                self.write(m_ptr, Lifetime::Static, &field.loc);
+                                                self.write(m_ptr, Lifetime::Static(None), &field.loc);
                                             }
 
                                         }
@@ -615,10 +635,10 @@ impl Stack {
                 };
             }
             ast::Expression::ArrayAccess {lhs, rhs, ..} => {
-                //TODO
-                self.check_expr(lhs, access)
+                self.check_bounds(lhs, rhs, true);
+                return self.check_expr(lhs, Access::Value);
             }
-            ast::Expression::Literal { loc, .. } => {
+            ast::Expression::Literal { loc, v } => {
                 if access == Access::Storage {
                     emit_error("lvalue expression is not a storage location", &[
                            (loc.clone(), "literal cannot be used as lvalue"),
@@ -626,12 +646,54 @@ impl Stack {
                     ABORT.store(true, Ordering::Relaxed);
                     return Lifetime::Uninitialized;
                 }
-                Lifetime::Static
+                Lifetime::Static(Some(Literal{
+                    loc:    loc.clone(),
+                    val:    v.clone(),
+                    tags:   Tags::default(),
+                }))
             },
             ast::Expression::Call { name, args: callargs, loc: callloc, .. } => {
                 if name.name.is_absolute() && name.name.0[1] == "ext" {
+                    if name.name.0[3] == "sizeof" {
+                        if callargs.len() != 1 {
+                            emit_error("call argument count mismatch", &[
+                                (name.loc.clone(), format!("this function expects {} argument, but you passed {}", 1, callargs.len()))
+                            ]);
+                            ABORT.store(true, Ordering::Relaxed);
+                            return Lifetime::Uninitialized;
+                        }
+                        match self.check_expr(&mut callargs[0], Access::Value) {
+                            Lifetime::Static(_) => {
+                                return Lifetime::Static(None);
+                            },
+                            Lifetime::Pointer(to) => {
+                                if let Some(sized) = self.pointers[to].tags.get("sized") {
+                                    for (size, loc) in sized {
+                                        return Lifetime::Static(Some(Literal{
+                                            loc:    loc.clone(),
+                                            val:    size.clone(),
+                                            tags:   Tags::default(),
+                                        }));
+                                    }
+                                } else {
+                                    emit_error("sizeof of unsized storage", &[
+                                               (callloc.clone(), "sizeof on unsized object not valid here")
+                                    ]);
+                                    ABORT.store(true, Ordering::Relaxed);
+                                    return Lifetime::Uninitialized;
+                                }
+                            },
+                            _ => {
+                                emit_error("sizeof of unsized storage", &[
+                                    (callloc.clone(), "sizeof on unsized object not valid here")
+                                ]);
+                                ABORT.store(true, Ordering::Relaxed);
+                                return Lifetime::Uninitialized;
+                            }
+                        }
+                    }
                     //TODO
-                    return Lifetime::Static;
+                    return Lifetime::Static(None);
                 }
                 match self.check_name(&name.name, &name.loc, Access::Value) {
                     Lifetime::Function{ret, args, vararg} => {
@@ -660,9 +722,31 @@ impl Stack {
                             ABORT.store(true, Ordering::Relaxed);
                             return Lifetime::Uninitialized;
                         }
+
+                        let mut argpos: HashMap<String, usize> = HashMap::new();
                         for i in 0..args.len() {
+                            argpos.insert(args[i].name.clone(),i);
                             // check value of expression, which will be copied into the functions scope
                             self.check_call_arg(&args[i], &mut callargs[i])
+                        }
+
+                        //boundary checks
+                        for i in 0..args.len() {
+                            if let Some(bounds) = args[i].tags.get("bound") {
+                                for (bound, loc) in bounds {
+                                    let bound_by = match argpos.get(bound) {
+                                        None => {
+                                            emit_error("bound to undeclared argument", &[
+                                                       (loc.clone(), format!("{} is not an argument", bound))
+                                            ]);
+                                            ABORT.store(true, Ordering::Relaxed);
+                                            continue;
+                                        }
+                                        Some(v) => *v,
+                                    };
+                                    self.check_bounds(&mut callargs[bound_by].clone(), &mut callargs[i], false);
+                                }
+                            }
                         }
 
                         return match ret {
@@ -689,12 +773,12 @@ impl Stack {
                                 }
 
                             }
-                            None => Lifetime::Static,
+                            None => Lifetime::Static(None),
                         }
                     },
                     //TODO c functions, macros
-                    Lifetime::Static => {
-                        return Lifetime::Static;
+                    Lifetime::Static(a) => {
+                        return Lifetime::Static(a);
                     },
                     _ => {
                         emit_warn("lvalue is not a valid function", &[
@@ -712,10 +796,58 @@ impl Stack {
                     ABORT.store(true, Ordering::Relaxed);
                     return Lifetime::Uninitialized;
                 }
-                for (_, expr) in rhs {
-                    self.check_expr(expr, Access::Value);
+
+
+
+                let mut all_just_substractions = true;
+                let mut static_value = None;
+                let lhs = match self.check_expr(lhs, Access::Value) {
+                    Lifetime::Static(Some(lit)) => {
+                        if let Ok(n) = lit.val.parse::<i64>() {
+                            static_value = Some(n);
+                        }
+                        Lifetime::Static(Some(lit))
+                    },
+                    a => a,
+                };
+                for (op, expr) in rhs {
+                    if op.0 != "-" {
+                        all_just_substractions = false;
+                    }
+                    match self.check_expr(expr, Access::Value) {
+                        Lifetime::Static(Some(lit)) => {
+                            if let Ok(n) = lit.val.parse::<i64>() {
+                                if let Some(a) = static_value {
+                                    match op.0.as_str() {
+                                        "+" => {
+                                            static_value = Some(a + n);
+                                        },
+                                        "-" => {
+                                            static_value = Some(a - n)
+                                        }
+                                        _ => {
+                                            static_value = None;
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        _ => {
+                            static_value = None;
+                        }
+                    };
                 }
-                self.check_expr(lhs, Access::Value)
+                if let Some(static_value) = static_value {
+                    Lifetime::Static(Some(Literal{
+                        loc:    loc.clone(),
+                        val:    format!("{}", static_value),
+                        tags:   Tags::default(),
+                    }))
+                } else if all_just_substractions {
+                    lhs
+                } else {
+                    Lifetime::Static(None)
+                }
             }
             ast::Expression::Cast { expr, .. } => {
                 //TODO
@@ -773,11 +905,11 @@ impl Stack {
                 }
             }
             ast::Expression::StructInit {loc, typed, fields} => {
-                let mut combined_lf = Lifetime::Static;
+                let mut combined_lf = Lifetime::Static(None);
 
                 for (_, field) in fields {
                     match self.check_expr(field, Access::Value) {
-                        Lifetime::Static => {
+                        Lifetime::Static(_) => {
                         },
                         Lifetime::Pointer(ptr) => {
                             // TODO combined lifetimes dont actually exit yet, so we just use the
@@ -794,11 +926,11 @@ impl Stack {
                 combined_lf
             }
             ast::Expression::ArrayInit {fields, ..} => {
-                let mut combined_lf = Lifetime::Static;
+                let mut combined_lf = Lifetime::Static(None);
 
                 for field in fields {
                     match self.check_expr(field, Access::Value) {
-                        Lifetime::Static => {
+                        Lifetime::Static(_) => {
                         },
                         Lifetime::Pointer(ptr) => {
                             // TODO combined lifetimes dont actually exit yet, so we just use the
@@ -837,7 +969,7 @@ impl Stack {
                             storage.tags.remove("unsafe", None);
                             storage.tags.insert("safe".to_string(), String::new(), loc.clone());
 
-                            storage.value = Lifetime::Static;
+                            storage.value = Lifetime::Static(None);
                             storage.changed_here = Some(loc.clone());
                             if let Some(typ) = &storage.typ {
                                 if typ.ptr.len() > 0 {
@@ -903,7 +1035,7 @@ impl Stack {
             ast::Statement::Var{name, assign, tags, loc, typed, array, ..} => {
                 let mut tags = tags.clone();
                 tags.insert("stack".to_string(), String::new(), loc.clone());
-                let ptr = self.local(Some(typed.clone()), Name::from(&*name), loc.clone(), tags);
+                let ptr = self.local(Some(typed.clone()), Name::from(&*name), loc.clone(), tags.clone());
 
                 if let Some(assign) = assign {
                     let rhs_rf = self.check_expr(assign, Access::Value);
@@ -918,9 +1050,31 @@ impl Stack {
                     };
                     self.write(ptr, rhs_rf, loc);
                 }
+
                 if let Some(array) = array {
+                    let ptr2 = self.local(Some(typed.clone()),
+                        Name::from(&format!("array content of {} ({})", name, ptr)),
+                        loc.clone(), tags,
+                    );
+                    self.pointers[ptr].value = Lifetime::Pointer(ptr2);
                     if let Some(expr) = array {
-                        self.check_expr(expr, Access::Value);
+                        match self.check_expr(expr, Access::Value) {
+                            Lifetime::Static(Some(lit)) => {
+                                if let Ok(val) = lit.val.parse::<u64>() {
+                                    self.pointers[ptr].tags.insert("sized".to_string(), format!("{}", val), expr.loc().clone());
+                                    self.pointers[ptr2].tags.insert("sized".to_string(), format!("{}", val), expr.loc().clone());
+                                }
+                            },
+                            _ => {
+                                emit_warn("untrackable array size", &[
+                                    (expr.loc().clone(), "cannot evaluate this expression at compile time")
+                                ]);
+                            }
+                        }
+                        if let Some(assign) = assign {
+                            let rhs_rf = self.check_expr(assign, Access::Value);
+                            self.write(ptr2, rhs_rf, loc);
+                        }
                     }
                 }
             },
@@ -949,6 +1103,12 @@ impl Stack {
                             ABORT.store(true, Ordering::Relaxed);
                         }
                         self.write(to, rhs_rf, lhs.loc());
+                    },
+                    Lifetime::Static(_) => {
+                        emit_error("lvalue has static lifetime", &[
+                                   (lhs.loc().clone(), "cannot determine lifetime of left hand side"),
+                        ]);
+                        ABORT.store(true, Ordering::Relaxed);
                     },
                     _ => {
                         emit_error("lvalue has invalid lifetime", &[
@@ -1000,6 +1160,100 @@ impl Stack {
             => {},
         }
     }
+
+    fn check_bounds(&mut self, array: &mut ast::Expression, index: &mut ast::Expression, index_access: bool) {
+        let (array_size, array_size_decl, array_varname) = match self.check_expr(array, Access::Storage) {
+            Lifetime::Pointer(to) => {
+                if let Some(v) = self.pointers[to].tags.get("sized") {
+                    (
+                        v.keys().next().and_then(|x|x.parse::<u64>().ok()),
+                        v.keys().next().and_then(|x|v.get(x)).cloned(),
+                        self.pointers[to].name.clone(),
+                    )
+                } else {
+                    (
+                        None,
+                        None,
+                        self.pointers[to].name.clone(),
+                    )
+                }
+            },
+            o => {
+                emit_warn("array access to invalid storage location", &[
+                    (array.loc().clone(), "array does not have known storage location"),
+                ]);
+                return;
+            },
+        };
+
+        if let Some(array_size) = array_size {
+            match self.check_expr(index, Access::Value) {
+                Lifetime::Static(Some(v)) => {
+                    if let Ok(v) = v.val.parse::<u64>() {
+                        if if index_access { array_size <= v } else {array_size < v } {
+                            emit_error("index exceeds array size", &[
+                                (index.loc().clone(), format!("index {} would overflow array bound", v)),
+                                (array_size_decl.unwrap().clone(), "bounded here".to_string())
+                            ]);
+                            ABORT.store(true, Ordering::Relaxed);
+                        }
+                    } else {
+                        emit_warn("array access with untrackable index", &[
+                            (index.loc().clone(), "expression is not an integer"),
+                        ]);
+                    }
+                },
+                Lifetime::Pointer(to) => {
+                    let tags = &self.pointers[to].tags.clone();
+                    //if let Some(bounds) = self.pointers[to].tags.get("bound") {
+
+                    //} else {
+                    emit_warn("array access with unbound index", &[
+                        (index.loc().clone(), "expression is unbound"),
+                    ]);
+                    //}
+                }
+                _ => {
+                    emit_warn("array access with untrackable index", &[
+                        (index.loc().clone(), "expression is not trackable"),
+                    ]);
+                },
+            }
+            return;
+        } else {
+            match self.check_expr(index, Access::Value) {
+                Lifetime::Pointer(to) => {
+                    let tags = &self.pointers[to].tags.clone();
+                    if let Some(bounds) = self.pointers[to].tags.get("bound") {
+                        for (bound, loc) in bounds {
+                            if Name::from(bound) == array_varname {
+                                return;
+                            }
+                        }
+                    }
+                },
+                Lifetime::Static(Some(lit)) => {
+                    if let Some(bounds) = lit.tags.get("bound") {
+                        for (bound, loc) in bounds {
+                            if Name::from(bound) == array_varname {
+                                return;
+                            }
+                        }
+                    }
+                    emit_error("access to unsized array", &[
+                        (index.loc().clone(), "unbound index is not known to be safe because the array is unsized\n".to_string())
+                    ]);
+                    ABORT.store(true, Ordering::Relaxed);
+                    return;
+                },
+                _ => {}
+            }
+            emit_error("unbounded array access", &[
+                (index.loc().clone(), "neither array nor index are bound\n".to_string())
+            ]);
+            ABORT.store(true, Ordering::Relaxed);
+        }
+    }
 }
 
 
@@ -1014,7 +1268,7 @@ pub fn check(md: &mut flatten::Module) {
     for (name,loc) in &md.c_names {
         let mut tags = Tags::new();
         let ptr = stack.local(None, name.clone(), loc.clone(), tags);
-        stack.write(ptr, Lifetime::Static, &loc);
+        stack.write(ptr, Lifetime::Static(None), &loc);
     }
 
 
@@ -1025,27 +1279,34 @@ pub fn check(md: &mut flatten::Module) {
         stack.defs.insert(Name::from(&local.name), local.def.clone());
         match &mut local.def {
 
+            ast::Def::Struct {fields, packed} => {
+                let localname = Name::from(&local.name);
+                let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
+                stack.write(ptr, Lifetime::Static(None), &local.loc);
+            },
+
             ast::Def::Macro{args, body} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
-                stack.write(ptr, Lifetime::Static, &local.loc);
+                stack.write(ptr, Lifetime::Static(None), &local.loc);
             },
             ast::Def::Const{typed, expr} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), Tags::new());
-                stack.write(ptr, Lifetime::Static, &local.loc);
+                stack.write(ptr, Lifetime::Static(None), &local.loc);
             },
             ast::Def::Static{typed, expr, storage, tags, array} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), tags.clone());
-                stack.write(ptr, Lifetime::Static, &local.loc);
+                stack.write(ptr, Lifetime::Static(None), &local.loc);
             },
             ast::Def::Enum{names, ..} => {
                 for (name,_) in names {
                     let mut localname = Name::from(&local.name);
                     localname.push(name.clone());
                     let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
-                    stack.write(ptr, Lifetime::Static, &local.loc);
+                    //TODO value
+                    stack.write(ptr, Lifetime::Static(None), &local.loc);
                 }
             },
             ast::Def::Function{body, args, ret, vararg, ..} => {
@@ -1055,7 +1316,7 @@ pub fn check(md: &mut flatten::Module) {
                 let ret = match ret {
                     None => None,
                     Some(ret) => {
-                        let mut rlf = Lifetime::Static;
+                        let mut rlf = Lifetime::Static(None);
 
                         for ast_ptr in ret.typed.ptr.iter() {
                             let mut tags = ast_ptr.tags.clone();
@@ -1090,13 +1351,13 @@ pub fn check(md: &mut flatten::Module) {
                         let site = stack.local(
                             Some(arg.typed.clone()),
                             Name::from(&format!("pointer to callsite of {} ({})", local.name, storage)), arg.loc.clone(), body_tags.clone()
-                        );
+                            );
                         stack.write(storage, Lifetime::Pointer(site), &arg.loc);
                         storage = site;
                     }
 
                     let site = stack.local(Some(arg.typed.clone()),
-                        Name::from(&format!("callsite of {}({})",local.name, storage)), arg.loc.clone(), arg.tags.clone()
+                    Name::from(&format!("callsite of {}({})",local.name, storage)), arg.loc.clone(), arg.tags.clone()
                     );
                     stack.write(storage, Lifetime::Pointer(site), &arg.loc);
                 }
@@ -1121,3 +1382,6 @@ pub fn check(md: &mut flatten::Module) {
         std::process::exit(9);
     }
 }
+
+
+
