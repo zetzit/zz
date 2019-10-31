@@ -18,6 +18,7 @@ static Bob mut stbob = Bob{
 };
 
 pub fn gimme_wee(aye::bob* lol) -> float {
+    lol is safe;
     bob += (int)lol;
     return wee;
 }

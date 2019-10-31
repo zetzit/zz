@@ -1,7 +1,5 @@
 using <stdio.h>::{printf};
 
-
-
 struct A{
     int mut a;
     int mut b;
@@ -24,14 +22,12 @@ fn lo(C *a) -> C* {
 }
 
 
-fn foo(A mut * a, Z *z) {
+fn foo(A mut *a, Z * unsafe z) {
     if a->x {
-        a->x is safe;
         C mut* beep = a->x;
         beep->m = a->b;
         (a->x)->m = 3;
     }
-
 }
 
 export fn main() -> int {
@@ -45,6 +41,9 @@ export fn main() -> int {
 
 
     C *y = lo(&c);
+
+
+    y->m is safe;
 
     int r =  y->m;
     printf("hello structs %d\n", r);

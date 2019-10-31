@@ -1,28 +1,11 @@
-#[macro_use] extern crate pest_derive;
 extern crate clap;
 #[macro_use] extern crate log;
 extern crate env_logger;
 extern crate pbr;
 extern crate rayon;
 
-mod ast;
-mod parser;
-mod project;
-mod make;
-mod loader;
-mod flatten;
-mod emitter;
-mod abs;
-mod name;
-mod pp;
-mod lifetimes;
-
-use std::path::Path;
 use clap::{App, Arg, SubCommand};
 use std::process::Command;
-use name::Name;
-use std::collections::HashSet;
-use std::collections::HashMap;
 use std::sync::atomic::{Ordering};
 use zz;
 
@@ -57,10 +40,10 @@ fn main() {
 
     match matches.subcommand() {
         ("init", Some(_submatches)) => {
-            project::init();
+            zz::project::init();
         },
         ("clean", Some(_submatches)) => {
-            let (root, _) = project::load_cwd();
+            let (root, _) = zz::project::load_cwd();
             std::env::set_current_dir(root).unwrap();
             if std::path::Path::new("./target").exists() {
                 std::fs::remove_dir_all("target").unwrap();
@@ -69,11 +52,11 @@ fn main() {
         ("test", Some(submatches)) => {
             let variant = submatches.value_of("variant").unwrap_or("default");
             zz::build(true, false, variant);
-            let (root, mut project) = project::load_cwd();
+            let (root, mut project) = zz::project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
-                if let project::ArtifactType::Test = artifact.typ {
+                if let zz::project::ArtifactType::Test = artifact.typ {
                     if let Some(testname) = submatches.value_of("testname") {
                         if testname != artifact.name {
                             if format!("tests::{}", testname) != artifact.name {
@@ -98,12 +81,12 @@ fn main() {
         ("run", Some(submatches)) => {
             let variant = submatches.value_of("variant").unwrap_or("default");
             zz::build(false, false, variant);
-            let (root, mut project) = project::load_cwd();
+            let (root, mut project) = zz::project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
             let mut exes = Vec::new();
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
-                if let project::ArtifactType::Exe = artifact.typ {
+                if let zz::project::ArtifactType::Exe = artifact.typ {
                     exes.push(artifact);
                 }
             }
@@ -124,7 +107,7 @@ fn main() {
             std::process::exit(status.code().expect("failed to execute process"));
         },
         ("check", Some(submatches)) => {
-            parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
+            zz::parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
             zz::build(false, true, submatches.value_of("variant").unwrap_or("default"))
         },
         ("build", Some(submatches)) => {

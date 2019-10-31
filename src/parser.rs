@@ -1377,3 +1377,23 @@ pub fn emit_warn<'a, S1, S2, I>(message: S1, v: I)
     }
     warn!("{}", s);
 }
+
+pub fn emit_debug<'a, S1, S2, I>(message: S1, v: I)
+    where S1: std::string::ToString,
+          S2: std::string::ToString + 'a,
+          I:  std::iter::IntoIterator<Item=&'a (Location, S2)>,
+{
+    if ERRORS_AS_JSON.load(Ordering::SeqCst) {
+        return;
+    }
+
+
+    let mut s : String = message.to_string();
+    for (loc, message)  in v.into_iter() {
+        let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
+            message: message.to_string(),
+        }, loc.span.clone()).with_path(&loc.file);
+        s += &format!("\n{}", e);
+    }
+    debug!("{}", s);
+}

@@ -8,16 +8,25 @@ static u8 hashmap[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // HIJKLMNO
 };
 
-export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usize {
+export fn str2bin(char *in, usize bound<in> inlen, u8 mut * mut out, usize bound<out> outlen) -> usize {
     usize mut pos;
     u8 mut idx0;
     u8 mut idx1;
 
     memset(out, 0, outlen);
-    for (pos = 0; ((pos < (outlen*2)) && (pos < inlen)); pos += 2) {
-        idx0 = (((u8)in[pos+0]) & 0x1f) ^ 0x10;
-        idx1 = (((u8)in[pos+1]) & 0x1f) ^ 0x10;
-        out[pos/2] = hashmap[idx0] << 4 | hashmap[idx1];
+    for (pos = 0; ((pos < (outlen*2)) && ((pos + 1) < inlen)); pos += 2) {
+
+        usize p0 = pos+0;
+        usize p1 = pos+1;
+        p0 is bound<in>;
+        p1 is bound<in>;
+
+        idx0 = (((u8)in[p0]) & 0x1f) ^ 0x10;
+        idx1 = (((u8)in[p1]) & 0x1f) ^ 0x10;
+
+        unsafe {
+            out[pos/2] = hashmap[idx0] << 4 | hashmap[idx1];
+        }
     }
     return pos/2;
 }

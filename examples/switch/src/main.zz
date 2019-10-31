@@ -16,7 +16,6 @@ enum B {
 export fn main() -> int {
     printf("hello switch\n");
 
-
     A a = A::g;
 
 

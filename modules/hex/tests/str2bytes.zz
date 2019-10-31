@@ -29,22 +29,22 @@ pub fn main() -> int {
     }
 
     {
-        u8 expect[] = {0x76, 0x10};
+        u8 expect[] = {0x76};
         if t("761", expect, sizeof(expect)) {
-            return 1;
+            return 2;
         }
     }
 
     {
         u8 expect[] = {0x76, 0x12};
         if t("7612", expect, sizeof(expect)) {
-            return 1;
+            return 3;
         }
     }
 
     {
         if t("", 0,0) {
-            return 1;
+            return 4;
         }
     }
 

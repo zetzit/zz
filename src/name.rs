@@ -20,6 +20,9 @@ impl Name {
     }
 
     pub fn is_absolute(&self) -> bool {
+        if self.0.len() < 3 {
+            return false;
+        }
         if let Some(s) = self.0.get(0) {
             return s.is_empty()
         } else {

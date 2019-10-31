@@ -26,6 +26,7 @@ pub fn new(State mut* self) {
 }
 
 pub fn add(State mut* self, int i) {
+    self is safe;
     self->counter += i;
     goto exit;
 exit:

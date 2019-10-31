@@ -50,7 +50,7 @@ impl Make {
                     .unwrap_or("clang++".to_string());
             }
         }
-        let mut ar = std::env::var("TARGET_AR")
+        let ar = std::env::var("TARGET_AR")
             .or(std::env::var("AR"))
             .unwrap_or("ar".to_string());
 

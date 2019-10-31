@@ -9,6 +9,7 @@ struct Socket {
 
 
 fn open(Socket set<open> mut* self) {
+    self is safe;
     self->fd = 2;
 }
 

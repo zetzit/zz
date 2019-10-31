@@ -3,7 +3,7 @@ using <assert.h>::{assert};
 
 struct bob{}
 
-fn bob_is_a_failure(bob* b) {
+fn bob_is_a_failure(bob * unsafe b) {
     assert(1 == 0);
 }
 

@@ -335,7 +335,7 @@ impl Emitter {
     }
 
     pub fn emit_enum(&mut self, ast: &ast::Local) {
-        let (names) = match &ast.def {
+        let names = match &ast.def {
             ast::Def::Enum{names} => (names),
             _ => unreachable!(),
         };

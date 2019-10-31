@@ -43,7 +43,24 @@ impl Scope{
         });
     }
 
+    pub fn tags(&self, tags: &mut ast::Tags) {
+        for (_,vals) in tags.0.iter_mut() {
+            for (k,_) in vals.iter_mut() {
+                if let Some(v2) = self.v.get(k) {
+                    #[allow(mutable_transmutes)]
+                    let k = unsafe { std::mem::transmute::<&String, &mut String>(k) };
+                    *k = v2.name.to_string();
+                }
+            }
+        }
+    }
+
     pub fn abs(&self, t: &mut ast::Typed , inbody: bool) {
+
+        for ptr in &mut t.ptr {
+            self.tags(&mut ptr.tags);
+        }
+
         if t.name.is_absolute() {
             return;
         }
@@ -561,6 +578,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                 }
                 for arg in args {
                     scope.abs(&mut arg.typed, false);
+                    scope.tags(&mut arg.tags);
                     check_abs_available(&arg.typed.name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
                 }
                 abs_block(body, &scope,all_modules, &md.name);

@@ -18,10 +18,11 @@ export fn clear(Error unset<error> mut* err) {
 
 export  fn check(
         Error unset<error> mut* err,
-        char* callsite_macro<__FILE__>      file,
-        char* callsite_macro<__FUNCTION__>  scope,
+        char* callsite_macro<__FILE__>      unsafe file,
+        char* callsite_macro<__FUNCTION__>  unsafe scope,
         int   callsite_macro<__LINE__>      line,
         ) -> int {
+
     if ((err)->error != 0) {
         backtrace(err, file, scope, line);
         return (err)->error;
@@ -39,13 +40,12 @@ export fn backtrace(Error allow<error> mut* err, char* file, char* scope, int li
 
 export fn fail_with_errno(
         Error unset<error> set<error> mut* err,
-        char* callsite_macro<__FILE__>      file,
-        char* callsite_macro<__FUNCTION__>  scope,
+        char* callsite_macro<__FILE__>      unsafe file,
+        char* callsite_macro<__FUNCTION__>  unsafe scope,
         int   callsite_macro<__LINE__>      line,
         char*  fmt,
         ...
         ) {
-
     (err)->error = errno;
 
     va_list mut vargs;
@@ -63,13 +63,13 @@ export fn fail_with_errno(
 export fn fail(
         Error unset<error> set<error> mut* err,
         uint8_t e,
-        char* callsite_macro<__FILE__>      file,
-        char* callsite_macro<__FUNCTION__>  scope,
+        char* callsite_macro<__FILE__>      unsafe file,
+        char* callsite_macro<__FUNCTION__>  unsafe scope,
         int   callsite_macro<__LINE__>      line,
         char*  fmt,
         ...
         ) {
-
+    err is safe;
     (err)->error = e;
 
     va_list mut vargs;
@@ -83,8 +83,8 @@ export fn fail(
 
 export fn abort(
         Error unset<error> mut* err,
-        char* callsite_macro<__FILE__>      file,
-        char* callsite_macro<__FUNCTION__>  scope,
+        char* callsite_macro<__FILE__>      unsafe file,
+        char* callsite_macro<__FUNCTION__>  unsafe scope,
         int   callsite_macro<__LINE__>      line,
 ) {
     if (err->error != 0) {

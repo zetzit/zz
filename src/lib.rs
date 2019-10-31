@@ -1,24 +1,24 @@
+#![allow(dead_code)] // dead code checker is broken
+
 #[macro_use] extern crate pest_derive;
 extern crate fasthash;
 #[macro_use] extern crate log;
 extern crate pbr;
 extern crate rayon;
 
-mod ast;
-mod parser;
-mod project;
-mod make;
-mod loader;
-mod flatten;
-mod emitter;
-mod abs;
-mod name;
-mod pp;
-mod lifetimes;
+pub mod ast;
+pub mod parser;
+pub mod project;
+pub mod make;
+pub mod loader;
+pub mod flatten;
+pub mod emitter;
+pub mod abs;
+pub mod name;
+pub mod pp;
+pub mod memory;
 
 use std::path::Path;
-use clap::{App, Arg, SubCommand};
-use std::process::Command;
 use name::Name;
 use std::collections::HashSet;
 use std::collections::HashMap;
@@ -108,9 +108,8 @@ pub fn build(tests: bool, check: bool, variant: &str) {
     pb.lock().unwrap().show_speed = false;
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
-    //TODO flat.into_par_iter
-    let cfiles : HashMap<Name, emitter::CFile> = flat.into_iter().map(|mut module|{
-        lifetimes::check(&mut module);
+    let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
+        memory::check(&mut module);
         if !silent {
             pb.lock().unwrap().message(&format!("emitting {} ", module.name));
         }
