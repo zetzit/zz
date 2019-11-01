@@ -38,7 +38,7 @@ fn tag_deps(tags: &ast::Tags) ->  Vec<(Name, ast::Location)> {
     for (_,vals) in tags.0.iter() {
         for (k,loc) in vals.iter() {
             let name = Name::from(k);
-            if name.is_absolute() {
+            if name.is_absolute() && name.len() > 2 {
                 r.push((name,loc.clone()));
             }
         }
@@ -588,7 +588,7 @@ fn decl_visit(
         depth:      usize,
 ) {
 
-    if visited.contains(&name) {
+    if !visited.insert(name.clone()) {
         return;
     }
 
@@ -604,7 +604,5 @@ fn decl_visit(
     for (dep,_) in &n.decl_deps {
         decl_visit(visited, unsorted, dep, thisobject, depth+1);
     }
-
-    visited.insert(name.clone());
 
 }

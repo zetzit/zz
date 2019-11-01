@@ -44,12 +44,14 @@ impl Scope{
     }
 
     pub fn tags(&self, tags: &mut ast::Tags) {
-        for (_,vals) in tags.0.iter_mut() {
-            for (k,_) in vals.iter_mut() {
-                if let Some(v2) = self.v.get(k) {
-                    #[allow(mutable_transmutes)]
-                    let k = unsafe { std::mem::transmute::<&String, &mut String>(k) };
-                    *k = v2.name.to_string();
+        for (kk,vals) in tags.0.iter_mut() {
+            if kk.as_str() == "len" {
+                for (k,_) in vals.iter_mut() {
+                    if let Some(v2) = self.v.get(k) {
+                        #[allow(mutable_transmutes)]
+                        let k = unsafe { std::mem::transmute::<&String, &mut String>(k) };
+                        *k = v2.name.to_string();
+                    }
                 }
             }
         }

@@ -38,9 +38,11 @@ pub fn alloc(char mut* b) -> void* {
     self is safe;
 
     for (int mut i = 0; i < self->count; i+=1 ) {
-        if (((self->free)[i/8] & (1 << (i%8))) == 0) {
-            (self->free)[i/8] |= (1 << (i%8));
-            return self->pool + (i * self->slab);
+        unsafe {
+            if (((self->free)[i/8] & (1 << (i%8))) == 0) {
+                (self->free)[i/8] |= (1 << (i%8));
+                return self->pool + (i * self->slab);
+            }
         }
     }
     return 0;
@@ -60,7 +62,9 @@ pub fn release(char mut* b, void* mem) -> void* {
 
     self->free is safe;
     *(self->free) is safe;
-    (self->free)[slot / 8] &= ~(1 << (slot % 8));
+    unsafe {
+        (self->free)[slot / 8] &= ~(1 << (slot % 8));
+    }
 
     return 0;
 }

@@ -16,6 +16,7 @@ syn keyword zzImport            using
 syn keyword zzVisibility        export pub
 syn keyword zzKeywords          mut as
 syn keyword zzDanger            unsafe
+syn keyword zzOperator          len
 
 syn region zzCommentLineDoc     start="//\%(//\@!\|!\)"         end="$"  contains=@Spell
 
@@ -28,6 +29,7 @@ hi def link zzKeywords          Type
 hi def link zzDanger            Macro
 hi def link zzCommentLineDoc    SpecialComment
 hi def link zzType              cType
+hi def link zzOperator          cOperator
 
 let b:current_syntax = "zz"
 

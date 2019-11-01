@@ -19,6 +19,11 @@ pub fn fixed(u8 mut * len<SIZE> boh) {
 pub fn main() -> int {
     u8 mut src[23] = {0};
 
+    u8 mut f[SIZE] = {0};
+
+    memcpy(f, src, SIZE);
+
+
     src[1] = 3;
 
     u8 mut dst[20] = {0};

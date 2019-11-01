@@ -832,7 +832,9 @@ impl Stack {
                 }
                 if name.name.is_absolute() && name.name.0[1] == "ext" {
                     let temp_ptr = self.local(None, Name::from(
-                        &format!("c function call return {} at {:?}", name.name, exprloc.span.start_pos().line_col())),
+                        &format!("c function call return {} at {:?} ({})",
+                            name.name, exprloc.span.start_pos().line_col(), self.storage.len(),
+                        )),
                         exprloc.clone(),
                         Tags::new()
                     );
@@ -845,17 +847,22 @@ impl Stack {
                     Value::Function{ret, args, vararg} => {
                         debug!("    checking function call {}", name.name);
 
+                        let mut callargs_org = std::mem::replace(callargs, Vec::new());
+
                         // generated arguments
                         for i in 0..args.len() {
                             if let Some(cs) = args[i].tags.get("callsite_macro") {
                                 let (v, loc) = cs.iter().next().unwrap();
-                                if i > callargs.len() { break }
-                                callargs.insert(i, Box::new(ast::Expression::Literal{
+                                let genarg = Box::new(ast::Expression::Literal{
                                     loc: loc.clone(),
                                     v:   v.clone(),
-                                }));
+                                });
+                                callargs.push(genarg);
+                            } else {
+                                callargs.push(callargs_org.remove(0));
                             }
                         }
+                        callargs.extend(callargs_org);
 
                         if (!vararg && args.len() != callargs.len()) | (vararg && args.len() > callargs.len())   {
                             return Err(Error::new("call argument count mismatch".to_string(), vec![
@@ -871,6 +878,11 @@ impl Stack {
                             argpos.insert(args[i].name.clone(),i);
                             // check value of expression, which will be copied into the functions scope
                             self.check_call_arg(&args[i], &mut callargs[i])?;
+                        }
+
+                        //double check  callargs because with varargs, there might be more
+                        for arg in callargs.iter_mut() {
+                            let a = self.check_expr(arg)?;
                         }
 
                         //boundary checks
@@ -1087,7 +1099,15 @@ impl Stack {
             ast::Statement::Cond{body, expr,..}=> {
                 self.push("if");
                 if let Some(expr) = expr {
-                    self.check_expr(expr)?;
+                    match self.check_expr(expr) {
+                        Ok(_) => (),
+                        Err(Error::Untrackable(e)) => {
+                            emit_debug("untrackable conditional", &[
+                                (expr.loc().clone(), format!("{}", e))
+                            ]);
+                        },
+                        Err(e) => return Err(e),
+                    };
                 }
                 self.check_block(body);
                 self.pop(&body.end);
