@@ -32,6 +32,11 @@ export fn str2bin(char *in, usize bound<in> inlen, u8 mut * mut out, usize bound
 }
 
 
+export fn print(u8 *data, usize len) {
+    for (usize mut i = 0; i < len; i++) {
+        printf("%02x", data[i]);
+    }
+}
 
 
 export fn dump(u8 *data, usize len) {

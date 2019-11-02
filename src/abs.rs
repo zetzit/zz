@@ -100,6 +100,10 @@ impl Scope{
                 t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "int64_t".to_string()]);
                 return;
             },
+            "isize" => {
+                t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "ssize_t".to_string()]);
+                return;
+            },
             "usize" => {
                 t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "size_t".to_string()]);
                 return;

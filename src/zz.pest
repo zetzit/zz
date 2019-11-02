@@ -106,7 +106,7 @@ ppelse      = ${ "#else" ~ WHITESPACE+ }
 ppendif     = ${ "#endif" ~ WHITESPACE+}
 
 testop      = { "=" | "!=" | "<" | ">" | ">=" | "<=" }
-testfield   = { ident ~ testop ~ expr ~ ";" }
+testfield   = { ident ~ testop ~ expr }
 testcase    = { "test" ~ ident ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }

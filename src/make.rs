@@ -18,6 +18,7 @@ pub struct Stage {
     pub optimize:   Option<String>,
     pub lto:        bool,
     pub asan:       bool,
+    pub fuzz:        bool,
 }
 
 impl Stage {
@@ -28,6 +29,7 @@ impl Stage {
             optimize:   Some("03".to_string()),
             lto:        true,
             asan:       false,
+            fuzz:        false,
         }
     }
     pub fn test() -> Self {
@@ -37,6 +39,7 @@ impl Stage {
             optimize:   None,
             lto:        false,
             asan:       true,
+            fuzz:        false,
         }
     }
     pub fn debug() -> Self {
@@ -46,6 +49,17 @@ impl Stage {
             optimize:   None,
             lto:        false,
             asan:       false,
+            fuzz:        false,
+        }
+    }
+    pub fn fuzz() -> Self {
+        Stage {
+            name:       "fuzz".to_string(),
+            debug:      true,
+            optimize:   None,
+            lto:        false,
+            asan:       true,
+            fuzz:        true,
         }
     }
 }
@@ -102,6 +116,12 @@ impl Make {
             .or(std::env::var("AR"))
             .unwrap_or("ar".to_string());
 
+
+        if stage.fuzz {
+            cc = "afl-clang".to_string();
+        }
+
+
         let mut cincludes   = config.project.cincludes.clone();
         let mut pkgconfig   = config.project.pkgconfig.clone();
         let mut cobjects    = std::mem::replace(&mut config.project.cobjects, Vec::new());
@@ -119,8 +139,6 @@ impl Make {
             user_cflags.extend(feature.cflags.clone());
             user_lflags.extend(feature.lflags.clone());
         }
-
-
 
         for cinc in cincludes{
             cflags.push("-I".into());
@@ -180,6 +198,11 @@ impl Make {
         if stage.asan {
             cflags.push("-fsanitize=address".into());
             lflags.push("-fsanitize=address".into());
+        }
+
+        if stage.fuzz{
+            cflags.push("-m32".into());
+            lflags.push("-m32".into());
         }
 
         cflags.extend(user_cflags);
@@ -281,6 +304,7 @@ impl Make {
 
             if step.is_dirty() {
                 let status = Command::new(&self.cc)
+                    .env("AFL_USE_ASAN", "1")
                     .args(&step.args)
                     .status()
                     .expect("failed to execute cc");
@@ -346,6 +370,7 @@ impl Make {
         debug!("{:?}", args);
 
         let status = Command::new(&cmd)
+            .env("AFL_USE_ASAN", "1")
             .args(&args)
             .status()
             .expect("failed to execute linker");

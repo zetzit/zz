@@ -9,7 +9,7 @@ fn bob_is_a_failure(bob * unsafe b) {
 }
 
 test yes_bob_is_a_failure {
-    exit = 6;
+    exit = 6
 }
 
 

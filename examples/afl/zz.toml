@@ -1,0 +1,14 @@
+[project]
+version = "0.1.0"
+name = "afl"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+asan = false
+
+[dependencies]
+
+[variants]
+default = []

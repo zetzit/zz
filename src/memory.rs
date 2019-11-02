@@ -859,7 +859,9 @@ impl Stack {
                                 });
                                 callargs.push(genarg);
                             } else {
-                                callargs.push(callargs_org.remove(0));
+                                if callargs_org.len() > 0 {
+                                    callargs.push(callargs_org.remove(0));
+                                }
                             }
                         }
                         callargs.extend(callargs_org);
