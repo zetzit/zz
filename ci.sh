@@ -1,7 +1,7 @@
 #!/bin/sh
 set -ex
 
-THIS=$(dirname $(readlink -f $0))
+THIS=$PWD
 
 for i in $THIS/examples/*
 do
