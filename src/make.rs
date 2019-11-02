@@ -10,6 +10,53 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static ABORT:           AtomicBool = AtomicBool::new(false);
 pub static BUILD_RS:    AtomicBool = AtomicBool::new(false);
 
+
+#[derive(Clone)]
+pub struct Stage {
+    pub name:       String,
+    pub debug:      bool,
+    pub optimize:   Option<String>,
+    pub lto:        bool,
+    pub asan:       bool,
+}
+
+impl Stage {
+    pub fn release() -> Self {
+        Stage {
+            name:       "release".to_string(),
+            debug:      false,
+            optimize:   Some("03".to_string()),
+            lto:        true,
+            asan:       false,
+        }
+    }
+    pub fn test() -> Self {
+        Stage {
+            name:       "test".to_string(),
+            debug:      true,
+            optimize:   None,
+            lto:        false,
+            asan:       true,
+        }
+    }
+    pub fn debug() -> Self {
+        Stage {
+            name:       "debug".to_string(),
+            debug:      true,
+            optimize:   None,
+            lto:        false,
+            asan:       false,
+        }
+    }
+}
+
+impl std::fmt::Display for  Stage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+
 pub struct Step {
     source: PathBuf,
     args:   Vec<String>,
@@ -27,10 +74,11 @@ pub struct Make {
     lflags:     Vec<String>,
     lobjs:      Vec<String>,
     variant:    String,
+    stage:      Stage,
 }
 
 impl Make {
-    pub fn new(mut config: Config, variant: &str, artifact: Artifact) -> Self {
+    pub fn new(mut config: Config, variant: &str, stage: Stage, artifact: Artifact) -> Self {
 
 
         let features = config.features(variant);
@@ -109,16 +157,29 @@ impl Make {
         cflags.push("-I".into());
         cflags.push(".".into());
         cflags.push("-I".into());
-        cflags.push(format!("./target/{}/include/", variant));
+        cflags.push(format!("./target/{}/include/", stage));
         cflags.push("-fvisibility=hidden".to_string());
 
 
-        if config.project.asan.unwrap_or(true) {
+        if let Some(opt) = &stage.optimize {
+            cflags.push(format!("-O{}",opt).into());
+            lflags.push("-O3".into());
+        }
+
+        if stage.lto {
+            cflags.push("-flto".into());
+            lflags.push("-flto".into());
+        }
+
+        if stage.debug {
             cflags.push("-g".into());
             lflags.push("-g".into());
+            cflags.push("-fstack-protector-strong".into());
+        }
+
+        if stage.asan {
             cflags.push("-fsanitize=address".into());
             lflags.push("-fsanitize=address".into());
-            cflags.push("-fstack-protector-strong".into());
         }
 
         cflags.extend(user_cflags);
@@ -126,6 +187,7 @@ impl Make {
 
         let mut m = Make {
             variant: variant.to_string(),
+            stage:   stage.clone(),
             cc,
             ar,
             artifact,
@@ -154,7 +216,7 @@ impl Make {
 
         let outp = inp.to_string_lossy().replace(|c: char| !c.is_alphanumeric(), "_");
         let outp = format!("{}_{:x}", outp, hash);
-        let outp = format!("./target/{}/c/", self.variant) + &outp + ".o";
+        let outp = format!("./target/{}/c/", self.stage) + &outp + ".o";
 
         args.push(outp.clone());
 
@@ -192,7 +254,7 @@ impl Make {
 
         let hash = metro::hash128(b);
 
-        let outp = format!("./target/{}/zz/{}_{:x}.o", self.variant, cf.name, hash);
+        let outp = format!("./target/{}/zz/{}_{:x}.o", self.stage, cf.name, hash);
         args.push(outp.clone());
 
         self.steps.push(Step{
@@ -243,7 +305,7 @@ impl Make {
                 cmd = self.ar.clone();
                 args = vec![
                     "rcs".to_string(),
-                    format!("./target/{}/lib{}.a", self.variant, self.artifact.name)
+                    format!("./target/{}/lib{}.a", self.stage, self.artifact.name)
                 ];
                 args.extend_from_slice(&self.lobjs);
 
@@ -258,19 +320,19 @@ impl Make {
                 args.extend_from_slice(&self.lflags);
                 args.push("-shared".into());
                 args.push("-o".into());
-                args.push(format!("./target/{}/lib{}.so", self.variant, self.artifact.name));
+                args.push(format!("./target/{}/lib{}.so", self.stage, self.artifact.name));
             },
             super::project::ArtifactType::Exe => {
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!("./target/{}/{}", self.variant, self.artifact.name));
+                args.push(format!("./target/{}/{}", self.stage, self.artifact.name));
             }
             super::project::ArtifactType::Test  => {
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!("./target/{}/{}", self.variant, self.artifact.name));
+                args.push(format!("./target/{}/{}", self.stage, self.artifact.name));
             }
             super::project::ArtifactType::Header  => {
                 panic!("cannot link header yet");

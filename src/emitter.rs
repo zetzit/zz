@@ -2,6 +2,7 @@ use super::project::{Project};
 use std::fs;
 use super::flatten;
 use super::ast;
+use super::make;
 use std::io::{Write, Read};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -23,10 +24,11 @@ pub struct Emitter{
     header:         bool,
     inside_macro:   bool,
     cur_loc:        Option<ast::Location>,
+    casedir:        String,
 }
 
 
-fn outname(project: &Project, variant: &str, module: &flatten::Module, header: bool) -> (bool, String) {
+fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module, header: bool) -> (bool, String) {
     let mut cxx = false;
     if let Some(std) = &project.std {
         if std.contains("c++") {
@@ -37,27 +39,30 @@ fn outname(project: &Project, variant: &str, module: &flatten::Module, header: b
     if header {
         let mut ns = module.name.0.clone();
         ns.remove(0);
-        (cxx, format!("target/{}/include/{}.h", variant, ns.join("_")))
+        (cxx, format!("target/{}/include/{}.h", stage, ns.join("_")))
     } else if cxx {
-        (cxx, format!("target/{}/zz/{}.cpp", variant, module.name))
+        (cxx, format!("target/{}/zz/{}.cpp", stage, module.name))
     } else {
-        (cxx, format!("target/{}/zz/{}.c", variant, module.name))
+        (cxx, format!("target/{}/zz/{}.c", stage, module.name))
     }
 }
 
 impl Emitter {
-    pub fn new(project: &Project, variant: &str, module: flatten::Module, header: bool) -> Self {
+    pub fn new(project: &Project, stage: make::Stage , module: flatten::Module, header: bool) -> Self {
 
-        let (cxx, p) = outname(project, variant, &module, header);
+        let (cxx, p) = outname(project, &stage, &module, header);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
-
+        let casedir = format!("target/{}/testcases/{}", stage, module.name);
+        std::fs::remove_dir_all(&casedir).ok();
+        std::fs::create_dir_all(&casedir).unwrap();
 
         Emitter{
             cxx,
             p,
             f,
             header,
+            casedir,
             module,
             inside_macro: false,
             cur_loc: None,
@@ -159,6 +164,9 @@ impl Emitter {
                     if !d.name.ends_with("::main") {
                         self.emit_decl(&d);
                     }
+                }
+                ast::Def::Testcase {..} => {
+                    self.emit_testcase(&d);
                 }
             }
             write!(self.f, "\n").unwrap();
@@ -353,6 +361,42 @@ impl Emitter {
         }
         write!(self.f, "\n}} {};\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
     }
+
+    fn emit_testcase(&mut self, ast: &ast::Local) {
+        let fields = match &ast.def {
+            ast::Def::Testcase{fields} => fields,
+            _ => unreachable!(),
+        };
+
+        let testname = Name::from(&ast.name).0.last().cloned().unwrap();
+        let dir = format!("{}/{}", self.casedir, testname);
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        for (fname, expr) in fields {
+            let p = format!("{}/{}", dir, fname);
+            let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
+            match expr {
+                ast::Expression::Literal{v,..} => {
+                    let mut v = v.clone();
+                    if v.starts_with("\"") {
+                        v.remove(0);
+                        v.remove(v.len() -1);
+                        v = v
+                            .replace("\\n", "\n")
+                            .replace("\\r", "\r")
+                            .replace("\\\"", "\"")
+                    }
+                    f.write_all(v.as_bytes()).unwrap();
+                },
+                _ => {
+                    panic!("ICE: testcase {} {} {} was not reduced to literal", self.module.name, ast.name, fname);
+                }
+            }
+        }
+
+
+    }
+
 
     pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool) {
         let (fields, packed) = match &ast.def {

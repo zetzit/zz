@@ -359,6 +359,11 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 ast::Def::Macro{body, ..} => {
                     decl_deps.extend(block_deps(body));
                 }
+                ast::Def::Testcase{fields, ..} => {
+                    for (_, expr) in fields {
+                        decl_deps.extend(expr_deps(expr));
+                    }
+                }
             }
 
             if expecting_sub_type {

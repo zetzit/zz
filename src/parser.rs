@@ -258,6 +258,44 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 });
 
             },
+            Rule::testcase => {
+                let mut name   = None;
+                let mut fields = Vec::new();
+                let mut loc    = None;
+
+                let decl = decl.into_inner();
+                for part in PP::new(n,features.clone(), decl) {
+                    match part.as_rule() {
+                        Rule::ident => {
+                            loc  = Some(Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            });
+                            name= Some(part.as_str().into());
+                        },
+                        Rule::testfield => {
+                            let mut part = part.into_inner();
+                            let fname   = part.next().unwrap().as_str().to_string();
+                            let _op      = part.next().unwrap().as_str().to_string();
+                            let expr    = parse_expr((file_str, n), part.next().unwrap());
+                            fields.push((fname,expr));
+                        }
+                        e => panic!("unexpected rule {:?} in testcase", e),
+
+                    }
+                }
+
+                module.locals.push(Local{
+                    name: name.unwrap(),
+                    vis: Visibility::Object,
+                    loc: loc.unwrap(),
+                    def: Def::Testcase {
+                        fields,
+                    }
+                });
+
+            },
+
             Rule::struct_d => {
                 let decl = decl.into_inner();
 

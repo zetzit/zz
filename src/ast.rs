@@ -82,7 +82,10 @@ pub enum Def {
     Macro {
         args:       Vec<String>,
         body:       Block,
-    }
+    },
+    Testcase {
+        fields:     Vec<(String, Expression)>,
+    },
 }
 
 

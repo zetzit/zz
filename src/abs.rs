@@ -599,6 +599,11 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
             ast::Def::Macro{body, ..} => {
                 abs_block(body, &scope,all_modules, &md.name);
             }
+            ast::Def::Testcase{fields, ..} => {
+                for (_, expr) in fields {
+                    abs_expr(expr, &scope, false, all_modules, &md.name);
+                }
+            }
         }
     }
 

@@ -1332,6 +1332,38 @@ pub fn check(md: &mut flatten::Module) {
         stack.defs.insert(Name::from(&local.name), local.def.clone());
         match &mut local.def {
 
+            ast::Def::Testcase {fields, ..} => {
+                for (name, expr) in fields {
+                    match stack.check_expr(expr) {
+                        Ok(v) => {
+                            match &stack.storage[v].value {
+                                Value::Literal(s) => {
+                                    *expr = ast::Expression::Literal{
+                                        loc: expr.loc().clone(),
+                                        v: s.clone(),
+                                    };
+                                },
+                                _ => {
+                                    emit_error(format!("unable to evaluate testcase field {} at compile time", name), &[
+                                        (expr.loc().clone(), "testcases must be completely static")
+                                    ]);
+                                    ABORT.store(true, Ordering::Relaxed);
+                                }
+                            }
+                        }
+                        Err(Error::Error{message, details}) => {
+                            emit_error(message, &details);
+                            ABORT.store(true, Ordering::Relaxed);
+                        },
+                        Err(Error::Untrackable(r)) => {
+                            emit_error(format!("unable to evaluate testcase field {} at compile time: {}", name, r), &[
+                                (expr.loc().clone(), "testcases must be completely static")
+                            ]);
+                            ABORT.store(true, Ordering::Relaxed);
+                        }
+                    };
+                }
+            },
             ast::Def::Struct {fields, packed} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
@@ -1348,7 +1380,7 @@ pub fn check(md: &mut flatten::Module) {
                 let ptr = stack.local(Some(typed.clone()), localname.clone(), local.loc.clone(), Tags::new());
                 match stack.check_expr(expr) {
                     Ok(v) => {
-                        stack.copy(v, ptr, &local.loc);
+                        stack.copy(v, ptr, &local.loc).ok();
                     }
                     Err(e) => {
                         stack.write(ptr, Value::Untrackable(format!("{:?}", e)), &local.loc);

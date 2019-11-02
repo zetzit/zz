@@ -11,7 +11,7 @@ unlet b:current_syntax
 
 
 syn keyword zzType              u8 i8 u16 i16 u32 i32 u64 i64 isize usize
-syn keyword zzStructure	        enum struct fn const trait
+syn keyword zzStructure	        enum struct fn const trait test
 syn keyword zzImport            using
 syn keyword zzVisibility        export pub
 syn keyword zzKeywords          mut as

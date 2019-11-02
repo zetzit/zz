@@ -105,6 +105,9 @@ ppelif      = ${ "#elif" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
 ppelse      = ${ "#else" ~ WHITESPACE+ }
 ppendif     = ${ "#endif" ~ WHITESPACE+}
 
+testop      = { "=" | "!=" | "<" | ">" | ">=" | "<=" }
+testfield   = { ident ~ testop ~ expr ~ ";" }
+testcase    = { "test" ~ ident ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
 struct_c    = _{"{" ~ (pp | struct_f )* ~ "}" }
@@ -260,6 +263,7 @@ file        = { SOI ~ (struct_d
                         | import
                         | constant
                         | pp
+                        | testcase
                         | comment
                         | imacro
                         | istatic

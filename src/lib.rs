@@ -37,19 +37,19 @@ pub fn build_rs(variant: &str) {
         .init();
 
     make::BUILD_RS.store(true, Ordering::SeqCst);
-    build(false, false, variant);
+    build(false, false, variant, make::Stage::release());
 }
 
-pub fn build(tests: bool, check: bool, variant: &str) {
+pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
     use rayon::prelude::*;
     use std::sync::{Arc, Mutex};
 
     let (root, mut project) = project::load_cwd();
     std::env::set_current_dir(root).unwrap();
 
-    std::fs::create_dir_all(format!("./target/{}/c/", variant)).expect("create target dir");
-    std::fs::create_dir_all(format!("./target/{}/zz/", variant)).expect("create target dir");
-    std::fs::create_dir_all(format!("./target/{}/include/", variant)).expect("create target dir");
+    std::fs::create_dir_all(format!("./target/{}/c/", stage)).expect("create target dir");
+    std::fs::create_dir_all(format!("./target/{}/zz/", stage)).expect("create target dir");
+    std::fs::create_dir_all(format!("./target/{}/include/", stage)).expect("create target dir");
 
     let project_name        = Name(vec![String::new(), project.project.name.clone()]);
     let project_tests_name  = Name(vec![String::new(), project.project.name.clone(), "tests".to_string()]);
@@ -108,15 +108,15 @@ pub fn build(tests: bool, check: bool, variant: &str) {
     pb.lock().unwrap().show_speed = false;
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
-    let cfiles : HashMap<Name, emitter::CFile> = flat.into_iter().map(|mut module|{
+    let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
         memory::check(&mut module);
         if !silent {
             pb.lock().unwrap().message(&format!("emitting {} ", module.name));
         }
-        let header  = emitter::Emitter::new(&project.project, variant, module.clone(), true);
+        let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
         let header  = header.emit();
 
-        let em = emitter::Emitter::new(&project.project, variant, module, false);
+        let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
         let cf = em.emit();
 
         if !silent {
@@ -135,7 +135,7 @@ pub fn build(tests: bool, check: bool, variant: &str) {
                 continue;
             }
         }
-        let mut make = make::Make::new(project.clone(), variant, artifact.clone());
+        let mut make = make::Make::new(project.clone(), variant, stage.clone(), artifact.clone());
 
         let mut main = Name::from(&artifact.main);
         if !main.is_absolute() {

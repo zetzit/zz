@@ -49,8 +49,6 @@ pub struct Project {
     pub name:       String,
     pub std:        Option<String>,
     
-    pub asan:       Option<bool>,
-
     #[serde(default)]
     pub cincludes:  Vec<String>,
     #[serde(default)]
