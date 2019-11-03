@@ -31,7 +31,7 @@ export  fn check(
 }
 
 
-export fn backtrace(Error allow<error> mut* err, char* file, char* scope, int line) {
+fn backtrace(Error allow<error> mut* err, char* file, char* scope, int line) {
     snprintf(
             (char mut*)(&((err)->locations)) + strlen((err)->locations),
             sizeof((err)->locations) - strlen((err)->locations),

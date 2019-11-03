@@ -920,7 +920,9 @@ impl Emitter {
                 write!(self.f, "    ({}", self.to_local_name(&into.name)).unwrap();
                 self.emit_pointer(&into.ptr);
                 write!(self.f, ")").unwrap();
+                write!(self.f, "(").unwrap();
                 self.emit_expr(expr);
+                write!(self.f, ")").unwrap();
             },
             ast::Expression::Name(name) => {
                 self.emit_loc(&name.loc);

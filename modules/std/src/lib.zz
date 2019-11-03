@@ -8,3 +8,15 @@ pub fn memset(void mut unsafe * dest, u8 c, size_t n) {
     libc::memset(dest, c, n);
 }
 
+
+export fn assert(
+        char* callsite_macro<__FILE__>      unsafe file,
+        char* callsite_macro<__FUNCTION__>  unsafe scope,
+        int   callsite_macro<__LINE__>      line,
+        bool  condition)
+{
+    if !condition {
+        libc::fprintf(stderr, "fatal error: assertion failed in %s:%d \t%si\n", file, line, scope);
+        libc::abort();
+    }
+}

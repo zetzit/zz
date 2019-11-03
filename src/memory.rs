@@ -284,6 +284,29 @@ impl Stack {
                                 Tags::new());
                         self.initialize(temp_ptr, loc, true);
                         value.insert(field.name.clone(), temp_ptr);
+                        if let Some(mut a) = field.array.clone() {
+                            match self.check_expr(&mut a) {
+                                Err(_) => (),
+                                Ok(a_ptr) => {
+                                    match &self.storage[a_ptr].value {
+                                        Value::Literal(a) => {
+                                            if let Ok(a) = a.parse::<u64>() {
+                                                let mut ar = Vec::new();
+                                                for _ in 0..a {
+                                                    let temp_ptr2 = self.local(Some(field.typed.clone()), Name::from(
+                                                            &format!("deep init array {}", self.storage.len())),
+                                                            loc.clone(),
+                                                            Tags::new());
+                                                    ar.push(temp_ptr2);
+                                                }
+                                                self.write(temp_ptr, Value::Array(ar), loc);
+                                            }
+                                        },
+                                        _ => (),
+                                    }
+                                }
+                            }
+                        }
                     }
                     self.write(to, Value::Struct(value), loc);
                 },
@@ -826,9 +849,9 @@ impl Stack {
                                 self.write(temp_ptr, Value::Literal(lit.clone()), &expr.loc());
                                 return Ok(temp_ptr);
                             },
-                            _ => {
-                                return Err(Error::new("len of storage is not known at compile time".to_string(), vec![
-                                                      (callloc.clone(), "len on unsized object not valid here".to_string())
+                            o => {
+                                return Err(Error::new(format!("len of {} {} is not known at compile time", o, self.storage[to].name), vec![
+                                    (callloc.clone(), "len on unsized object not valid here".to_string())
                                 ]));
                             }
                         }
