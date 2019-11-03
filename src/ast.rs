@@ -72,6 +72,12 @@ pub enum Def {
         body:       Block,
         vararg:     bool,
     },
+    Fntype {
+        ret:        Option<AnonArg>,
+        args:       Vec<NamedArg>,
+        attr:       Vec<(String, Location)>,
+        vararg:     bool,
+    },
     Struct {
         fields:     Vec<Field>,
         packed:     bool,
@@ -172,7 +178,7 @@ pub enum Expression {
     },
     Call {
         loc:    Location,
-        name:   Typed,
+        name:   Box<Expression>,
         args:   Vec<Box<Expression>>,
     },
     InfixOperation {

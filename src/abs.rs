@@ -374,8 +374,7 @@ fn abs_expr(
         ast::Expression::Literal {..} => {
         }
         ast::Expression::Call { ref mut name, args, ..} => {
-            scope.abs(name, inbody);
-            check_abs_available(&name.name, &ast::Visibility::Object, all_modules, &name.loc, self_md_name);
+            abs_expr(name, scope, inbody, all_modules, self_md_name);
             for arg in args {
                 abs_expr(arg, scope, inbody, all_modules, self_md_name);
             }
@@ -588,6 +587,17 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                     check_abs_available(&arg.typed.name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
                 }
                 abs_block(body, &scope,all_modules, &md.name);
+            }
+            ast::Def::Fntype{ret, args, ..} => {
+                if let Some(ret) = ret {
+                    scope.abs(&mut ret.typed, false);
+                    check_abs_available(&ret.typed.name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                }
+                for arg in args {
+                    scope.abs(&mut arg.typed, false);
+                    scope.tags(&mut arg.tags);
+                    check_abs_available(&arg.typed.name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                }
             }
             ast::Def::Struct{fields,..} => {
                 for field in fields {

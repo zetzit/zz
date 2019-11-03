@@ -85,6 +85,7 @@ fn_attr     = {"inline"}
 fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
 function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
+fntype      = { ( exported | key_shared)? ~ fn_attr* ~ "fntype" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 
 
 enum_i      = { ident ~ ( "=" ~ int_literal)? }
@@ -192,7 +193,7 @@ lhs         = {
     member_access | unarypost | unarypre | ptr_access | array_access | takeref | deref | type_name | "(" ~ expr ~ ")"
 }
 assign      = { lhs ~ assignop ~ expr}
-call        = { ( type_name | "(" ~ expr ~ ")") ~ "(" ~ call_args? ~ ")"  }
+call        = { lhs  ~ "(" ~ call_args? ~ ")"  }
 call_args   = { expr ~ ( "," ~ expr )* }
 
 array       = { "[" ~ expr? ~ "]" }
@@ -259,6 +260,7 @@ block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" }
 
 file        = { SOI ~ (struct_d
                         | function
+                        | fntype
                         | ienum
                         | import
                         | constant

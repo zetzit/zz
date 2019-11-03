@@ -165,6 +165,9 @@ impl Emitter {
                         self.emit_decl(&d);
                     }
                 }
+                ast::Def::Fntype{..} => {
+                    self.emit_fntype(&d);
+                }
                 ast::Def::Testcase {..} => {
                     self.emit_testcase(&d);
                 }
@@ -456,6 +459,46 @@ impl Emitter {
 
             write!(self.f, " {}", arg.name).unwrap();
         }
+    }
+
+    pub fn emit_fntype(&mut self, ast: &ast::Local) {
+        let (ret, args, vararg, attr) = match &ast.def {
+            ast::Def::Fntype{ret, args, vararg, attr} => (ret, args, *vararg, attr),
+            _ => unreachable!(),
+        };
+
+        self.emit_loc(&ast.loc);
+        write!(self.f, "typedef ").unwrap();
+
+        match &ret {
+            None       => write!(self.f, "void ").unwrap(),
+            Some(a)    => {
+                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                self.emit_pointer(&a.typed.ptr);
+            }
+        };
+
+        for (attr, loc) in attr {
+            match attr.as_str() {
+                o => {
+                    super::parser::emit_error(
+                        "ICE: unsupported attr",
+                        &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
+                        );
+                    std::process::exit(9);
+
+                }
+            }
+        }
+
+        write!(self.f, "(*{}) (", self.to_local_name(&Name::from(&ast.name))).unwrap();
+
+        self.function_args(args);
+        if vararg {
+            write!(self.f, ", ...").unwrap();
+        }
+        write!(self.f, ");\n").unwrap();
+
     }
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {
@@ -889,7 +932,8 @@ impl Emitter {
             }
             ast::Expression::Call { loc, name, args} => {
                 self.emit_loc(&loc);
-                write!(self.f, "    {} (", self.to_local_name(&name.name)).unwrap();
+                self.emit_expr(&name);
+                write!(self.f, "(").unwrap();
 
                 let mut first = true;
                 for arg in args {

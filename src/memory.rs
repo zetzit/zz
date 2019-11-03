@@ -40,8 +40,9 @@ enum Value {
     Array(Vec<Address>),
     Struct(HashMap<String, Address>),
     Function {
-        ret:  Option<(Address, ast::Typed)>,
-        args: Vec<ast::NamedArg>,
+        name:   Name,
+        ret:    Option<(Address, ast::Typed)>,
+        args:   Vec<ast::NamedArg>,
         vararg: bool,
     },
     Moved{
@@ -330,9 +331,9 @@ impl Stack {
                 ]));
             }
             Value::Function{..} => {
-                return Err(Error::new(format!("function cannot be copied '{}'", from.name), vec![
-                    (used_here.clone(),  "maybe you wanted to take the address instead".to_string()),
-                ]));
+                //return Err(Error::new(format!("function cannot be copied '{}'", from.name), vec![
+                //    (used_here.clone(),  "maybe you wanted to take the address instead".to_string()),
+                //]));
             },
             Value::Struct(_) => {
                 match self.storage[to].value.clone() {
@@ -800,140 +801,135 @@ impl Stack {
             },
 
             ast::Expression::Call { name, args: callargs, loc: callloc, .. } => {
-                if name.name.0[0] == "len" {
-                    if callargs.len() != 1 {
-                        return Err(Error::new("call argument count mismatch".to_string(), vec![
-                            (name.loc.clone(), format!("builtin len() expects 1 argument, but you passed {}", callargs.len()))
-                        ]));
-                    }
-                    let to = self.check_expr(&mut callargs[0])?;
 
-                    match self.storage[to].value.clone() {
-                        Value::Array(s) => {
-                            let temp_ptr = self.local(None, Name::from(
-                                    &format!("literal len of {} ({})", self.storage[to].name, self.storage.len())),
-                                    callloc.clone(),
-                                    Tags::new());
-
-                            let lit = format!("{}", s.len());
-                            *expr = ast::Expression::Literal{
-                                loc: callloc.clone(),
-                                v:   lit.clone(),
-                            };
-                            self.write(temp_ptr, Value::Literal(lit.clone()), &expr.loc());
-                            return Ok(temp_ptr);
-                        },
-                        _ => {
-                            return Err(Error::new("len of storage is not known at compile time".to_string(), vec![
-                                                  (callloc.clone(), "len on unsized object not valid here".to_string())
-                            ]));
-                        }
-                    }
-                }
-                if name.name.is_absolute() && name.name.0[1] == "ext" {
-                    let temp_ptr = self.local(None, Name::from(
-                        &format!("c function call return {} at {:?} ({})",
-                            name.name, exprloc.span.start_pos().line_col(), self.storage.len(),
-                        )),
-                        exprloc.clone(),
-                        Tags::new()
-                    );
-                    self.write(temp_ptr, Value::Untrackable("c function call return".to_string()), &expr.loc());
-                    return Ok(temp_ptr);
-                }
-
-                let fptr = self.check_name(&name.name, &name.loc)?;
-                match self.storage[fptr].value.clone() {
-                    Value::Function{ret, args, vararg} => {
-                        debug!("    checking function call {}", name.name);
-
-                        let mut callargs_org = std::mem::replace(callargs, Vec::new());
-
-                        // generated arguments
-                        for i in 0..args.len() {
-                            if let Some(cs) = args[i].tags.get("callsite_macro") {
-                                let (v, loc) = cs.iter().next().unwrap();
-                                let genarg = Box::new(ast::Expression::Literal{
-                                    loc: loc.clone(),
-                                    v:   v.clone(),
-                                });
-                                callargs.push(genarg);
-                            } else {
-                                if callargs_org.len() > 0 {
-                                    callargs.push(callargs_org.remove(0));
-                                }
-                            }
-                        }
-                        callargs.extend(callargs_org);
-
-                        if (!vararg && args.len() != callargs.len()) | (vararg && args.len() > callargs.len())   {
+                match name.as_ref() {
+                    &ast::Expression::Name(ref t)  if t.name.0[0] == "len" => {
+                        if callargs.len() != 1 {
                             return Err(Error::new("call argument count mismatch".to_string(), vec![
-                                (   name.loc.clone(),
-                                    format!("this function expects {} arguments, but you passed {}",
-                                            args.len(),
-                                            callargs.len() ))
+                                                  (name.loc().clone(), format!("builtin len() needs 1 argument, but you passed {}", callargs.len()))
                             ]));
                         }
+                        let to = self.check_expr(&mut callargs[0])?;
 
-                        let mut argpos: HashMap<String, usize> = HashMap::new();
-                        for i in 0..args.len() {
-                            argpos.insert(args[i].name.clone(),i);
-                            // check value of expression, which will be copied into the functions scope
-                            self.check_call_arg(&args[i], &mut callargs[i])?;
-                        }
-
-                        //double check  callargs because with varargs, there might be more
-                        for arg in callargs.iter_mut() {
-                            let a = self.check_expr(arg)?;
-                        }
-
-                        //boundary checks
-                        for i in 0..args.len() {
-                            if let Some(bounds) = args[i].tags.get("bound") {
-                                for (bound, loc) in bounds {
-                                    let bound_by = match argpos.get(bound) {
-                                        None => {
-                                            emit_error("bound to undeclared argument", &[
-                                                       (loc.clone(), format!("{} is not an argument", bound))
-                                            ]);
-                                            ABORT.store(true, Ordering::Relaxed);
-                                            continue;
-                                        }
-                                        Some(v) => *v,
-                                    };
-                                    self.check_bounds(&mut callargs[bound_by].clone(), &mut callargs[i], false)?;
-                                }
-                            }
-                        }
-
-                        return match ret {
-                            Some(ret) => {
-                                let (return_scope_ptr, ret_typ)  = ret;
-                                Ok(return_scope_ptr)
-                            }
-                            None => {
+                        match self.storage[to].value.clone() {
+                            Value::Array(s) => {
                                 let temp_ptr = self.local(None, Name::from(
-                                        &format!("void function call return {} at {:?}", name.name, exprloc.span.start_pos().line_col())),
-                                        exprloc.clone(),
+                                        &format!("literal len of {} ({})", self.storage[to].name, self.storage.len())),
+                                        callloc.clone(),
                                         Tags::new());
-                                self.write(temp_ptr, Value::Void, &expr.loc());
-                                Ok(temp_ptr)
-                            },
-                        }
-                    },
 
-                    ////TODO c functions, macros
-                    //Value::Static(a) => {
-                    //    return Value::Static(a);
-                    //},
+                                let lit = format!("{}", s.len());
+                                *expr = ast::Expression::Literal{
+                                    loc: callloc.clone(),
+                                    v:   lit.clone(),
+                                };
+                                self.write(temp_ptr, Value::Literal(lit.clone()), &expr.loc());
+                                return Ok(temp_ptr);
+                            },
+                            _ => {
+                                return Err(Error::new("len of storage is not known at compile time".to_string(), vec![
+                                                      (callloc.clone(), "len on unsized object not valid here".to_string())
+                                ]));
+                            }
+                        }
+                    }
+                    _ => ()
+                };
+
+
+                let name_ptr = self.check_expr(name)?;
+                let (fname, ret, args, vararg) = match self.storage[name_ptr].value.clone() {
+                    Value::Function{name: fname, ret, args, vararg} => {
+                        (fname, ret, args, vararg)
+                    }
                     Value::Untrackable(s) => {
                         return Err(Error::Untrackable(s.clone()));
                     },
-                    o => {
-                        return Err(Error::new(format!("{} is not a valid function", o), vec![
-                               (name.loc.clone(), "this expression cannot be used as function".to_string()),
+                    _ => {
+                        return Err(Error::new("call argument count mismatch".to_string(), vec![
+                            (name.loc().clone(), format!("builtin len() needs 1 argument, but you passed {}", callargs.len()))
                         ]));
                     }
+                };
+
+
+                debug!("    checking function call {}", fname);
+
+                let mut callargs_org = std::mem::replace(callargs, Vec::new());
+
+                // generated arguments
+                for i in 0..args.len() {
+                    if let Some(cs) = args[i].tags.get("callsite_macro") {
+                        let (v, loc) = cs.iter().next().unwrap();
+                        let genarg = Box::new(ast::Expression::Literal{
+                            loc: loc.clone(),
+                            v:   v.clone(),
+                        });
+                        callargs.push(genarg);
+                    } else {
+                        if callargs_org.len() > 0 {
+                            callargs.push(callargs_org.remove(0));
+                        }
+                    }
+                }
+                callargs.extend(callargs_org);
+
+                if (!vararg && args.len() != callargs.len()) | (vararg && args.len() > callargs.len())   {
+                    let mut es = vec![(name.loc().clone(), format!("function needs {} arguments, but you passed {}", args.len(),callargs.len() ))];
+                    if let Some(typed) = &self.storage[name_ptr].typ {
+                        es.push((typed.loc.clone(), format!("declared here")));
+                    } else {
+                        es.push((self.storage[name_ptr].stored_here.clone(),
+                            format!("declaration tracking interrupted here in {}",
+                                    self.storage[name_ptr].name)));
+                    }
+                    return Err(Error::new("call argument count mismatch".to_string(), es));
+                }
+
+                let mut argpos: HashMap<String, usize> = HashMap::new();
+                for i in 0..args.len() {
+                    argpos.insert(args[i].name.clone(),i);
+                    // check value of expression, which will be copied into the functions scope
+                    self.check_call_arg(&args[i], &mut callargs[i])?;
+                }
+
+                //double check  callargs because with varargs, there might be more
+                for arg in callargs.iter_mut() {
+                    let a = self.check_expr(arg)?;
+                }
+
+                //boundary checks
+                for i in 0..args.len() {
+                    if let Some(bounds) = args[i].tags.get("bound") {
+                        for (bound, loc) in bounds {
+                            let bound_by = match argpos.get(bound) {
+                                None => {
+                                    emit_error("bound to undeclared argument", &[
+                                               (loc.clone(), format!("{} is not an argument", bound))
+                                    ]);
+                                    ABORT.store(true, Ordering::Relaxed);
+                                    continue;
+                                }
+                                Some(v) => *v,
+                            };
+                            self.check_bounds(&mut callargs[bound_by].clone(), &mut callargs[i], false)?;
+                        }
+                    }
+                }
+
+                return match ret {
+                    Some(ret) => {
+                        let (return_scope_ptr, ret_typ)  = ret;
+                        Ok(return_scope_ptr)
+                    }
+                    None => {
+                        let temp_ptr = self.local(None, Name::from(
+                                &format!("void function call return {} at {:?}", fname, exprloc.span.start_pos().line_col())),
+                                exprloc.clone(),
+                                Tags::new());
+                        self.write(temp_ptr, Value::Void, &expr.loc());
+                        Ok(temp_ptr)
+                    },
                 }
             }
 
@@ -1017,10 +1013,35 @@ impl Stack {
             }
 
             ast::Expression::StructInit {loc, typed, fields} => {
+                let def = match self.defs.get(&typed.name) {
+                    Some(ast::Def::Struct{fields,..}) => {
+                        Some(fields.clone())
+                    },
+                    _ => None
+                };
+
                 let mut value = HashMap::new();
 
                 for (field, expr) in fields {
-                    let temp_ptr = self.local(None, Name::from(
+
+                    let mut found_field = def.is_none();
+                    let mut fieldtyped = None;
+                    if let Some(def) = &def {
+                        for fielddef in def {
+                            if field == &fielddef.name {
+                                fieldtyped = Some(fielddef.typed.clone());
+                                found_field = true;
+                            }
+                        }
+                    };
+
+                    if !found_field {
+                        return Err(Error::new(format!("{} does not have field {}", typed.name, field), vec![
+                            (expr.loc().clone(), "in this struct initialization\n".to_string())
+                        ]));
+                    }
+
+                    let temp_ptr = self.local(fieldtyped, Name::from(
                             &format!("struct init {}.{} {}", typed.name, field, self.storage.len())),
                             expr.loc().clone(),
                             Tags::new());
@@ -1404,8 +1425,12 @@ pub fn check(md: &mut flatten::Module) {
                     stack.write(ptr, Value::Literal(String::new()), &local.loc);
                 }
             },
+            ast::Def::Fntype{args, ret, vararg, ..} => {
+                let localname = Name::from(&local.name);
+                let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
+                stack.write(ptr, Value::Untrackable("fntype".to_string()), &local.loc);
+            }
             ast::Def::Function{body, args, ret, vararg, ..} => {
-
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
 
                 let ret = match ret {
@@ -1472,6 +1497,7 @@ pub fn check(md: &mut flatten::Module) {
 
 
                 stack.write(ptr, Value::Function{
+                    name: localname.clone(),
                     ret,
                     args: args.clone(),
                     vararg: *vararg,

@@ -114,11 +114,12 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 });
 
             }
-            Rule::function => {
+            Rule::function | Rule::fntype => {
                 let loc = Location{
                     file: n.to_string_lossy().into(),
                     span: decl.as_span(),
                 };
+                let declrule = decl.as_rule().clone();
                 let decl = decl.into_inner();
                 let mut name = String::new();
                 let mut args = Vec::new();
@@ -181,18 +182,36 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                     }
                 }
 
-                module.locals.push(Local{
-                    name,
-                    vis,
-                    loc,
-                    def:Def::Function{
-                        ret,
-                        attr,
-                        args,
-                        body: body.unwrap(),
-                        vararg,
+                match declrule {
+                    Rule::function => {
+                        module.locals.push(Local{
+                            name,
+                            vis,
+                            loc,
+                            def:Def::Function{
+                                ret,
+                                attr,
+                                args,
+                                body: body.unwrap(),
+                                vararg,
+                            }
+                        });
                     }
-                });
+                    Rule::fntype => {
+                        module.locals.push(Local{
+                            name,
+                            vis,
+                            loc,
+                            def:Def::Fntype{
+                                ret,
+                                attr,
+                                args,
+                                vararg,
+                            }
+                        });
+                    },
+                    _ => unreachable!()
+                }
             },
             Rule::EOI => {},
             Rule::ienum => {
@@ -1308,7 +1327,7 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
         file: n.1.to_string_lossy().into(),
         span: name.as_span(),
     };
-    let name = Name::from(name.as_str());
+    let name = Box::new(parse_expr(n, name));
 
 
     let mut args = Vec::new();
@@ -1327,11 +1346,7 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
 
     Expression::Call{
         loc: loc,
-        name: Typed{
-            name,
-            loc: nameloc,
-            ptr: Vec::new(),
-        },
+        name,
         args,
     }
 }

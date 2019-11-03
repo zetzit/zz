@@ -186,9 +186,7 @@ fn expr_deps(expr: &ast::Expression) -> Vec<(Name, ast::Location)> {
         }
         ast::Expression::Call { name, args, ..} => {
             let mut v = Vec::new();
-            if name.name.len() > 2 {
-                v.push((name.name.clone(), name.loc.clone()));
-            }
+            v.extend(expr_deps(name));
             for arg in args {
                 v.extend(expr_deps(arg));
             }
@@ -347,6 +345,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     }
 
                     impl_deps.extend(block_deps(body));
+                }
+                ast::Def::Fntype{ret, args, ..} => {
+                    if let Some(ret) = ret {
+                        decl_deps.extend(type_deps(&ret.typed));
+                    }
+                    for arg in args {
+                        decl_deps.extend(type_deps(&arg.typed));
+                        decl_deps.extend(tag_deps(&arg.tags));
+                    }
                 }
                 ast::Def::Struct{fields,..} => {
                     for field in fields {
