@@ -76,7 +76,8 @@ tag_name    = ${ (ident | key_mut | key_unsafe) ~ ("<" ~ expr ~ ">")? }
 ptr         = !{"*"}
 type_part   = _{ (tag_name | ptr ) }
 anon_type   = !{ type_name ~ type_part* }
-named_type  = !{ type_name ~ tail? ~ named_typei}
+type_name_with_tail = ${type_name ~ tail?}
+named_type  = !{ type_name_with_tail ~ named_typei}
 named_typei = _{ type_part  ~ named_typei | ident }
 
 

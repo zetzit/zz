@@ -1160,9 +1160,36 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
         file: n.1.to_string_lossy().into(),
         span: decl.as_span(),
     };
+
+    let mut tail = Tail::None;
+
     //the actual type name is always on the left hand side
     let mut decl = decl.into_inner();
-    let typename = Name::from(decl.next().unwrap().as_str());
+    let mut lhsdecl = decl.next().unwrap().into_inner();
+    let mut typename = Name::from(lhsdecl.next().unwrap().as_str());
+    for lhs in lhsdecl {
+        match lhs.as_rule() {
+            Rule::tail => {
+                let loc = Location{
+                    file: n.1.to_string_lossy().into(),
+                    span: lhs.as_span(),
+                };
+                let mut part = lhs.as_str().to_string();
+                part.remove(0);
+                if part.len() > 0 {
+                    if let Ok(n) = part.parse::<u64>() {
+                        tail = Tail::Static(n, loc);
+                    } else {
+                        tail = Tail::Bind(part, loc);
+                    }
+                } else {
+                    tail = Tail::Dynamic
+                }
+            },
+            e => panic!("unexpected rule {:?} in named_type lhs", e),
+        }
+    }
+    
 
     // the local variable name is on the right;
     let mut decl : Vec<pest::iterators::Pair<'static, Rule>> = decl.collect();
@@ -1185,7 +1212,6 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
 
     let mut tags = Tags::new();
     let mut ptr = Vec::new();
-    let mut tail = Tail::None;
 
     for part in decl {
         let loc = Location{
@@ -1199,19 +1225,6 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
                     loc,
                 });
             }
-            Rule::tail => {
-                let mut part = part.as_str().to_string();
-                part.remove(0);
-                if part.len() > 0 {
-                    if let Ok(n) = part.parse::<u64>() {
-                        tail = Tail::Static(n, loc);
-                    } else {
-                        tail = Tail::Bind(part, loc);
-                    }
-                } else {
-                    tail = Tail::Dynamic
-                }
-            },
             Rule::tag_name => {
                 let mut part = part.into_inner();
                 let mut name  = part.next().unwrap().as_str().into();

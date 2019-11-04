@@ -1,6 +1,0 @@
-[submodule "modules/toml/ext/tomlc99"]
-	path = modules/toml/ext/tomlc99
-	url = https://github.com/cktan/tomlc99.git
-[submodule "modules/json/jsmn"]
-	path = modules/json/jsmn
-	url = https://github.com/zserge/jsmn.git

@@ -21,6 +21,8 @@ export fn child(error::Error mut set<error> *err) -> Child {
         return Child {.in = 0, .out = 0};
     }
     int fd_in  = atoi(fd_in_ch);
+    fd_in is safe;
+    fd_out is safe;
     return Child { .in = fd_in, .out = fd_out};
 }
 
