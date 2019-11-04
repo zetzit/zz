@@ -70,12 +70,13 @@ local_i     = {(ident | qident) ~ ( WHITESPACE+  ~ "as" ~ WHITESPACE+ ~ (ident |
 local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ local_i )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
 
+tail        = ${ "+" ~ (ident | digit*) }
 type_name   = ${ namespace? ~ ident }
 tag_name    = ${ (ident | key_mut | key_unsafe) ~ ("<" ~ expr ~ ">")? }
 ptr         = !{"*"}
 type_part   = _{ (tag_name | ptr ) }
 anon_type   = !{ type_name ~ type_part* }
-named_type  = !{ type_name ~ named_typei}
+named_type  = !{ type_name ~ tail? ~ named_typei}
 named_typei = _{ type_part  ~ named_typei | ident }
 
 
@@ -112,7 +113,7 @@ testcase    = { "test" ~ ident ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
 struct_c    = _{"{" ~ (pp | struct_f )* ~ "}" }
-struct_d    = { (exported | key_shared | key_packed)* ~ "struct" ~ ident ~ struct_c ~ ";"?}
+struct_d    = { (exported | key_shared | key_packed)* ~ "struct" ~ ident ~ tail? ~ struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
 

@@ -1,0 +1,16 @@
+using <string.h>::{strlen, memcpy};
+
+export struct String+ {
+    usize   len;
+    char    mem[];
+}
+
+
+export fn append(String+t mut * self, char * cstr) {
+    usize mut len = strlen(cstr);
+    if len + self->len > t - 1 {
+        len = t - 1 - self->len;
+    }
+    memcpy(self->mem + self->len, cstr, len);
+    self->len += len;
+}

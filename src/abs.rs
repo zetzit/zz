@@ -45,7 +45,7 @@ impl Scope{
 
     pub fn tags(&self, tags: &mut ast::Tags) {
         for (kk,vals) in tags.0.iter_mut() {
-            if kk.as_str() == "len" {
+            if kk.as_str() == "len" || kk.as_str() == "tail"{
                 for (k,_) in vals.iter_mut() {
                     if let Some(v2) = self.v.get(k) {
                         #[allow(mutable_transmutes)]
@@ -542,6 +542,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                                 name:   Name::from(&ast.name),
                                 loc:    ast.loc.clone(),
                                 ptr:    Vec::new(),
+                                tail:   ast::Tail::None,
                             },
                             expr: ast::Expression::Literal{
                                 loc:    ast.loc.clone(),
@@ -581,10 +582,45 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                     scope.abs(&mut ret.typed, false);
                     check_abs_available(&ret.typed.name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                 }
-                for arg in args {
+                let oargs = std::mem::replace(args, Vec::new());
+                for mut arg in oargs {
                     scope.abs(&mut arg.typed, false);
                     scope.tags(&mut arg.tags);
                     check_abs_available(&arg.typed.name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+
+                    args.push(arg.clone());
+                    match &arg.typed.tail {
+                        ast::Tail::None => {
+                        },
+                        ast::Tail::Dynamic => {
+                            emit_error(format!("missing tail binding "), &[
+                                (arg.loc.clone(), "+ without a name makes no sense in this context"),
+                            ]);
+                            std::process::exit(9);
+                        },
+                        ast::Tail::Static(_, _) => {
+                            emit_error(format!("missing tail binding "), &[
+                                (arg.loc.clone(), "+ with static size makes no sense in this context"),
+                            ]);
+                            std::process::exit(9);
+                        }
+                        ast::Tail::Bind(s, loc) => {
+                            let mut tags = ast::Tags::new();
+                            tags.insert("tail".to_string(), String::new(), loc.clone());
+                            args.push(ast::NamedArg {
+                                typed:      ast::Typed{
+                                    name:   Name::from("::ext::<stdlib.h>::size_t"),
+                                    loc:    loc.clone(),
+                                    ptr:    Vec::new(),
+                                    tail:   ast::Tail::None,
+                                },
+                                name:   s.clone(),
+                                tags:   tags,
+                                loc:    loc.clone(),
+                            });
+                        }
+                    }
+
                 }
                 abs_block(body, &scope,all_modules, &md.name);
             }
@@ -604,7 +640,9 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                     scope.abs(&mut field.typed, false);
                     check_abs_available(&field.typed.name, &ast.vis, all_modules, &field.typed.loc, &md.name);
                     if let Some(ref mut array) = &mut field.array {
-                        abs_expr(array, &scope, false, all_modules, &md.name);
+                        if let Some(array) = array {
+                            abs_expr(array, &scope, false, all_modules, &md.name);
+                        }
                     }
                 }
             }

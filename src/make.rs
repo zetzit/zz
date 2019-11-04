@@ -175,7 +175,6 @@ impl Make {
         cflags.push("-I".into());
         cflags.push(".".into());
         cflags.push("-I".into());
-        cflags.push(format!("./target/{}/include/", stage));
         cflags.push("-fvisibility=hidden".to_string());
 
 

@@ -285,24 +285,26 @@ impl Stack {
                         self.initialize(temp_ptr, loc, true);
                         value.insert(field.name.clone(), temp_ptr);
                         if let Some(mut a) = field.array.clone() {
-                            match self.check_expr(&mut a) {
-                                Err(_) => (),
-                                Ok(a_ptr) => {
-                                    match &self.storage[a_ptr].value {
-                                        Value::Literal(a) => {
-                                            if let Ok(a) = a.parse::<u64>() {
-                                                let mut ar = Vec::new();
-                                                for _ in 0..a {
-                                                    let temp_ptr2 = self.local(Some(field.typed.clone()), Name::from(
-                                                            &format!("deep init array {}", self.storage.len())),
-                                                            loc.clone(),
-                                                            Tags::new());
-                                                    ar.push(temp_ptr2);
+                            if let Some(a) = &mut a {
+                                match self.check_expr(a) {
+                                    Err(_) => (),
+                                    Ok(a_ptr) => {
+                                        match &self.storage[a_ptr].value {
+                                            Value::Literal(a) => {
+                                                if let Ok(a) = a.parse::<u64>() {
+                                                    let mut ar = Vec::new();
+                                                    for _ in 0..a {
+                                                        let temp_ptr2 = self.local(Some(field.typed.clone()), Name::from(
+                                                                &format!("deep init array {}", self.storage.len())),
+                                                                loc.clone(),
+                                                                Tags::new());
+                                                        ar.push(temp_ptr2);
+                                                    }
+                                                    self.write(temp_ptr, Value::Array(ar), loc);
                                                 }
-                                                self.write(temp_ptr, Value::Array(ar), loc);
-                                            }
-                                        },
-                                        _ => (),
+                                            },
+                                            _ => (),
+                                        }
                                     }
                                 }
                             }
@@ -829,7 +831,7 @@ impl Stack {
                     &ast::Expression::Name(ref t)  if t.name.0[0] == "len" => {
                         if callargs.len() != 1 {
                             return Err(Error::new("call argument count mismatch".to_string(), vec![
-                                                  (name.loc().clone(), format!("builtin len() needs 1 argument, but you passed {}", callargs.len()))
+                                (name.loc().clone(), format!("builtin len() needs 1 argument, but you passed {}", callargs.len()))
                             ]));
                         }
                         let to = self.check_expr(&mut callargs[0])?;
@@ -889,6 +891,43 @@ impl Stack {
                             v:   v.clone(),
                         });
                         callargs.push(genarg);
+                    } else if let Some(_) = args[i].tags.get("tail") {
+                        let mut prev = callargs.get_mut(i-1).expect("ICE: tail tag without previous arg");
+                        let callptr = self.check_expr(&mut prev)?;
+                        *prev = Box::new(ast::Expression::Cast {
+                            into: args[i-1].typed.clone(),
+                            expr: prev.clone(),
+                            loc:  args[i].loc.clone(),
+                        });
+
+                        match &self.storage[callptr].typ {
+                            None => {
+                                return Err(Error::new(format!("type of {} not known at compile time", self.storage[callptr].name), vec![
+                                   (name.loc().clone(), format!("used here in tail binding")),
+                                ]));
+                            },
+                            Some(t) => {
+                                match &t.tail {
+                                    ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_) => {
+                                        return Err(Error::new(format!("tail size of {} not known at compile time",
+                                                                      self.storage[callptr].name), vec![
+                                            (name.loc().clone(), format!("used here in tail binding")),
+                                        ]));
+                                    },
+                                    ast::Tail::Static(v,loc) => {
+                                        let genarg = Box::new(ast::Expression::Literal{
+                                            loc: loc.clone(),
+                                            v:   format!("{}", v),
+                                        });
+                                        callargs.push(genarg);
+                                    }
+                                }
+                            }
+                        }
+
+
+
+
                     } else {
                         if callargs_org.len() > 0 {
                             callargs.push(callargs_org.remove(0));
@@ -1020,8 +1059,15 @@ impl Stack {
             ast::Expression::UnaryPre {expr, op, loc }=> {
                 if op == "&" {
                     let lf = self.check_expr(expr)?;
-                    let temp_ptr = self.local(None, Name::from(
-                            &format!("temporary access {}", self.storage.len())),
+                    let mut typ =  self.storage[lf].typ.clone();
+                    if let Some(typ) = &mut typ {
+                        typ.ptr.push(ast::Pointer{
+                            loc: loc.clone(),
+                            tags: Tags::new(),
+                        });
+                    }
+                    let temp_ptr = self.local(typ, Name::from(
+                            &format!("taking address of {} {}", self.storage[lf].name, self.storage.len())),
                             expr.loc().clone(),
                             Tags::new());
                     self.write(temp_ptr, Value::Address(lf), &expr.loc());
@@ -1410,7 +1456,7 @@ pub fn check(md: &mut flatten::Module) {
                     };
                 }
             },
-            ast::Def::Struct {fields, packed} => {
+            ast::Def::Struct {fields, packed, tail} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
                 stack.write(ptr, Value::Untrackable("struct type".to_string()), &local.loc);

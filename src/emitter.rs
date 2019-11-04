@@ -87,6 +87,16 @@ impl Emitter {
         write!(self.f, "\n#line {} \"{}\"\n", loc.line(), loc.file).unwrap();
     }
 
+    fn to_local_typed_name(&self, name: &ast::Typed) -> String {
+        let mut s = self.to_local_name(&name.name);
+        match &name.tail {
+            ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
+            ast::Tail::Static(v,_) => {
+                s = format!("{}_{}", s, v);
+            }
+        }
+        s
+    }
     fn to_local_name(&self, s: &Name) -> String {
         if !s.is_absolute() {
             return s.0.join("_");
@@ -155,7 +165,14 @@ impl Emitter {
                     self.emit_static(&d)
                 }
                 ast::Def::Struct{..} => {
-                    self.emit_struct(&d, *def_here)
+                    self.emit_struct(&d, *def_here, None);
+                    if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                        for v in vs {
+                            let mut d = d.clone();
+                            d.name = format!("{}_{}", d.name, v);
+                            self.emit_struct(&d, *def_here, Some(*v));
+                        }
+                    }
                 }
                 ast::Def::Enum{..} => {
                     self.emit_enum(&d)
@@ -307,7 +324,7 @@ impl Emitter {
             ast::Storage::Static  => (),
         }
 
-        write!(self.f, "{} ", self.to_local_name(&typed.name)).unwrap();
+        write!(self.f, "{} ", self.to_local_typed_name(&typed)).unwrap();
         self.emit_pointer(&typed.ptr);
 
         write!(self.f, "{} ", self.to_local_name(&Name::from(&ast.name))).unwrap();
@@ -335,7 +352,7 @@ impl Emitter {
 
 
         write!(self.f, "#define {} ((", self.to_local_name(&Name::from(&ast.name))).unwrap();
-        write!(self.f, "{} ", self.to_local_name(&typed.name)).unwrap();
+        write!(self.f, "{} ", self.to_local_typed_name(&typed)).unwrap();
         self.emit_pointer(&typed.ptr);
 
 
@@ -401,9 +418,9 @@ impl Emitter {
     }
 
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool) {
-        let (fields, packed) = match &ast.def {
-            ast::Def::Struct{fields, packed} => (fields, packed),
+    pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
+        let (fields, packed, tail) = match &ast.def {
+            ast::Def::Struct{fields, packed, tail} => (fields, packed, tail),
             _ => unreachable!(),
         };
 
@@ -411,20 +428,39 @@ impl Emitter {
         write!(self.f, "typedef struct \n").unwrap();
 
         write!(self.f, "{{\n").unwrap();
-        for field in fields {
+        for i in 0..fields.len() {
+            let field = &fields[i];
             self.emit_loc(&field.loc);
-            write!(self.f, "   {}", self.to_local_name(&field.typed.name)).unwrap();
+            write!(self.f, "   {}", self.to_local_typed_name(&field.typed)).unwrap();
             self.emit_pointer(&field.typed.ptr);
-            write!(self.f, " {}", field.name).unwrap();
             if let Some(array) = &field.array {
-                write!(self.f, "[").unwrap();
-                self.emit_expr(array);
-                write!(self.f, "]").unwrap();
+                if let Some(expr) = array {
+                    write!(self.f, " {}", field.name).unwrap();
+                    write!(self.f, "[").unwrap();
+                    self.emit_expr(expr);
+                    write!(self.f, "]").unwrap();
+                } else {
+                    if i != (fields.len() - 1) {
+                        super::parser::emit_error(
+                            "tail field has no be the last field in a struct",
+                            &[(field.loc.clone(), format!("tail field would displace next field"))]
+                            );
+                        std::process::exit(9);
+                    }
+                    if let Some(tt) = tail_variant {
+                        write!(self.f, " {}[{}]", field.name, tt).unwrap();
+                    } else {
+                        write!(self.f, " {}[]", field.name).unwrap();
+                    }
+                }
+            } else {
+                write!(self.f, " {}", field.name).unwrap();
             }
             write!(self.f, " ;\n").unwrap();
         }
 
-        write!(self.f, "}} {} ;\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        write!(self.f, "}} {}", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        write!(self.f, " ;\n").unwrap();
 
 
         if def_here {
@@ -450,7 +486,7 @@ impl Emitter {
             }
 
 
-            write!(self.f, "{}", self.to_local_name(&arg.typed.name)).unwrap();
+            write!(self.f, "{}", self.to_local_typed_name(&arg.typed)).unwrap();
 
             self.emit_pointer(&arg.typed.ptr);
             if !arg.tags.contains_key("mutable") {
@@ -473,7 +509,7 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                write!(self.f, "{} ", self.to_local_typed_name(&a.typed)).unwrap();
                 self.emit_pointer(&a.typed.ptr);
             }
         };
@@ -521,7 +557,7 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                write!(self.f, "{} ", self.to_local_typed_name(&a.typed)).unwrap();
                 self.emit_pointer(&a.typed.ptr);
             }
         };
@@ -571,7 +607,7 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                write!(self.f, "{} ", self.to_local_typed_name(&a.typed)).unwrap();
                 self.emit_pointer(&a.typed.ptr);
             }
         };
@@ -642,7 +678,7 @@ impl Emitter {
         match &ret {
             None       => write!(self.f, "void ").unwrap(),
             Some(a)    => {
-                write!(self.f, "{} ", self.to_local_name(&a.typed.name)).unwrap();
+                write!(self.f, "{} ", self.to_local_typed_name(&a.typed)).unwrap();
                 self.emit_pointer(&a.typed.ptr);
             }
         };
@@ -778,7 +814,7 @@ impl Emitter {
             }
             ast::Statement::Var{assign, loc, typed, name, array, tags}  => {
                 self.emit_loc(&loc);
-                write!(self.f, "  {}", self.to_local_name(&typed.name)).unwrap();
+                write!(self.f, "  {}", self.to_local_typed_name(&typed)).unwrap();
 
                 self.emit_pointer(&typed.ptr);
 
@@ -894,7 +930,7 @@ impl Emitter {
             },
             ast::Expression::StructInit{typed, fields,loc} => {
                 self.emit_loc(&loc);
-                write!(self.f, "    ({}", self.to_local_name(&typed.name)).unwrap();
+                write!(self.f, "    ({}", self.to_local_typed_name(&typed)).unwrap();
                 write!(self.f, "){{").unwrap();
                 for (name, field) in fields {
                     write!(self.f, ".{} = ", name).unwrap();
@@ -917,7 +953,7 @@ impl Emitter {
                 write!(self.f, ")").unwrap();
             },
             ast::Expression::Cast{into,expr,..} => {
-                write!(self.f, "    ({}", self.to_local_name(&into.name)).unwrap();
+                write!(self.f, "    ({}", self.to_local_typed_name(&into)).unwrap();
                 self.emit_pointer(&into.ptr);
                 write!(self.f, ")").unwrap();
                 write!(self.f, "(").unwrap();
@@ -926,7 +962,7 @@ impl Emitter {
             },
             ast::Expression::Name(name) => {
                 self.emit_loc(&name.loc);
-                write!(self.f, "    {}", self.to_local_name(&name.name)).unwrap();
+                write!(self.f, "    {}", self.to_local_typed_name(&name)).unwrap();
             },
             ast::Expression::Literal {loc, v} => {
                 self.emit_loc(&loc);

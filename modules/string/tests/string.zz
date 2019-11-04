@@ -1,0 +1,34 @@
+using string;
+using <stdio.h>::{getline, printf, stdin};
+using <stdlib.h>::{free};
+
+
+test append{
+    stdin  = "hello\n world\n"
+    stdout = "hello\n world\n"
+}
+
+test overflow{
+    stdin  = "lorum ipsdulbla bla something something hello hello"
+    stdout = "lorum ipsdulbla bla something something hello hel"
+}
+
+export fn main() -> int {
+    string::String+50 mut s = {0};
+
+    for (;;) {
+        char mut * mut line = 0;
+        size_t mut l = 0;
+        int nread = getline(&line, &l, stdin);
+        if nread < 1 {
+            free(line);
+            break;
+        }
+        line is safe;
+        string::append(&s, line);
+        free(line);
+    }
+
+    printf("%.*s", s.len, s.mem);
+    return 0;
+}

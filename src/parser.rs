@@ -323,9 +323,13 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut fields = Vec::new();
                 let mut loc    = None;
                 let mut packed = false;
+                let mut tail   = Tail::None;
 
                 for part in PP::new(n,features.clone(), decl) {
                     match part.as_rule() {
+                        Rule::tail => {
+                            tail = Tail::Dynamic;
+                        }
                         Rule::key_packed => {
                             packed = true;
                         }
@@ -361,15 +365,14 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                                         file: n.to_string_lossy().into(),
                                         span: array.as_span(),
                                     };
-                                    let expr = match array.into_inner().next() {
-                                        Some(v) => v,
+                                    match array.into_inner().next() {
+                                        Some(expr) => {
+                                            Some(Some(parse_expr((file_str, n), expr)))
+                                        },
                                         None => {
-                                            emit_error("syntax error", &[
-                                                       (loc, "array fields must have known size")]);
-                                            std::process::exit(9);
+                                            Some(None)
                                         }
-                                    };
-                                    Some(parse_expr((file_str, n), expr))
+                                    }
                                 }
                             };
 
@@ -395,6 +398,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                     def: Def::Struct {
                         fields,
                         packed,
+                        tail,
                     }
                 });
             }
@@ -587,6 +591,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                             ptr: Vec::new(),
                             name,
                             loc,
+                            tail: Tail::None,
                         })
                     },
                     Rule::termish => {
@@ -616,6 +621,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                             ptr: Vec::new(),
                             name,
                             loc,
+                            tail: Tail::None,
                         })
                     },
                     Rule::expr => {
@@ -671,6 +677,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                             ptr: Vec::new(),
                             name,
                             loc,
+                            tail: Tail::None,
                         }));
                     },
                     Rule::termish | Rule::expr  => {
@@ -709,6 +716,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                     ptr: Vec::new(),
                     name,
                     loc,
+                    tail: Tail::None,
                 }))));
             },
             Rule::number_literal | Rule::string_literal | Rule::char_literal => {
@@ -739,6 +747,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                             ptr: Vec::new(),
                             name,
                             loc,
+                            tail: Tail::None,
                         })
                     },
                     Rule::termish => {
@@ -1176,6 +1185,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
 
     let mut tags = Tags::new();
     let mut ptr = Vec::new();
+    let mut tail = Tail::None;
 
     for part in decl {
         let loc = Location{
@@ -1189,6 +1199,19 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
                     loc,
                 });
             }
+            Rule::tail => {
+                let mut part = part.as_str().to_string();
+                part.remove(0);
+                if part.len() > 0 {
+                    if let Ok(n) = part.parse::<u64>() {
+                        tail = Tail::Static(n, loc);
+                    } else {
+                        tail = Tail::Bind(part, loc);
+                    }
+                } else {
+                    tail = Tail::Dynamic
+                }
+            },
             Rule::tag_name => {
                 let mut part = part.into_inner();
                 let mut name  = part.next().unwrap().as_str().into();
@@ -1208,6 +1231,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
             name: typename,
             loc: loc.clone(),
             ptr,
+            tail,
         },
         tags,
     }
@@ -1263,7 +1287,7 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
     }
 
     Typed {
-        name, loc, ptr,
+        name, loc, ptr, tail: Tail::None,
     }
 }
 

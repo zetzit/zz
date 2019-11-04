@@ -16,7 +16,7 @@ syn keyword zzImport            using
 syn keyword zzVisibility        export pub
 syn keyword zzKeywords          mut as
 syn keyword zzDanger            unsafe
-syn keyword zzOperator          len
+syn keyword zzOperator          len tail
 
 syn region zzCommentLineDoc     start="//\%(//\@!\|!\)"         end="$"  contains=@Spell
 

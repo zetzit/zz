@@ -51,6 +51,14 @@ pub struct Import {
     pub inline: bool,
 }
 
+#[derive(Clone, Debug)]
+pub enum Tail {
+    None,
+    Dynamic,
+    Static(u64, Location),
+    Bind(String, Location),
+}
+
 
 #[derive(Clone)]
 pub enum Def {
@@ -81,6 +89,7 @@ pub enum Def {
     Struct {
         fields:     Vec<Field>,
         packed:     bool,
+        tail:       Tail,
     },
     Enum {
         names:      Vec<(String, Option<i64>)>,
@@ -123,6 +132,7 @@ pub struct Typed {
     pub name:   Name,
     pub loc:    Location,
     pub ptr:    Vec<Pointer>,
+    pub tail:   Tail,
 }
 
 #[derive(Default, Clone)]
@@ -152,7 +162,7 @@ pub struct NamedArg {
 pub struct Field {
     pub typed:      Typed,
     pub name:       String,
-    pub array:      Option<Expression>,
+    pub array:      Option<Option<Expression>>,
     pub tags:       Tags,
     pub loc:        Location,
 }
