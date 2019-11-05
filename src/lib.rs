@@ -17,6 +17,7 @@ pub mod abs;
 pub mod name;
 pub mod pp;
 pub mod memory;
+pub mod symbolic;
 
 use std::path::Path;
 use name::Name;
@@ -109,6 +110,8 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
     let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
+        //let symbolic = symbolic::execute(&module);
+
         memory::check(&mut module);
         if !silent {
             pb.lock().unwrap().message(&format!("emitting {} ", module.name));
@@ -118,6 +121,8 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
 
         let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
         let cf = em.emit();
+
+
 
         if !silent {
             pb.lock().unwrap().inc();

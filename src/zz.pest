@@ -139,11 +139,11 @@ imacro          = { ( exported | key_shared)? ~ "macro" ~ ident ~ "(" ~ macro_ar
 
 // statements
 
-infix = {
+infix = _{
     moreeq | lesseq |
     equals | nequals |
     shiftleft | shiftright |
-    add | subtract | multiply | divide | power | boolor |
+    add | subtract | multiply | divide | bitxor | boolor |
     booland | lessthan | morethan | modulo | bitand | bitor
     }
     equals      = { "==" }
@@ -152,7 +152,7 @@ infix = {
     subtract    = { "-"  }
     multiply    = { "*"  }
     divide      = { "/"  }
-    power       = { "^"  }
+    bitxor      = { "^"  }
     booland     = { "&&" }
     boolor      = { "||" }
     moreeq      = { ">=" }

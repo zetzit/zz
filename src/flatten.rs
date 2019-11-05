@@ -220,12 +220,10 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, ast::Loca
             v.extend(expr_deps(cr, rhs));
             v
         }
-        ast::Expression::InfixOperation {lhs, rhs,.. } => {
+        ast::Expression::Infix {lhs, rhs,.. } => {
             let mut v = Vec::new();
             v.extend(expr_deps(cr, lhs));
-            for (_, rhs) in rhs {
-                v.extend(expr_deps(cr, rhs));
-            }
+            v.extend(expr_deps(cr, rhs));
             v
         }
     }

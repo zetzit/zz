@@ -9,8 +9,6 @@ use super::ast::Tags;
 use std::sync::atomic::{AtomicBool, Ordering};
 static ABORT: AtomicBool = AtomicBool::new(false);
 
-
-
 type Address = usize;
 #[derive(Debug)]
 enum Error {
@@ -995,7 +993,7 @@ impl Stack {
                 }
             }
 
-            ast::Expression::InfixOperation { lhs, rhs, loc} => {
+            ast::Expression::Infix { lhs, rhs, loc, op, ..} => {
                 let mut static_value = None;
 
                 let lhs = self.check_expr(lhs)?;
@@ -1007,34 +1005,46 @@ impl Stack {
                     },
                     _ => (),
                 };
-                for (op, expr) in rhs {
-                    let ptr = self.check_expr(expr)?;
-                    match &self.storage[ptr].value {
-                        Value::Literal(val) => {
-                            if let Ok(n) = val.parse::<i64>() {
-                                if let Some(a) = static_value {
-                                    match op.0.as_str() {
-                                        "+" => {
-                                            static_value = Some(a + n);
-                                        },
-                                        "-" => {
-                                            static_value = Some(a - n)
-                                        }
-                                        _ => {
-                                            static_value = None;
-                                        }
+                let ptr = self.check_expr(rhs)?;
+                match &self.storage[ptr].value {
+                    Value::Literal(val) => {
+                        if let Ok(n) = val.parse::<i64>() {
+                            if let Some(a) = static_value {
+                                match op.as_str() {
+                                    "+" => {
+                                        static_value = Some(a + n);
+                                    },
+                                    "-" => {
+                                        static_value = Some(a - n)
+                                    }
+                                    "*" => {
+                                        static_value = Some(a * n)
+                                    }
+                                    "/" => {
+                                        static_value = Some(a / n)
+                                    }
+                                    "%" => {
+                                        static_value = Some(a % n)
+                                    }
+                                    "<<" => {
+                                        static_value = Some(a << n)
+                                    }
+                                    ">>" => {
+                                        static_value = Some(a >> n)
+                                    }
+                                    _ => {
+                                        static_value = None;
                                     }
                                 }
                             }
-                        },
-                        _ => {
-                            static_value = None;
                         }
-                    };
-                }
-
+                    },
+                    _ => {
+                        static_value = None;
+                    }
+                };
                 let temp_ptr = self.local(None, Name::from(
-                        &format!("value of math expression {}", self.storage.len())),
+                        &format!("value of infix expression {}", self.storage.len())),
                         expr.loc().clone(),
                         Tags::new());
 

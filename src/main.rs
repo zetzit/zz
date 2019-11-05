@@ -207,8 +207,8 @@ fn main() {
                 std::process::exit(9);
             }
 
-            println!("running \"./target/{}/{}\"\n", stage, exes[0].name);
-            let status = Command::new(format!("./target/{}/{}", stage, exes[0].name))
+            println!("running \"./target/{}/bin/{}\"\n", stage, exes[0].name);
+            let status = Command::new(format!("./target/{}/bin/{}", stage, exes[0].name))
                 .args(submatches.values_of("args").unwrap_or_default())
                 .status()
                 .expect("failed to execute process");

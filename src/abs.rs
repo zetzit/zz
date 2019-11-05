@@ -379,11 +379,9 @@ fn abs_expr(
                 abs_expr(arg, scope, inbody, all_modules, self_md_name);
             }
         },
-        ast::Expression::InfixOperation {lhs, rhs,.. } => {
+        ast::Expression::Infix {lhs, rhs,.. } => {
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
-            for (_, rhs) in rhs {
-                abs_expr(rhs, scope, inbody, all_modules, self_md_name);
-            }
+            abs_expr(rhs, scope, inbody, all_modules, self_md_name);
         }
     }
 }

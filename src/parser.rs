@@ -6,6 +6,7 @@ use std::io::{Read};
 use super::pp::PP;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
+use pest::prec_climber::{Operator, PrecClimber, Assoc};
 
 #[derive(Parser)]
 #[grammar = "zz.pest"]
@@ -559,277 +560,292 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
         _ => { panic!("parse_expr call called with {:?}", decl); }
     };
 
-    let mut s_op = Some((String::new(), Location{
-        file: n.1.to_string_lossy().into(),
-        span: decl.as_span(),
-    }));
-    let mut s_r  = Vec::new();
+    let climber = PrecClimber::new(vec![
+        //12
+        Operator::new(Rule::boolor, Assoc::Left),
+        //11
+        Operator::new(Rule::booland, Assoc::Left),
+        //10
+        Operator::new(Rule::bitor, Assoc::Left),
+        //9
+        Operator::new(Rule::bitxor, Assoc::Left),
+        //8
+        Operator::new(Rule::bitand, Assoc::Left),
+        //7
+        Operator::new(Rule::equals, Assoc::Left) | Operator::new(Rule::nequals, Assoc::Left),
+        //6
+        Operator::new(Rule::lessthan, Assoc::Left) | Operator::new(Rule::morethan, Assoc::Left) |
+        Operator::new(Rule::moreeq, Assoc::Left) | Operator::new(Rule::lesseq, Assoc::Left),
+        //5
+        Operator::new(Rule::shiftleft, Assoc::Left) | Operator::new(Rule::shiftright, Assoc::Left),
+        //4
+        Operator::new(Rule::add, Assoc::Left) | Operator::new(Rule::subtract, Assoc::Left),
+        //3
+        Operator::new(Rule::modulo, Assoc::Left) | Operator::new(Rule::divide, Assoc::Left) |
+        Operator::new(Rule::multiply, Assoc::Left),
+        //2
+        Operator::new(Rule::preop, Assoc::Left),
+    ]);
 
-    let decl = decl.into_inner();
-    for expr in decl {
+    let reduce = |lhs: Expression, op: pest::iterators::Pair<'static, Rule>, rhs: Expression | {
         let loc = Location{
             file: n.1.to_string_lossy().into(),
-            span: expr.as_span(),
+            span: op.as_span(),
         };
-        match expr.as_rule() {
-            Rule::infix => {
-                s_op = Some((expr.as_str().to_string(), loc));
-            },
-            Rule::unarypre => {
-                let mut expr = expr.into_inner();
-                let part    = expr.next().unwrap();
-                let op      = part.as_str().to_string();
-                let part   = expr.next().unwrap();
-                let iexpr   = match part.as_rule() {
-                    Rule::type_name => {
-                        let loc = Location{
-                            file: n.1.to_string_lossy().into(),
-                            span: part.as_span(),
-                        };
-                        let name = Name::from(part.as_str());
-                        Expression::Name(Typed{
-                            ptr: Vec::new(),
-                            name,
-                            loc,
-                            tail: Tail::None,
-                        })
-                    },
-                    Rule::termish => {
-                        parse_expr(n, part)
-                    }
-                    e => panic!("unexpected rule {:?} in unary pre lhs", e),
-                };
 
-
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::UnaryPre{
-                    expr: Box::new(iexpr),
-                    op,
-                    loc,
-                })));
-            },
-            Rule::unarypost => {
-                let mut expr = expr.into_inner();
-                let part   = expr.next().unwrap();
-                let iexpr   = match part.as_rule() {
-                    Rule::type_name => {
-                        let loc = Location{
-                            file: n.1.to_string_lossy().into(),
-                            span: part.as_span(),
-                        };
-                        let name = Name::from(part.as_str());
-                        Expression::Name(Typed{
-                            ptr: Vec::new(),
-                            name,
-                            loc,
-                            tail: Tail::None,
-                        })
-                    },
-                    Rule::expr => {
-                        parse_expr(n, part)
-                    }
-                    e => panic!("unexpected rule {:?} in unary post lhs", e),
-                };
-
-                let part    = expr.next().unwrap();
-                let op      = part.as_str().to_string();
-
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::UnaryPost{
-                    expr: Box::new(iexpr),
-                    op,
-                    loc,
-                })));
-            },
-            Rule::cast => {
-                let exprloc = Location{
-                    file: n.1.to_string_lossy().into(),
-                    span: expr.as_span(),
-                };
-                let mut expr = expr.into_inner();
-                let part  = expr.next().unwrap();
-                let into = parse_anon_type(n, part);
-                let part  = expr.next().unwrap();
-                let expr = parse_expr(n, part);
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::Cast{
-                    loc: exprloc,
-                    into,
-                    expr: Box::new(expr),
-                })));
-            },
-            Rule::ptr_access | Rule::member_access | Rule::array_access => {
-                let op = match expr.as_rule() {
-                    Rule::ptr_access => "->",
-                    Rule::member_access => ".",
-                    Rule::array_access => "[",
-                    _ => unreachable!(),
-                }.to_string();
-                let mut expr = expr.into_inner();
-
-                let lhs;
-                let e1  = expr.next().unwrap();
-                match e1.as_rule() {
-                    Rule::type_name => {
-                        let loc = Location{
-                            file: n.1.to_string_lossy().into(),
-                            span: e1.as_span(),
-                        };
-                        let name = Name::from(e1.as_str());
-                        lhs = Some(Expression::Name(Typed{
-                            ptr: Vec::new(),
-                            name,
-                            loc,
-                            tail: Tail::None,
-                        }));
-                    },
-                    Rule::termish | Rule::expr  => {
-                        lhs = Some(parse_expr(n, e1));
-                    }
-                    e => panic!("unexpected rule {:?} in access lhs", e),
-                }
-
-                if op == "[" {
-                    let e2  = expr.next().unwrap();
-                    match e2.as_rule() {
-                        Rule::array => (),
-                        _ => { panic!("unexpected rule {:?} in array expr", e2); }
-                    };
-                    let e2 = e2.into_inner().next().unwrap();
-                    let rhs = parse_expr(n, e2);
-                    s_r.push((s_op.take().unwrap(), Box::new(Expression::ArrayAccess{
-                        lhs: Box::new(lhs.unwrap()),
-                        rhs: Box::new(rhs),
-                        loc,
-                    })));
-                } else {
-                    let e2  = expr.next().unwrap();
-                    let rhs = e2.as_str().to_string();
-                    s_r.push((s_op.take().unwrap(), Box::new(Expression::MemberAccess{
-                        lhs: Box::new(lhs.unwrap()),
-                        rhs,
-                        op,
-                        loc,
-                    })));
-                }
-            },
-            Rule::type_name => {
-                let name = Name::from(expr.as_str());
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::Name(Typed{
-                    ptr: Vec::new(),
-                    name,
-                    loc,
-                    tail: Tail::None,
-                }))));
-            },
-            Rule::number_literal | Rule::string_literal | Rule::char_literal => {
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::Literal {
-                    v: expr.as_str().to_string(),
-                    loc,
-                })));
-            },
-            Rule::expr => {
-                s_r.push((s_op.take().unwrap(), Box::new(parse_expr(n, expr))));
-            },
-            Rule::deref | Rule::takeref => {
-                let op = match expr.as_rule() {
-                    Rule::deref   => "*",
-                    Rule::takeref => "&",
-                    _ => unreachable!(),
-                }.to_string();
-
-                let part = expr.into_inner().next().unwrap();
-                let expr = match part.as_rule() {
-                    Rule::type_name => {
-                        let loc = Location{
-                            file: n.1.to_string_lossy().into(),
-                            span: part.as_span(),
-                        };
-                        let name = Name::from(part.as_str());
-                        Expression::Name(Typed{
-                            ptr: Vec::new(),
-                            name,
-                            loc,
-                            tail: Tail::None,
-                        })
-                    },
-                    Rule::termish => {
-                        parse_expr(n, part)
-                    }
-                    e => panic!("unexpected rule {:?} in deref lhs", e),
-                };
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::UnaryPre{
-                    op,
-                    loc,
-                    expr: Box::new(expr),
-                })));
-            },
-            Rule::call => {
-
-                s_r.push((s_op.take().unwrap(), Box::new(parse_call(n, expr))));
-            },
-            Rule::array_init => {
-                let mut fields = Vec::new();
-                let expr = expr.into_inner();
-                for part in expr {
-                    match part.as_rule()  {
-                        Rule::termish => {
-                            let expr = parse_expr(n, part);
-                            fields.push(Box::new(expr));
-                        }
-                        e => panic!("unexpected rule {:?} in struct init", e),
-                    }
-
-                }
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::ArrayInit{
-                    loc,
-                    fields,
-                })));
-            }
-            Rule::struct_init => {
-                let mut expr = expr.into_inner();
-                let part  = expr.next().unwrap();
-                let typloc = Location{
-                    file: n.1.to_string_lossy().into(),
-                    span: part.as_span(),
-                };
-
-                let typed = parse_anon_type(n, part);
-
-                let mut fields = Vec::new();
-                for part in expr {
-                    match part.as_rule()  {
-                        Rule::struct_init_field => {
-                            let mut part = part.into_inner();
-                            let name = part.next().unwrap().as_str().to_string();
-                            let expr = parse_expr(n, part.next().unwrap());
-                            fields.push((name, Box::new(expr)));
-                        }
-                        e => panic!("unexpected rule {:?} in struct init", e),
-                    }
-
-                }
-
-                s_r.push((s_op.take().unwrap(), Box::new(Expression::StructInit{
-                    loc,
-                    typed,
-                    fields,
-                })));
-            }
-            e => panic!("unexpected rule {:?} in expr", e),
+        Expression::Infix {
+            loc,
+            lhs:    Box::new(lhs),
+            rhs:    Box::new(rhs),
+            op:     op.as_str().to_string(),
         }
-    }
+    };
+    climber.climb(decl.into_inner(), |pair|parse_expr_inner(n, pair), reduce)
+}
 
 
+pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rule>) -> Expression {
+    let loc = Location{
+        file: n.1.to_string_lossy().into(),
+        span: expr.as_span(),
+    };
 
-    let ((_,loc), lhs) = s_r.remove(0);
-    if s_r.len() == 0 {
-        return *lhs;
-    }
+    match expr.as_rule() {
+        Rule::unarypre => {
+            let mut expr = expr.into_inner();
+            let part    = expr.next().unwrap();
+            let op      = part.as_str().to_string();
+            let part   = expr.next().unwrap();
+            let iexpr   = match part.as_rule() {
+                Rule::type_name => {
+                    let loc = Location{
+                        file: n.1.to_string_lossy().into(),
+                        span: part.as_span(),
+                    };
+                    let name = Name::from(part.as_str());
+                    Expression::Name(Typed{
+                        ptr: Vec::new(),
+                        name,
+                        loc,
+                        tail: Tail::None,
+                    })
+                },
+                Rule::termish => {
+                    parse_expr(n, part)
+                }
+                e => panic!("unexpected rule {:?} in unary pre lhs", e),
+            };
+            Expression::UnaryPre{
+                expr: Box::new(iexpr),
+                op,
+                loc,
+            }
+        },
+        Rule::unarypost => {
+            let mut expr = expr.into_inner();
+            let part   = expr.next().unwrap();
+            let iexpr   = match part.as_rule() {
+                Rule::type_name => {
+                    let loc = Location{
+                        file: n.1.to_string_lossy().into(),
+                        span: part.as_span(),
+                    };
+                    let name = Name::from(part.as_str());
+                    Expression::Name(Typed{
+                        ptr: Vec::new(),
+                        name,
+                        loc,
+                        tail: Tail::None,
+                    })
+                },
+                Rule::expr => {
+                    parse_expr(n, part)
+                }
+                e => panic!("unexpected rule {:?} in unary post lhs", e),
+            };
 
-    return Expression::InfixOperation {
-        loc,
-        lhs,
-        rhs: s_r,
+            let part    = expr.next().unwrap();
+            let op      = part.as_str().to_string();
+
+            Expression::UnaryPost{
+                expr: Box::new(iexpr),
+                op,
+                loc,
+            }
+        },
+        Rule::cast => {
+            let mut expr = expr.into_inner();
+            let part  = expr.next().unwrap();
+            let into = parse_anon_type(n, part);
+            let part  = expr.next().unwrap();
+            let expr = parse_expr(n, part);
+            Expression::Cast{
+                loc,
+                into,
+                expr: Box::new(expr),
+            }
+        },
+        Rule::ptr_access | Rule::member_access | Rule::array_access => {
+            let op = match expr.as_rule() {
+                Rule::ptr_access => "->",
+                Rule::member_access => ".",
+                Rule::array_access => "[",
+                _ => unreachable!(),
+            }.to_string();
+            let mut expr = expr.into_inner();
+
+            let lhs;
+            let e1  = expr.next().unwrap();
+            match e1.as_rule() {
+                Rule::type_name => {
+                    let loc = Location{
+                        file: n.1.to_string_lossy().into(),
+                        span: e1.as_span(),
+                    };
+                    let name = Name::from(e1.as_str());
+                    lhs = Some(Expression::Name(Typed{
+                        ptr: Vec::new(),
+                        name,
+                        loc,
+                        tail: Tail::None,
+                    }));
+                },
+                Rule::termish | Rule::expr  => {
+                    lhs = Some(parse_expr(n, e1));
+                }
+                e => panic!("unexpected rule {:?} in access lhs", e),
+            }
+
+            if op == "[" {
+                let e2  = expr.next().unwrap();
+                match e2.as_rule() {
+                    Rule::array => (),
+                    _ => { panic!("unexpected rule {:?} in array expr", e2); }
+                };
+                let e2 = e2.into_inner().next().unwrap();
+                let rhs = parse_expr(n, e2);
+                Expression::ArrayAccess{
+                    lhs: Box::new(lhs.unwrap()),
+                    rhs: Box::new(rhs),
+                    loc,
+                }
+            } else {
+                let e2  = expr.next().unwrap();
+                let rhs = e2.as_str().to_string();
+                Expression::MemberAccess{
+                    lhs: Box::new(lhs.unwrap()),
+                    rhs,
+                    op,
+                    loc,
+                }
+            }
+        },
+        Rule::type_name => {
+            let name = Name::from(expr.as_str());
+            Expression::Name(Typed{
+                ptr: Vec::new(),
+                name,
+                loc,
+                tail: Tail::None,
+            })
+        },
+        Rule::number_literal | Rule::string_literal | Rule::char_literal => {
+            Expression::Literal {
+                v: expr.as_str().to_string(),
+                loc,
+            }
+        },
+        Rule::expr => {
+            parse_expr(n, expr)
+        },
+        Rule::deref | Rule::takeref => {
+            let op = match expr.as_rule() {
+                Rule::deref   => "*",
+                Rule::takeref => "&",
+                _ => unreachable!(),
+            }.to_string();
+
+            let part = expr.into_inner().next().unwrap();
+            let expr = match part.as_rule() {
+                Rule::type_name => {
+                    let loc = Location{
+                        file: n.1.to_string_lossy().into(),
+                        span: part.as_span(),
+                    };
+                    let name = Name::from(part.as_str());
+                    Expression::Name(Typed{
+                        ptr: Vec::new(),
+                        name,
+                        loc,
+                        tail: Tail::None,
+                    })
+                },
+                Rule::termish => {
+                    parse_expr(n, part)
+                }
+                e => panic!("unexpected rule {:?} in deref lhs", e),
+            };
+            Expression::UnaryPre{
+                op,
+                loc,
+                expr: Box::new(expr),
+            }
+        },
+        Rule::call => {
+            parse_call(n, expr)
+        },
+        Rule::array_init => {
+            let mut fields = Vec::new();
+            let expr = expr.into_inner();
+            for part in expr {
+                match part.as_rule()  {
+                    Rule::termish => {
+                        let expr = parse_expr(n, part);
+                        fields.push(Box::new(expr));
+                    }
+                    e => panic!("unexpected rule {:?} in struct init", e),
+                }
+
+            }
+            Expression::ArrayInit{
+                loc,
+                fields,
+            }
+        }
+        Rule::struct_init => {
+            let mut expr = expr.into_inner();
+            let part  = expr.next().unwrap();
+            let typloc = Location{
+                file: n.1.to_string_lossy().into(),
+                span: part.as_span(),
+            };
+
+            let typed = parse_anon_type(n, part);
+
+            let mut fields = Vec::new();
+            for part in expr {
+                match part.as_rule()  {
+                    Rule::struct_init_field => {
+                        let mut part = part.into_inner();
+                        let name = part.next().unwrap().as_str().to_string();
+                        let expr = parse_expr(n, part.next().unwrap());
+                        fields.push((name, Box::new(expr)));
+                    }
+                    e => panic!("unexpected rule {:?} in struct init", e),
+                }
+
+            }
+
+            Expression::StructInit{
+                loc,
+                typed,
+                fields,
+            }
+        }
+        e => panic!("unexpected rule {:?} in expr", e),
     }
 }
+
 
 pub(crate) fn parse_statement(
     n: (&'static str, &Path),

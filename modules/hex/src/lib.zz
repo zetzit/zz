@@ -12,6 +12,7 @@ export fn str2bin(char *in, usize bound<in> inlen, u8 mut * mut out, usize bound
     usize mut pos;
     u8 mut idx0;
     u8 mut idx1;
+    *in is safe;
 
     memset(out, 0, outlen);
     for (pos = 0; ((pos < (outlen*2)) && ((pos + 1) < inlen)); pos += 2) {

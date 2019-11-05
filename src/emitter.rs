@@ -984,14 +984,12 @@ impl Emitter {
                 }
                 write!(self.f, "    )").unwrap();
             },
-            ast::Expression::InfixOperation {lhs, rhs,..} => {
+            ast::Expression::Infix {lhs, rhs, op, loc, ..} => {
                 write!(self.f, "(").unwrap();
                 self.emit_expr(lhs);
-                for ((op, loc), rhs) in rhs {
-                    self.emit_loc(&loc);
-                    write!(self.f, " {}", op).unwrap();
-                    self.emit_expr(rhs);
-                }
+                self.emit_loc(&loc);
+                write!(self.f, " {}", op).unwrap();
+                self.emit_expr(rhs);
                 write!(self.f, "  )").unwrap();
             }
             ast::Expression::MemberAccess {loc, lhs, rhs, op} => {

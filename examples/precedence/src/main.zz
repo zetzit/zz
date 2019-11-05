@@ -1,0 +1,12 @@
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+
+export fn main() -> int {
+    usize x = 1 + 3 % 8 + 7 * 8 << 8 / 2;
+    @{{
+        size_t y = 1 + 3 % 8 + 7 * 8 << 8 / 2;
+    }}@
+    printf("%d\n", x);
+    assert(x + 1 == y + 1 && !false);
+    return 0;
+}

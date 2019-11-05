@@ -191,10 +191,11 @@ pub enum Expression {
         name:   Box<Expression>,
         args:   Vec<Box<Expression>>,
     },
-    InfixOperation {
+    Infix {
         loc:    Location,
         lhs:    Box<Expression>,
-        rhs:    Vec<((String, Location), Box<Expression>)>,
+        rhs:    Box<Expression>,
+        op:     String,
     },
     Cast {
         loc:    Location,
@@ -230,7 +231,7 @@ impl Expression {
             Expression::ArrayAccess {loc,..}    => loc,
             Expression::Literal {loc,..}        => loc,
             Expression::Call {loc,..}           => loc,
-            Expression::InfixOperation {loc,..} => loc,
+            Expression::Infix{loc,..}           => loc,
             Expression::Cast {loc,..}           => loc,
             Expression::UnaryPost {loc,..}      => loc,
             Expression::UnaryPre {loc,..}       => loc,

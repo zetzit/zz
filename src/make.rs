@@ -325,10 +325,11 @@ impl Make {
 
         match self.artifact.typ {
             super::project::ArtifactType::Staticlib => {
+                std::fs::create_dir_all(format!("./target/{}/lib/", self.stage)).expect("create target dir");
                 cmd = self.ar.clone();
                 args = vec![
                     "rcs".to_string(),
-                    format!("./target/{}/lib{}.a", self.stage, self.artifact.name)
+                    format!("./target/{}/lib/lib{}.a", self.stage, self.artifact.name)
                 ];
                 args.extend_from_slice(&self.lobjs);
 
@@ -339,23 +340,26 @@ impl Make {
 
             },
             super::project::ArtifactType::Lib => {
+                std::fs::create_dir_all(format!("./target/{}/lib/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-shared".into());
                 args.push("-o".into());
-                args.push(format!("./target/{}/lib{}.so", self.stage, self.artifact.name));
+                args.push(format!("./target/{}/lib/lib{}.so", self.stage, self.artifact.name));
             },
             super::project::ArtifactType::Exe => {
+                std::fs::create_dir_all(format!("./target/{}/bin/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!("./target/{}/{}", self.stage, self.artifact.name));
+                args.push(format!("./target/{}/bin/{}", self.stage, self.artifact.name));
             }
             super::project::ArtifactType::Test  => {
+                std::fs::create_dir_all(format!("./target/{}/bin/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!("./target/{}/{}", self.stage, self.artifact.name));
+                args.push(format!("./target/{}/bin/{}", self.stage, self.artifact.name));
             }
             super::project::ArtifactType::Header  => {
                 panic!("cannot link header yet");
