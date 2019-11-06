@@ -1,0 +1,14 @@
+using <stdio.h>::{printf};
+
+fn print(char*s) {
+    printf("hello %s\n",s);
+}
+
+export fn main() -> int {
+    char* bob = "hello";
+    char  b = bob[0];
+    printf("hello %c\n", b);
+    print(bob);
+    print("mop");
+    return 0;
+}

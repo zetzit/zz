@@ -1,0 +1,64 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    uint a;
+}
+
+
+struct V {
+    A a;
+}
+
+
+
+
+fn peter(V *v)
+{
+    if (v->a).a > 0 &&  (v->a).a < 2  {
+        static_assert((v->a).a  == 1);
+        printf("yep\n");
+    }
+}
+
+
+export fn bob(A mut * a)
+{
+    a->a = 1;
+    static_assert(a->a == 1);
+}
+
+export fn main() -> int {
+
+
+    A mut a = {0};
+    a.a = 3;
+    printf("typeid(a) == %s\n", typeid(a));
+    printf("typeid(a.a) == %s\n", typeid(a.a));
+
+    A mut * b = &a;
+    static_assert(safe(&a));
+    static_assert(safe(b));
+    static_assert(&a == b);
+
+    b->a = 8;
+
+    static_assert(b->a == 8);
+    static_assert(a.a == 8);
+
+    bob(b);
+
+    // must fail
+    //static_assert(a.a == 8);
+
+
+
+    V mut v;
+    (v.a).a = 1;
+
+    peter(&v);
+
+
+    printf("hello structs %d\n", a.a);
+    return 0;
+}

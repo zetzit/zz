@@ -1,0 +1,21 @@
+using <stdio.h>::{printf};
+
+
+fntype add_t(int a, int b) -> int;
+
+
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+fn bla(add_t adder) -> int
+    where safe(adder)
+{
+    return adder(1,2);
+}
+
+export fn main() -> int {
+
+    printf("hello %d\n", bla(add));
+    return 0;
+}

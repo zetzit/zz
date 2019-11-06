@@ -14,6 +14,12 @@ impl Location {
     pub fn line(&self) -> usize {
         self.span.start_pos().line_col().0
     }
+    pub fn builtin() -> Self {
+        Self {
+            file: "prelude".to_string(),
+            span: pest::Span::new(" ",0,1).unwrap(),
+        }
+    }
 }
 
 impl std::fmt::Display for Location {
@@ -27,7 +33,7 @@ pub struct Tags(pub HashMap<String, HashMap<String, Location>>);
 
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Storage {
     Static,
     ThreadLocal,
@@ -51,7 +57,7 @@ pub struct Import {
     pub inline: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Tail {
     None,
     Dynamic,
@@ -60,7 +66,7 @@ pub enum Tail {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Def {
     Static {
         tags:       Tags,
@@ -79,6 +85,13 @@ pub enum Def {
         attr:       Vec<(String, Location)>,
         body:       Block,
         vararg:     bool,
+        callassert: Vec<Expression>,
+        calleffect: Vec<Expression>,
+    },
+    Theory {
+        ret:        Option<AnonArg>,
+        args:       Vec<NamedArg>,
+        attr:       Vec<(String, Location)>,
     },
     Fntype {
         ret:        Option<AnonArg>,
@@ -92,7 +105,7 @@ pub enum Def {
         tail:       Tail,
     },
     Enum {
-        names:      Vec<(String, Option<i64>)>,
+        names:      Vec<(String, Option<u64>)>,
     },
     Macro {
         args:       Vec<String>,
@@ -127,12 +140,128 @@ pub struct Pointer {
     pub tags:   Tags,
 }
 
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Type {
+
+    // usigned int of x bytes
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+
+    // signed int of x bytes
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+
+    // int/uint are c directly emited as c typed. they're compiler specific
+    Int,
+    UInt,
+
+    // size of a pointer
+    ISize,
+    USize,
+
+    // may be just emitted as int
+    Bool,
+
+    // IEEE floating point.
+    F32,
+    F64,
+
+    // untyped literal int,
+    ULiteral,
+    ILiteral,
+
+    Other(Name),
+}
+
+impl Type {
+    pub fn signed(&self) -> bool {
+        match self {
+            Type::U8
+            | Type::U16
+            | Type::U32
+            | Type::U64
+            | Type::U128
+            | Type::UInt
+            | Type::USize
+            | Type::Bool
+            | Type::F32
+            | Type::F64
+            | Type::ULiteral
+            | Type::Other(_)
+                => false,
+
+            Type::I8
+            | Type::I16
+            | Type::I32
+            | Type::I64
+            | Type::I128
+            | Type::Int
+            | Type::ISize
+            | Type::ILiteral
+                => true,
+        }
+    }
+}
+
+
 #[derive(Clone, Debug)]
 pub struct Typed {
-    pub name:   Name,
+    pub t:      Type,
     pub loc:    Location,
     pub ptr:    Vec<Pointer>,
     pub tail:   Tail,
+}
+
+impl PartialEq for Typed{
+    fn eq(&self, other: &Self) -> bool {
+        self.t == other.t
+        && self.ptr.len() == other.ptr.len()
+        && self.tail == other.tail
+    }
+}
+impl std::fmt::Display for Typed{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.t {
+            Type::U8            => write!(f, "u8"),
+            Type::U16           => write!(f, "u16"),
+            Type::U32           => write!(f, "u32"),
+            Type::U64           => write!(f, "u64"),
+            Type::U128          => write!(f, "u128"),
+            Type::I8            => write!(f, "i8"),
+            Type::I16           => write!(f, "i16"),
+            Type::I32           => write!(f, "i32"),
+            Type::I64           => write!(f, "i64"),
+            Type::I128          => write!(f, "i128"),
+            Type::Int           => write!(f, "int"),
+            Type::UInt          => write!(f, "uint"),
+            Type::ISize         => write!(f, "isize"),
+            Type::USize         => write!(f, "usize"),
+            Type::Bool          => write!(f, "bool"),
+            Type::F32           => write!(f, "f32"),
+            Type::F64           => write!(f, "f64"),
+            Type::ILiteral      => write!(f, "iliteral"),
+            Type::ULiteral      => write!(f, "uliteral"),
+            Type::Other(name)   => write!(f, "{}", name),
+        }?;
+
+        for _ in &self.ptr {
+            write!(f, "*")?;
+        }
+        match &self.tail {
+            Tail::None          => (),
+            Tail::Dynamic       => write!(f, "+")?,
+            Tail::Static(v, _)  => write!(f, "+{}", v)?,
+            Tail::Bind(v,_)     => write!(f, "+{}", v)?,
+        }
+        Ok(())
+    }
 }
 
 #[derive(Default, Clone)]
@@ -144,12 +273,12 @@ pub struct Module {
     pub sources:    HashSet<PathBuf>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AnonArg {
     pub typed:    Typed,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NamedArg {
     pub typed:      Typed,
     pub name:       String,
@@ -158,7 +287,7 @@ pub struct NamedArg {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Field {
     pub typed:      Typed,
     pub name:       String,
@@ -167,6 +296,106 @@ pub struct Field {
     pub loc:        Location,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum InfixOperator {
+    Equals,
+    Nequals,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Bitxor,
+    Booland,
+    Boolor,
+    Moreeq,
+    Lesseq,
+    Lessthan,
+    Morethan,
+    Shiftleft,
+    Shiftright,
+    Modulo,
+    Bitand,
+    Bitor,
+}
+
+
+impl InfixOperator {
+    pub fn returns_boolean(&self) -> bool {
+        match self {
+            InfixOperator::Equals
+            | InfixOperator::Nequals
+            | InfixOperator::Booland
+            | InfixOperator::Boolor
+            | InfixOperator::Moreeq
+            | InfixOperator::Lesseq
+            | InfixOperator::Lessthan
+            | InfixOperator::Morethan
+            => true,
+
+            InfixOperator::Add
+            | InfixOperator::Subtract
+            | InfixOperator::Multiply
+            | InfixOperator::Divide
+            | InfixOperator::Bitxor
+            | InfixOperator::Shiftleft
+            | InfixOperator::Shiftright
+            | InfixOperator::Modulo
+            | InfixOperator::Bitand
+            | InfixOperator::Bitor
+            => false,
+        }
+    }
+    pub fn takes_boolean(&self) -> bool {
+        match self {
+            InfixOperator::Equals
+            | InfixOperator::Nequals
+            | InfixOperator::Booland
+            | InfixOperator::Boolor
+            => true,
+
+            InfixOperator::Add
+            | InfixOperator::Subtract
+            | InfixOperator::Multiply
+            | InfixOperator::Divide
+            | InfixOperator::Bitxor
+            | InfixOperator::Shiftleft
+            | InfixOperator::Shiftright
+            | InfixOperator::Modulo
+            | InfixOperator::Bitand
+            | InfixOperator::Bitor
+            | InfixOperator::Moreeq
+            | InfixOperator::Lesseq
+            | InfixOperator::Lessthan
+            | InfixOperator::Morethan
+            => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PrefixOperator {
+    Boolnot,
+    Bitnot,
+    Increment,
+    Decrement,
+    AddressOf,
+    Deref,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PostfixOperator {
+    Increment,
+    Decrement,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AssignOperator {
+    Bitor,
+    Bitand,
+    Add,
+    Sub,
+    Eq,
+}
 
 #[derive(Clone, Debug)]
 pub enum Expression {
@@ -187,15 +416,16 @@ pub enum Expression {
         v:      String,
     },
     Call {
-        loc:    Location,
-        name:   Box<Expression>,
-        args:   Vec<Box<Expression>>,
+        loc:        Location,
+        name:       Box<Expression>,
+        args:       Vec<Box<Expression>>,
+        expanded:   bool,
     },
     Infix {
         loc:    Location,
         lhs:    Box<Expression>,
         rhs:    Box<Expression>,
-        op:     String,
+        op:     InfixOperator,
     },
     Cast {
         loc:    Location,
@@ -204,12 +434,12 @@ pub enum Expression {
     },
     UnaryPost {
         loc:    Location,
-        op:     String,
+        op:     PostfixOperator,
         expr:   Box<Expression>,
     },
     UnaryPre {
         loc:    Location,
-        op:     String,
+        op:     PrefixOperator,
         expr:   Box<Expression>,
     },
     StructInit {
@@ -220,6 +450,10 @@ pub enum Expression {
     ArrayInit {
         loc:        Location,
         fields:     Vec<Box<Expression>>,
+    },
+    StaticError {
+        loc:        Location,
+        message:    String,
     }
 }
 
@@ -237,12 +471,13 @@ impl Expression {
             Expression::UnaryPre {loc,..}       => loc,
             Expression::StructInit {loc,..}     => loc,
             Expression::ArrayInit {loc,..}      => loc,
+            Expression::StaticError{loc,..}     => loc,
         }
     }
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Statement {
     Mark{
         lhs:        Expression,
@@ -261,7 +496,7 @@ pub enum Statement {
     Assign {
         loc:        Location,
         lhs:        Expression,
-        op:         String,
+        op:         AssignOperator,
         rhs:        Expression,
     },
     Expr {
@@ -292,16 +527,18 @@ pub enum Statement {
         array:      Option<Option<Expression>>,
         assign:     Option<Expression>,
     },
+    While {
+        expr:       Expression,
+        body:       Block,
+    },
     For {
         e1:         Vec<Box<Statement>>,
-        e2:         Vec<Box<Statement>>,
+        e2:         Option<Expression>,
         e3:         Vec<Box<Statement>>,
         body:       Block,
     },
-    Cond {
-        op:         String,
-        expr:       Option<Expression>,
-        body:       Block,
+    If {
+        branches:   Vec<(Option<Expression>, Block)>,
     },
     Block(Box<Block>),
     Unsafe(Box<Block>),
@@ -311,7 +548,7 @@ pub enum Statement {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Block {
     pub end:        Location,
     pub statements: Vec<Statement>,

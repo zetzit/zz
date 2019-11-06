@@ -7,6 +7,7 @@ use std::io::{Write, Read};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use super::name::Name;
+use super::parser::emit_error;
 
 
 pub struct CFile {
@@ -51,11 +52,16 @@ impl Emitter {
     pub fn new(project: &Project, stage: make::Stage , module: flatten::Module, header: bool) -> Self {
 
         let (cxx, p) = outname(project, &stage, &module, header);
-        let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
+        let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
         let casedir = format!("target/{}/testcases/{}", stage, module.name);
         std::fs::remove_dir_all(&casedir).ok();
         std::fs::create_dir_all(&casedir).unwrap();
+
+
+        write!(f, "#include <stdint.h>\n").unwrap();
+        write!(f, "#include <stddef.h>\n").unwrap();
+        write!(f, "#include <stdbool.h>\n").unwrap();
 
         Emitter{
             cxx,
@@ -88,14 +94,42 @@ impl Emitter {
     }
 
     fn to_local_typed_name(&self, name: &ast::Typed) -> String {
-        let mut s = self.to_local_name(&name.name);
-        match &name.tail {
-            ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
-            ast::Tail::Static(v,_) => {
-                s = format!("{}_{}", s, v);
+        match name.t {
+            ast::Type::U8   => "uint8_t".to_string(),
+            ast::Type::U16  => "uint16_t".to_string(),
+            ast::Type::U32  => "uint32_t".to_string(),
+            ast::Type::U64  => "uint64_t".to_string(),
+            ast::Type::U128 => "uint128_t".to_string(),
+            ast::Type::I8   => "int8_t".to_string(),
+            ast::Type::I16  => "int16_t".to_string(),
+            ast::Type::I32  => "int32_t".to_string(),
+            ast::Type::I64  => "int64_t".to_string(),
+            ast::Type::I128 => "int128_t".to_string(),
+            ast::Type::Int  => "int".to_string(),
+            ast::Type::UInt => "unsigned int".to_string(),
+            ast::Type::ISize=> "intptr_t".to_string(),
+            ast::Type::USize=> "uintptr_t".to_string(),
+            ast::Type::Bool => "bool".to_string(),
+            ast::Type::F32  => "float".to_string(),
+            ast::Type::F64  => "double".to_string(),
+            ast::Type::Other(ref n)   => {
+                let mut s = self.to_local_name(&n);
+                match &name.tail {
+                    ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
+                    ast::Tail::Static(v,_) => {
+                        s = format!("{}_{}", s, v);
+                    }
+                }
+                s
+            }
+            ast::Type::ILiteral | ast::Type::ULiteral => {
+                super::parser::emit_error(
+                    "ICE: untyped ended up in emitter",
+                    &[(name.loc.clone(), format!("this should have been resolved earlier"))]
+                    );
+                std::process::exit(9);
             }
         }
-        s
     }
     fn to_local_name(&self, s: &Name) -> String {
         if !s.is_absolute() {
@@ -184,6 +218,8 @@ impl Emitter {
                 }
                 ast::Def::Fntype{..} => {
                     self.emit_fntype(&d);
+                }
+                ast::Def::Theory{..} => {
                 }
                 ast::Def::Testcase {..} => {
                     self.emit_testcase(&d);
@@ -539,7 +575,7 @@ impl Emitter {
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {
         let (ret, args, _body, vararg, attr) = match &ast.def {
-            ast::Def::Function{ret, args, body, vararg, attr} => (ret, args, body, *vararg, attr),
+            ast::Def::Function{ret, args, body, vararg, attr, ..} => (ret, args, body, *vararg, attr),
             _ => unreachable!(),
         };
 
@@ -644,7 +680,7 @@ impl Emitter {
 
     pub fn emit_def(&mut self, ast: &ast::Local) {
         let (ret, args, body, vararg, attr) = match &ast.def {
-            ast::Def::Function{ret, args, body, vararg, attr} => (ret, args, body, *vararg, attr),
+            ast::Def::Function{ret, args, body, vararg, attr, ..} => (ret, args, body, *vararg, attr),
             _ => unreachable!(),
         };
 
@@ -761,19 +797,8 @@ impl Emitter {
                 }
                 write!(self.f, ";").unwrap();
 
-                let mut first = true;
-                for expr in e2 {
-                    if first {
-                        first = false;
-                    } else {
-                        write!(self.f, ",").unwrap();
-                    }
-                    if self.inside_macro {
-                        write!(self.f, "\\\n").unwrap();
-                    } else {
-                        write!(self.f, "\n").unwrap();
-                    }
-                    self.emit_statement(expr);
+                if let Some(expr) = e2 {
+                    self.emit_expr(expr);
                 }
                 write!(self.f, ";").unwrap();
 
@@ -795,20 +820,49 @@ impl Emitter {
                 self.emit_zblock(body, true);
                 false
             },
-            ast::Statement::Cond{expr, body, op}  => {
-                write!(self.f, "  {} ", op).unwrap();
-                if let Some(expr) = expr {
-                    write!(self.f, "(").unwrap();
-                    self.emit_expr(expr);
-                    write!(self.f, ")").unwrap();
-                }
+            ast::Statement::While{expr, body}  => {
+                write!(self.f, "while (").unwrap();
+                self.emit_expr(expr);
+                write!(self.f, ")").unwrap();
                 self.emit_zblock(body, true);
                 false
             },
-            ast::Statement::Assign{lhs, rhs, op, loc}  => {
+            ast::Statement::If{branches} => {
+                if branches.len() < 1 {
+                    return false;
+                }
+                let mut branches = branches.iter();
+
+                write!(self.f, "if (").unwrap();
+                let ifc = branches.next().unwrap();
+                self.emit_expr(ifc.0.as_ref().unwrap());
+                write!(self.f, ")").unwrap();
+                self.emit_zblock(&ifc.1, true);
+
+                for branch in branches {
+                    if let Some(expr) = &branch.0 {
+                        write!(self.f, " else if (").unwrap();
+                        self.emit_expr(expr);
+                        write!(self.f, ")").unwrap();
+                    } else {
+                        write!(self.f, " else ").unwrap();
+                    }
+                    self.emit_zblock(&branch.1, true);
+                }
+
+                false
+
+            }
+            ast::Statement::Assign{lhs, rhs, loc, op}  => {
                 self.emit_loc(&loc);
                 self.emit_expr(lhs);
-                write!(self.f, "  {} ", op).unwrap();
+                write!(self.f, " {} ", match op {
+                    ast::AssignOperator::Bitor  => "|=",
+                    ast::AssignOperator::Bitand => "&=",
+                    ast::AssignOperator::Add    => "+=",
+                    ast::AssignOperator::Sub    => "-=",
+                    ast::AssignOperator::Eq     => "=" ,
+                }).unwrap();
                 self.emit_expr(rhs);
                 true
             }
@@ -943,12 +997,23 @@ impl Emitter {
                 write!(self.f, "(").unwrap();
                 self.emit_loc(&loc);
                 self.emit_expr(expr);
-                write!(self.f, "{})", op).unwrap();
+                write!(self.f, " {}", match op {
+                    ast::PostfixOperator::Increment    =>  "++",
+                    ast::PostfixOperator::Decrement    =>  "--",
+                }).unwrap();
+                write!(self.f, ")").unwrap();
             },
             ast::Expression::UnaryPre{expr, loc, op} => {
                 write!(self.f, "(").unwrap();
                 self.emit_loc(&loc);
-                write!(self.f, "{}", op).unwrap();
+                write!(self.f, " {}", match op {
+                    ast::PrefixOperator::Boolnot   =>  "!",
+                    ast::PrefixOperator::Bitnot    =>  "~",
+                    ast::PrefixOperator::Increment =>  "++",
+                    ast::PrefixOperator::Decrement =>  "--",
+                    ast::PrefixOperator::AddressOf =>  "&",
+                    ast::PrefixOperator::Deref     =>  "*",
+                }).unwrap();
                 self.emit_expr(expr);
                 write!(self.f, ")").unwrap();
             },
@@ -968,7 +1033,7 @@ impl Emitter {
                 self.emit_loc(&loc);
                 write!(self.f, "    {}", v).unwrap();
             }
-            ast::Expression::Call { loc, name, args} => {
+            ast::Expression::Call { loc, name, args, ..} => {
                 self.emit_loc(&loc);
                 self.emit_expr(&name);
                 write!(self.f, "(").unwrap();
@@ -988,7 +1053,26 @@ impl Emitter {
                 write!(self.f, "(").unwrap();
                 self.emit_expr(lhs);
                 self.emit_loc(&loc);
-                write!(self.f, " {}", op).unwrap();
+                write!(self.f, " {}", match op {
+                    ast::InfixOperator::Equals      =>  "==",
+                    ast::InfixOperator::Nequals     =>  "!=",
+                    ast::InfixOperator::Add         =>  "+" ,
+                    ast::InfixOperator::Subtract    =>  "-" ,
+                    ast::InfixOperator::Multiply    =>  "*" ,
+                    ast::InfixOperator::Divide      =>  "/" ,
+                    ast::InfixOperator::Bitxor      =>  "^" ,
+                    ast::InfixOperator::Booland     =>  "&&",
+                    ast::InfixOperator::Boolor      =>  "||",
+                    ast::InfixOperator::Moreeq      =>  ">=",
+                    ast::InfixOperator::Lesseq      =>  "<=",
+                    ast::InfixOperator::Lessthan    =>  "<" ,
+                    ast::InfixOperator::Morethan    =>  ">" ,
+                    ast::InfixOperator::Shiftleft   =>  "<<",
+                    ast::InfixOperator::Shiftright  =>  ">>",
+                    ast::InfixOperator::Modulo      =>  "%" ,
+                    ast::InfixOperator::Bitand      =>  "&" ,
+                    ast::InfixOperator::Bitor       =>  "|" ,
+                }).unwrap();
                 self.emit_expr(rhs);
                 write!(self.f, "  )").unwrap();
             }
@@ -1003,6 +1087,12 @@ impl Emitter {
                 write!(self.f, " [ ").unwrap();
                 self.emit_expr(rhs);
                 write!(self.f, "]").unwrap();
+            }
+            ast::Expression::StaticError{loc, message} => {
+                emit_error(format!("{}", message), &[
+                    (loc.clone(), "here")
+                ]);
+                std::process::exit(9);
             }
         }
     }

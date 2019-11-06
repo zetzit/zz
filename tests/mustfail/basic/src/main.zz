@@ -1,0 +1,4 @@
+export fn main() -> int {
+    printf("hello basic\n");
+    return 0;
+}

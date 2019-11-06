@@ -335,7 +335,7 @@ impl Make {
 
                 if BUILD_RS.load(Ordering::Relaxed) {
                     println!("\n\ncargo:rustc-link-lib=static={}\n\n", self.artifact.name);
-                    println!("\n\ncargo:rustc-link-search=native={}/target/{}\n\n", std::env::current_dir().unwrap().display(), self.variant);
+                    println!("\n\ncargo:rustc-link-search=native={}/target/{}\n\n", std::env::current_dir().unwrap().display(), self.stage);
                 }
 
             },

@@ -1,6 +1,0 @@
-using example::aye;
-
-export fn main() -> int {
-    aye::yoo();
-    return 0;
-}

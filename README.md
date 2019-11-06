@@ -3,10 +3,13 @@
 Drunk Octopus - It compiles, ship it
 ====================================
 
-ZZ (drunk octopus) is a dialect of C, inspired by rust
+ZZ (drunk octopus) is a formally provable dialect of C, inspired by rust
 
 It's main use case is embedded systems, where we still program C out of desperation, because nothing else actually works.
 You can also use it to build cross platform libraries. The build and linking concept is biased towards exporting a clean api.
+
+A major innovative feature is that all code is formally proven using math on symbolic execution.
+You can extract the mathematical expressions and reuse them in other proving tools or go through it manually if you're a math nerd.
 
 [![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
 
@@ -16,7 +19,6 @@ You can also use it to build cross platform libraries. The build and linking con
 cd examples/hello
 cargo run run
 ```
-
 
 ### the basic ideas
 
@@ -228,52 +230,84 @@ Coincidentally this is roughly equivalent to Rust, so rust devs should feel righ
 Even if not, you will quickly learn how pointer tags works by following the compiler errors.
 
 
-#### annotations
+#### where
 
-ZZ has type annotations.
-They are key-value pairs (with default empty value) that are attached to types and local names used throughout compilation and type checking,
-but they will never be emitted into the C interface.
+ZZ requires that all memory access is mathematically proven to be defined.
+Defined as in the opposite of "undefined behaviour" in the C specification.
+In other words, undefined behaviour is not allowed in ZZ.
 
-examples of built-in predicares are "mutable", "initialized" and "safe"
+You will quite often be told that by the compiler that something is not provable,
+like indexing into an array.
 
-A variable that is not marked as "initialized", cannot be used in most contexts, except as left hand side in an assignment.
 
-A pointer that is not safe, cannot be dereferenced.
-
-Because automatic annotation is still in early stage, you will do manual annotation alot using the 'is' keyword.
+this is not ok:
 
 ```C
-fn bla(A mut* a) {
-    if (a != 0) {
-        a is safe;
-        a->a = 3;
+fn bla(int * a) {
+    a[2];
+}
+```
+
+you must tell the compiler that accessing the array at position 2 is defined. quick fix for this one:
+
+```C
+fn bla(int * a)
+    where len(a) == 3
+{
+    a[2];
+}
+```
+
+this will compile. its not a very useful function tho, because trying to use it in any context where the array is not len 3 will not be allowed.
+here's a nicer example:
+
+```C
+fn bla(int * a, int l)
+    where len(a) >= l
+{
+    if l >= 3 {
+        a[2];
     }
 }
 ```
 
-#### typestate
 
-we can use annotations to define states for types, which neatly lets you define which calls are legal on which
+thanks to the underlying SMT solver, the ZZ symbolic executor will know that a[2] is only executed in the case where len(a) >= l >= 3, so it is defined.
+
+
+### theory
+
+we can use annotations to define states for types, which neatly lets you define which calls are legal on whic
 type at a given time in the program without ANY runtime code.
 
 
+
 ```C++
-fn open(int set<open> mut* a) {
+
+thery is_open(int*) -> bool;
+
+fn open(int mut* a)
+    model is_open(a)
+{
+    static_attest(is_open(a));
     *a = 1;
 }
 
-fn read(int require<open> mut* a) -> int {
+fn read(int require<open> mut* a)
+    where is_open(a)
+    model is_open(a)
+{
     return *a;
 }
 
-fn close(int unset<open> mut* a) {
+fn close(int mut* a)
+{
     *a = 0;
 }
 ```
 
 the above example defines a type state transition that is legal: open -> read -> close
 any other combination will lead to a compile error, such as read before open.
-Also not calling close while dropping a will lead to the lifetime checker emitting a warning.
 
 #### fntype
 

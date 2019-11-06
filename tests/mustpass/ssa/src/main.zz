@@ -1,0 +1,31 @@
+using <stdio.h>::{printf};
+
+fn foo(uint b) -> uint
+{
+    return b + 3;
+}
+
+export fn main(int argc, char ** argv) -> int {
+
+    uint mut x = 1;
+    static_assert(x == 1);
+    uint mut b = x++;
+    static_assert(b == 1);
+    static_assert(x == 2);
+
+
+    for (int mut i = 0; i < 10; i++) {
+        static_assert(i < 10);
+    }
+
+    static_assert(b == 1);
+
+
+
+
+
+    uint y = foo(b);
+    printf("%u\n", y);
+
+    return 0;
+}

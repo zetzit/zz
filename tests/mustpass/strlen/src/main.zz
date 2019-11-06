@@ -1,0 +1,24 @@
+using <stdio.h>::{printf};
+using <string.h>::{strlen};
+
+
+
+
+
+fn bob(char * s, usize l)
+    where len(s) >= l
+{
+    1;
+}
+
+export fn main() -> int {
+
+
+    char * s = "asdaksmdaklsmdaklsmdklad";
+    usize l = (usize)strlen(s);
+    static_attest(len(s) == l);
+    bob(s, l);
+
+    printf("hello strlen\n");
+    return 0;
+}

@@ -1,26 +1,30 @@
 using <stdio.h>::{printf};
 using <stdlib.h>::{getenv, atoi};
-using error;
+using err;
 
 pub struct Child {
     int in;
     int out;
 }
 
-export fn child(error::Error mut set<error> *err) -> Child {
-    char *fd_out_ch = getenv("AXON_FD_OUT");
-    if !fd_out_ch {
-        error::fail(err, 9, "AXON_FD_OUT missing. executable needs to be spawned from an axons host");
+export fn child(err::Err+et mut *e) -> Child
+    where err::checked(*e)
+{
+    char *fd_out_ch = (char*)getenv("AXON_FD_OUT");
+    if fd_out_ch == 0{
+        err::fail(e, 9, "AXON_FD_OUT missing. executable needs to be spawned from an axons host");
         return Child {.in = 0, .out = 0};
     }
-    int fd_out  = atoi(fd_out_ch);
+    static_attest(err::checked(*e));
 
-    char *fd_in_ch = getenv("AXON_FD_IN");
-    if !fd_in_ch {
-        error::fail(err, 9, "AXON_FD_IN missing. executable needs to be spawned from an axons host");
+    int fd_out  = as<int>(atoi(fd_out_ch));
+
+    char *fd_in_ch = (char*)getenv("AXON_FD_IN");
+    if fd_in_ch == 0{
+        err::fail(e, 9, "AXON_FD_IN missing. executable needs to be spawned from an axons host");
         return Child {.in = 0, .out = 0};
     }
-    int fd_in  = atoi(fd_in_ch);
+    int fd_in  = as<int>(atoi(fd_in_ch));
     fd_in is safe;
     fd_out is safe;
     return Child { .in = fd_in, .out = fd_out};

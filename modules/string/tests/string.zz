@@ -18,13 +18,13 @@ export fn main() -> int {
 
     for (;;) {
         char mut * mut line = 0;
-        size_t mut l = 0;
-        int nread = getline(&line, &l, stdin);
+        usize mut l = 0;
+        int nread = as<int>(getline(&line, &l, stdin));
         if nread < 1 {
             free(line);
             break;
         }
-        line is safe;
+        static_attest(safe(line));
         string::append(&s, line);
         free(line);
     }

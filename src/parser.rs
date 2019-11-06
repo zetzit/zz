@@ -115,7 +115,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 });
 
             }
-            Rule::function | Rule::fntype => {
+            Rule::function | Rule::fntype | Rule::theory => {
                 let loc = Location{
                     file: n.to_string_lossy().into(),
                     span: decl.as_span(),
@@ -128,6 +128,8 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut body = None;
                 let mut attr = Vec::new();
                 let mut vararg = false;
+                let mut callassert = Vec::new();
+                let mut calleffect = Vec::new();
                 let mut vis = Visibility::Object;
 
                 for part in decl {
@@ -176,6 +178,14 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                                 }
                             }
                         },
+                        Rule::call_assert => {
+                            let part = part.into_inner().next().unwrap();
+                            callassert.push(parse_expr((file_str, n), part));
+                        },
+                        Rule::call_effect => {
+                            let part = part.into_inner().next().unwrap();
+                            calleffect.push(parse_expr((file_str, n), part));
+                        },
                         Rule::block => {
                             body = Some(parse_block((file_str, n), features.clone(), part));
                         },
@@ -195,9 +205,23 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                                 args,
                                 body: body.unwrap(),
                                 vararg,
+                                callassert,
+                                calleffect,
                             }
                         });
                     }
+                    Rule::theory => {
+                        module.locals.push(Local{
+                            name,
+                            vis,
+                            loc,
+                            def:Def::Theory{
+                                ret,
+                                attr,
+                                args,
+                            }
+                        });
+                    },
                     Rule::fntype => {
                         module.locals.push(Local{
                             name,
@@ -251,7 +275,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                                             span: part.as_span(),
                                         };
                                         emit_error(
-                                            "enums must be integer literals",
+                                            "enums must be positive integer literals",
                                             &[(loc.clone(), format!("{}", e))]
                                         );
                                         std::process::exit(9);
@@ -560,6 +584,11 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
         _ => { panic!("parse_expr call called with {:?}", decl); }
     };
 
+    let loc = Location{
+        file: n.1.to_string_lossy().into(),
+        span: decl.as_span(),
+    };
+
     let climber = PrecClimber::new(vec![
         //12
         Operator::new(Rule::boolor, Assoc::Left),
@@ -588,16 +617,37 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
     ]);
 
     let reduce = |lhs: Expression, op: pest::iterators::Pair<'static, Rule>, rhs: Expression | {
-        let loc = Location{
-            file: n.1.to_string_lossy().into(),
-            span: op.as_span(),
-        };
 
         Expression::Infix {
-            loc,
+            loc:    loc.clone(),
             lhs:    Box::new(lhs),
             rhs:    Box::new(rhs),
-            op:     op.as_str().to_string(),
+            op:     match op.as_rule() {
+                Rule::equals    => crate::ast::InfixOperator::Equals,
+                Rule::nequals   => crate::ast::InfixOperator::Nequals,
+                Rule::add       => crate::ast::InfixOperator::Add,
+                Rule::subtract  => crate::ast::InfixOperator::Subtract,
+                Rule::multiply  => crate::ast::InfixOperator::Multiply,
+                Rule::divide    => crate::ast::InfixOperator::Divide,
+                Rule::bitxor    => crate::ast::InfixOperator::Bitxor,
+                Rule::booland   => crate::ast::InfixOperator::Booland,
+                Rule::boolor    => crate::ast::InfixOperator::Boolor,
+                Rule::moreeq    => crate::ast::InfixOperator::Moreeq,
+                Rule::lesseq    => crate::ast::InfixOperator::Lesseq,
+                Rule::lessthan  => crate::ast::InfixOperator::Lessthan,
+                Rule::morethan  => crate::ast::InfixOperator::Morethan,
+                Rule::shiftleft => crate::ast::InfixOperator::Shiftleft,
+                Rule::shiftright=> crate::ast::InfixOperator::Shiftright,
+                Rule::modulo    => crate::ast::InfixOperator::Modulo,
+                Rule::bitand    => crate::ast::InfixOperator::Bitand,
+                Rule::bitor     => crate::ast::InfixOperator::Bitor,
+                _ => {
+                    emit_error("ICE: unexpected operator", &[
+                        (loc.clone(), "in this infix")
+                    ]);
+                    std::process::exit(9);
+                }
+            },
         }
     };
     climber.climb(decl.into_inner(), |pair|parse_expr_inner(n, pair), reduce)
@@ -614,7 +664,18 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         Rule::unarypre => {
             let mut expr = expr.into_inner();
             let part    = expr.next().unwrap();
-            let op      = part.as_str().to_string();
+            let op      = match part.as_rule() {
+                Rule::boolnot   => crate::ast::PrefixOperator::Boolnot,
+                Rule::bitnot    => crate::ast::PrefixOperator::Bitnot,
+                Rule::increment => crate::ast::PrefixOperator::Increment,
+                Rule::decrement => crate::ast::PrefixOperator::Decrement,
+                _ => {
+                    emit_error("ICE: unexpected operator", &[
+                               (loc.clone(), "in this expr")
+                    ]);
+                    std::process::exit(9);
+                }
+            };
             let part   = expr.next().unwrap();
             let iexpr   = match part.as_rule() {
                 Rule::type_name => {
@@ -624,8 +685,8 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                     };
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed{
+                        t:   Type::Other(name),
                         ptr: Vec::new(),
-                        name,
                         loc,
                         tail: Tail::None,
                     })
@@ -652,8 +713,8 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                     };
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed{
+                        t:   Type::Other(name),
                         ptr: Vec::new(),
-                        name,
                         loc,
                         tail: Tail::None,
                     })
@@ -665,11 +726,20 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
             };
 
             let part    = expr.next().unwrap();
-            let op      = part.as_str().to_string();
+            let op      = match part.as_rule() {
+                Rule::increment => crate::ast::PostfixOperator::Increment,
+                Rule::decrement => crate::ast::PostfixOperator::Decrement,
+                _ => {
+                    emit_error("ICE: unexpected operator", &[
+                               (loc.clone(), "in this expr")
+                    ]);
+                    std::process::exit(9);
+                }
+            };
 
             Expression::UnaryPost{
-                expr: Box::new(iexpr),
                 op,
+                expr: Box::new(iexpr),
                 loc,
             }
         },
@@ -704,8 +774,8 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                     };
                     let name = Name::from(e1.as_str());
                     lhs = Some(Expression::Name(Typed{
+                        t:   Type::Other(name),
                         ptr: Vec::new(),
-                        name,
                         loc,
                         tail: Tail::None,
                     }));
@@ -743,13 +813,13 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         Rule::type_name => {
             let name = Name::from(expr.as_str());
             Expression::Name(Typed{
+                t:   Type::Other(name),
                 ptr: Vec::new(),
-                name,
                 loc,
                 tail: Tail::None,
             })
         },
-        Rule::number_literal | Rule::string_literal | Rule::char_literal => {
+        Rule::number_literal | Rule::string_literal | Rule::char_literal | Rule::bool_literal=> {
             Expression::Literal {
                 v: expr.as_str().to_string(),
                 loc,
@@ -760,10 +830,10 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         },
         Rule::deref | Rule::takeref => {
             let op = match expr.as_rule() {
-                Rule::deref   => "*",
-                Rule::takeref => "&",
+                Rule::deref   => crate::ast::PrefixOperator::Deref,
+                Rule::takeref => crate::ast::PrefixOperator::AddressOf,
                 _ => unreachable!(),
-            }.to_string();
+            };
 
             let part = expr.into_inner().next().unwrap();
             let expr = match part.as_rule() {
@@ -774,8 +844,8 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                     };
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed{
+                        t:   Type::Other(name),
                         ptr: Vec::new(),
-                        name,
                         loc,
                         tail: Tail::None,
                     })
@@ -850,8 +920,11 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
 pub(crate) fn parse_statement(
     n: (&'static str, &Path),
     features: HashMap<String, bool>,
-    stm: pest::iterators::Pair<'static, Rule>
-) -> Statement  {
+    stm: pest::iterators::Pair<'static, Rule>,
+    into: &mut Vec<Statement>,
+    current_if_statement: &mut Option<usize>,
+) {
+
     let loc = Location{
         file: n.1.to_string_lossy().into(),
         span: stm.as_span(),
@@ -870,41 +943,41 @@ pub(crate) fn parse_statement(
             let key   = part.next().unwrap().as_str().into();
             let value = part.next().map(|s|s.as_str().into()).unwrap_or(String::new());
 
-            Statement::Mark{
+            into.push(Statement::Mark{
                 loc,
                 lhs,
                 key,
                 value,
-            }
+            });
         },
         Rule::label => {
             let mut stm = stm.into_inner();
             let label   = stm.next().unwrap().as_str().to_string();
-            Statement::Label{
+            into.push(Statement::Label{
                 loc,
                 label,
-            }
+            });
         },
         Rule::continue_stm => {
-            Statement::Continue{
+            into.push(Statement::Continue{
                 loc,
-            }
+            });
         },
         Rule::break_stm => {
-            Statement::Break{
+            into.push(Statement::Break{
                 loc,
-            }
+            });
         },
         Rule::goto_stm => {
             let mut stm = stm.into_inner();
             let label   = stm.next().unwrap().as_str().to_string();
-            Statement::Goto{
+            into.push(Statement::Goto{
                 loc,
                 label,
-            }
+            });
         },
         Rule::block => {
-            Statement::Block(Box::new(parse_block(n, features, stm)))
+            into.push(Statement::Block(Box::new(parse_block(n, features, stm))));
         },
         Rule::return_stm  => {
             let mut stm = stm.into_inner();
@@ -918,29 +991,17 @@ pub(crate) fn parse_statement(
             } else {
                 None
             };
-            Statement::Return{
+            into.push(Statement::Return{
                 expr,
                 loc: loc.clone(),
-            }
+            });
         },
         Rule::expr => {
             let expr = parse_expr(n, stm);
-            Statement::Expr{
+            into.push(Statement::Expr{
                 expr,
                 loc: loc.clone(),
-            }
-        }
-        Rule::if_stm => {
-            let mut stm = stm.into_inner();
-            let part    = stm.next().unwrap();
-            let expr    = parse_expr(n, part);
-            let part    = stm.next().unwrap();
-            let body    = parse_block(n, features, part);
-            Statement::Cond{
-                op: "if".to_string(),
-                expr: Some(expr),
-                body,
-            }
+            });
         }
         Rule::while_stm => {
             let mut stm = stm.into_inner();
@@ -948,11 +1009,21 @@ pub(crate) fn parse_statement(
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
             let body    = parse_block(n, features, part);
-            Statement::Cond{
-                op: "while".to_string(),
-                expr: Some(expr),
+            into.push(Statement::While {
+                expr,
                 body,
-            }
+            });
+        }
+        Rule::if_stm => {
+            let mut stm = stm.into_inner();
+            let part    = stm.next().unwrap();
+            let expr    = parse_expr(n, part);
+            let part    = stm.next().unwrap();
+            let body    = parse_block(n, features, part);
+            *current_if_statement = Some(into.len());
+            into.push(Statement::If{
+                branches: vec![(Some(expr),body)],
+            });
         }
         Rule::elseif_stm => {
             let mut stm = stm.into_inner();
@@ -960,21 +1031,38 @@ pub(crate) fn parse_statement(
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
             let body    = parse_block(n, features, part);
-            Statement::Cond{
-                op: "else if".to_string(),
-                expr: Some(expr),
-                body,
+            match *current_if_statement {
+                None => {
+                    emit_error("else without if", &[
+                        (loc.clone(), "this else branch does not follow an if condition")
+                    ]);
+                    std::process::exit(9);
+                }
+                Some(c) => {
+                    if let Statement::If{ref mut branches} = into[c] {
+                        branches.push((Some(expr), body));
+                    }
+                }
             }
         }
         Rule::else_stm => {
             let mut stm = stm.into_inner();
             let part    = stm.next().unwrap();
             let body    = parse_block(n, features, part);
-            Statement::Cond{
-                op: "else".to_string(),
-                expr: None,
-                body,
+            match *current_if_statement {
+                None => {
+                    emit_error("else without if", &[
+                        (loc.clone(), "this else branch does not follow an if condition")
+                    ]);
+                    std::process::exit(9);
+                }
+                Some(c) => {
+                    if let Statement::If{ref mut branches} = into[c] {
+                        branches.push((None, body));
+                    }
+                }
             }
+            *current_if_statement = None;
         }
         Rule::for_stm => {
 
@@ -983,7 +1071,7 @@ pub(crate) fn parse_statement(
             let stm = stm.into_inner();
 
             let mut expr1 = Vec::new();
-            let mut expr2 = Vec::new();
+            let mut expr2 = None;
             let mut expr3 = Vec::new();
             let mut block = None;
 
@@ -998,24 +1086,30 @@ pub(crate) fn parse_statement(
                         block = Some(parse_block(n, features.clone(), part));
                     },
                     _ if cur == 1 => {
-                        expr1.push(Box::new(parse_statement(n, features.clone(), part)));
+                        let mut cif = None;
+                        let mut vr = Vec::new();
+                        parse_statement(n, features.clone(), part, &mut vr, &mut cif);
+                        expr1.push(Box::new(vr.remove(0)));
                     },
                     _ if cur == 2 => {
-                        expr2.push(Box::new(parse_statement(n, features.clone(), part)));
+                        expr2 = Some(parse_expr(n, part));
                     },
                     _ if cur == 3 => {
-                        expr3.push(Box::new(parse_statement(n, features.clone(), part)));
+                        let mut cif = None;
+                        let mut vr = Vec::new();
+                        parse_statement(n, features.clone(), part, &mut vr, &mut cif);
+                        expr3.push(Box::new(vr.remove(0)));
                     },
                     e => panic!("unexpected rule {:?} in for ", e),
                 }
             }
 
-            Statement::For{
+            into.push(Statement::For{
                 e1:     expr1,
                 e2:     expr2,
                 e3:     expr3,
                 body:   block.unwrap(),
-            }
+            });
         }
         Rule::vardecl => {
             let stm = stm.into_inner();
@@ -1044,14 +1138,14 @@ pub(crate) fn parse_statement(
 
             let TypedName{typed, name, tags} = typed.unwrap();
 
-            Statement::Var{
+            into.push(Statement::Var{
                 loc: loc.clone(),
                 typed,
                 name,
                 tags,
                 array,
                 assign,
-            }
+            })
         }
         Rule::assign => {
             let stm = stm.into_inner();
@@ -1065,7 +1159,19 @@ pub(crate) fn parse_statement(
                         lhs = Some(parse_expr(n, part));
                     }
                     Rule::assignop => {
-                        op = Some(part.as_str().to_string());
+                        op = Some(match part.into_inner().next().unwrap().as_rule() {
+                            Rule::assignbitor  => AssignOperator::Bitor,
+                            Rule::assignbitand => AssignOperator::Bitand,
+                            Rule::assignadd    => AssignOperator::Add,
+                            Rule::assignsub    => AssignOperator::Sub,
+                            Rule::assigneq     => AssignOperator::Eq,
+                            _ => {
+                                emit_error("ICE: unexpected operator", &[
+                                    (loc.clone(), "in this assign expr")
+                                ]);
+                                std::process::exit(9);
+                            }
+                        });
                     }
                     Rule::expr if rhs.is_none() => {
                         rhs = Some(parse_expr(n, part));
@@ -1074,12 +1180,12 @@ pub(crate) fn parse_statement(
                 }
             }
 
-            Statement::Assign{
+            into.push(Statement::Assign{
                 loc:    loc.clone(),
                 lhs:    lhs.unwrap(),
                 rhs:    rhs.unwrap(),
                 op:     op.unwrap(),
-            }
+            })
         }
         Rule::switch_stm => {
             let mut stm  = stm.into_inner();
@@ -1106,15 +1212,15 @@ pub(crate) fn parse_statement(
                 }
             }
 
-            Statement::Switch {
+            into.push(Statement::Switch {
                 default,
                 loc,
                 expr,
                 cases,
-            }
+            })
         },
         Rule::unsafe_block => {
-            Statement::Unsafe(Box::new(parse_block(n, features, stm.into_inner().next().unwrap())))
+            into.push(Statement::Unsafe(Box::new(parse_block(n, features, stm.into_inner().next().unwrap()))));
         },
         Rule::cblock => {
             let stm = stm.into_inner().next().unwrap();
@@ -1122,10 +1228,10 @@ pub(crate) fn parse_statement(
                 file: n.1.to_string_lossy().into(),
                 span: stm.as_span(),
             };
-            Statement::CBlock{
+            into.push(Statement::CBlock{
                 loc,
                 lit: stm.as_str().to_string()
-            }
+            });
         },
         e => panic!("unexpected rule {:?} in block", e),
     }
@@ -1147,8 +1253,9 @@ pub(crate) fn parse_block(
     };
 
     let mut statements = Vec::new();
+    let mut cif_state = None;
     for stm in PP::new(n.1, features.clone(), decl.into_inner()) {
-        statements.push(parse_statement(n, features.clone(), stm));
+        parse_statement(n, features.clone(), stm, &mut statements, &mut cif_state)
     }
     Block{
         statements,
@@ -1257,7 +1364,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
     TypedName {
         name,
         typed: Typed {
-            name: typename,
+            t:   Type::Other(typename),
             loc: loc.clone(),
             ptr,
             tail,
@@ -1316,7 +1423,8 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
     }
 
     Typed {
-        name, loc, ptr, tail: Tail::None,
+        t: Type::Other(name),
+        loc, ptr, tail: Tail::None,
     }
 }
 
@@ -1401,6 +1509,7 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
         loc: loc,
         name,
         args,
+        expanded: false,
     }
 }
 
@@ -1446,7 +1555,7 @@ pub fn emit_error<'a, S1, S2, I>(message: S1, v: I)
         let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
             message: message.to_string(),
         }, loc.span.clone()).with_path(&loc.file);
-        s += &format!("\n{}", e);
+        s += &format!("\n{}\n", e);
     }
     error!("{}", s);
 }

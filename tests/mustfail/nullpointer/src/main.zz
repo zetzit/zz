@@ -1,0 +1,15 @@
+using <stdio.h>::{printf};
+
+
+fn bob(int *a)
+{
+    int x = *a;
+}
+
+export fn main() -> int {
+
+    bob(0);
+
+    printf("hello nullpointer\n");
+    return 0;
+}

@@ -1,0 +1,35 @@
+using <stdio.h>::{printf};
+
+
+// abstract
+fntype AdderFn(int a, int b) -> int;
+struct Math  {
+    AdderFn add;
+}
+
+// impl
+fn add_impl(int a, int b) -> int {
+    return a+b;
+}
+
+fn new(Math mut *self, AdderFn add)
+    where safe(self)
+    //where safe(add)
+    model safe(self->add)
+{
+    self->add = add;
+}
+
+export fn main() -> int {
+    Math mm = Math {
+        .add = add_impl,
+    };
+    int x = mm.add(1,8);
+
+    Math mut m;
+    new(&m, add_impl);
+
+    int x2 = m.add(1,8);
+    printf("hello %u\n", x2);
+    return 0;
+}

@@ -16,8 +16,9 @@ pub mod emitter;
 pub mod abs;
 pub mod name;
 pub mod pp;
-pub mod memory;
 pub mod symbolic;
+pub mod smt;
+pub mod z3;
 
 use std::path::Path;
 use name::Name;
@@ -68,6 +69,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
     }
 
 
+
     if let Some(deps) = &project.dependencies {
         for (name, dep) in deps {
             match dep {
@@ -78,6 +80,8 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
             }
         }
     }
+
+
 
 
     let mut names : Vec<Name> = modules.keys().cloned().collect();
@@ -110,9 +114,8 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
     let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
-        //let symbolic = symbolic::execute(&module);
+        let symbolic = symbolic::execute(&mut module);
 
-        memory::check(&mut module);
         if !silent {
             pb.lock().unwrap().message(&format!("emitting {} ", module.name));
         }

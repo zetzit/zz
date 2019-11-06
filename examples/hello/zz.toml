@@ -4,5 +4,4 @@ name      = "example"
 cincludes = [".", "src"]
 
 [dependencies]
-fl    = "0.1"
-error = "*"
+err = "*"

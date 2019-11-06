@@ -1,0 +1,24 @@
+using <stdio.h>::{printf};
+
+
+
+struct Bob+ {
+    int a;
+    int b[];
+}
+
+
+fn whutup(Bob+t * bob)
+    where t > 10
+{
+    printf("hello bob and a %zu integers\n", t);
+    int x = (bob->b)[t-1];
+    printf(" the %zu'th integer is %d\n", t-1, x);
+}
+
+export fn main() -> int {
+    Bob+100 mut b = {0};
+    (b.b)[99] = 99;
+    whutup(&b);
+    return 0;
+}

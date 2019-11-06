@@ -18,16 +18,14 @@ export fn main() -> int {
 
     A a = A::g;
 
-
     switch a {
         A::f => {
             printf("no\n");
+            return 1;
         }
         default => {
             printf("yes\n");
+            return 0;
         }
     }
-
-
-    return 0;
 }

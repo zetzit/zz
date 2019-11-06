@@ -1,0 +1,20 @@
+using err;
+
+fn bad(err::Err+et mut *e)
+    where err::checked(*e)
+{
+    err::fail(e, 1, "no you cannot %s", "do this");
+}
+
+pub fn main() -> int {
+
+    err::Err+100 mut e;
+    err::new(&e);
+    bad(&e);
+    if err::check(&e) {
+        return 0;
+    }
+    bad(&e);
+
+    return 999;
+}

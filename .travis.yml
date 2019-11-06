@@ -6,3 +6,11 @@ os:
   - osx
 script:
   - ./ci.sh
+
+
+addons:
+  apt:
+    packages: libz3-dev
+  homebrew:
+    packages: z3
+    update: true

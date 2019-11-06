@@ -1,0 +1,27 @@
+using <stdio.h>::{printf};
+
+
+fntype add_t(int a, int b) -> int;
+
+
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+struct Math {
+    add_t mut adder;
+}
+
+fn bla(Math *m) -> int
+    where safe(m->adder)
+{
+    return m->adder(1,2);
+}
+
+export fn main() -> int {
+    Math mut m;
+    m.adder = add;
+
+    printf("hello %d\n", bla(&m));
+    return 0;
+}

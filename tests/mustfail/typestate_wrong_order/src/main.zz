@@ -1,0 +1,42 @@
+using <stdio.h>::{printf};
+
+pub theory isopen(Socket*s) -> bool;
+
+struct Socket {
+    int mut fd;
+}
+
+fn open(Socket mut* self)
+    model isopen(*self)
+{
+    static_attest(isopen(*self) == true);
+    static_assert(isopen(*self) == true);
+    self->fd = 2;
+}
+
+fn read(Socket mut* self)
+    where isopen(*self)
+    model isopen(*self)
+{
+    int bla = self->fd;
+}
+
+fn close(Socket mut* self)
+    where isopen(*self)
+    model !isopen(*self)
+{
+    //convince the symbolic executor that we did something, so we can have new constrains
+    *self = Socket{.fd = 0};
+    static_attest(isopen(*self) == false);
+}
+
+export fn main() -> int {
+
+    Socket mut sock = {0};
+    open(&sock);
+    close(&sock);
+    read(&sock);
+
+    printf("hello taint\n");
+    return 0;
+}

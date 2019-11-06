@@ -1,0 +1,11 @@
+
+pub fn boh(u8 mut * unsafe x)
+{
+    *x = 12;
+}
+
+pub fn main() -> int {
+    u8 mut a;
+    boh(&a);
+    return 0;
+}

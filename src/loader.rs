@@ -46,6 +46,9 @@ pub fn load(
     pb.lock().unwrap().show_speed = false;
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
+    if !silent{
+        pb.lock().unwrap().finish_print(&format!("parsing {}", artifact_name));
+    }
     let om : HashMap<Name, Module> = files.into_par_iter().map(|path| {
         if !silent{
             pb.lock().unwrap().message(&format!("parsing {:?} ", path));
@@ -64,7 +67,7 @@ pub fn load(
     }).collect();
     modules.extend(om);
     if !silent{
-        pb.lock().unwrap().finish_print("finished parsing");
+        pb.lock().unwrap().finish_print(&format!("finished parsing {}", artifact_name));
     }
 
 }

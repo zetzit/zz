@@ -13,6 +13,7 @@ hexdigit    = { '0'..'9' | 'a'..'f' }
 bitdigit    = { '0'..'1' }
 
 string_literal  = @{ "\"" ~ ( "\"\"" | "\\\""    | (!"\"" ~ ANY) )* ~ "\"" }
+bool_literal    = @{"false" | "true"}
 char_literal    = @{ "'" ~ ( "''" | (!"'" ~ ANY) )* ~ "'" }
 number_literal  = @{ hex_literal | bit_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
 int_literal     = @{ ("+" | "-")? ~ digit+ }
@@ -38,6 +39,8 @@ keyword    = {
     key_unsafe   |
     key_default  |
     key_switch   |
+    key_where    |
+    key_model    |
     key_goto
 }
 
@@ -59,6 +62,8 @@ key_break   = { "break" }
 key_default = { "default" }
 key_unsafe  = { "unsafe" }
 key_inline  = { "inline" }
+key_where   = { "where" }
+key_model   = { "model" }
 
 // type identifiers
 
@@ -86,8 +91,11 @@ named_typei = _{ type_part  ~ named_typei | ident }
 fn_attr     = {"inline"}
 fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
-function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ block }
+call_assert = {"where" ~ expr }
+call_effect = {"model" ~ expr }
+function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( call_assert | call_effect)* ~ block }
 fntype      = { ( exported | key_shared)? ~ fn_attr* ~ "fntype" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
+theory      = { ( exported | key_shared)? ~ "theory" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 
 
 enum_i      = { ident ~ ( "=" ~ int_literal)? }
@@ -165,11 +173,15 @@ infix = _{
     bitand      = { "&"  }
     bitor       = { "|"  }
 
-preop   = { "!!" | "!" | "~" | "++" | "--" }
-postop  = { "++" | "--" }
+preop  = _{boolnot | bitnot | increment |  decrement}
+postop = _{ increment |  decrement }
+    boolnot     = { "!" }
+    bitnot      = { "~" }
+    increment   = { "++" }
+    decrement   = { "--" }
 
 term    = _{
-    unarypost | call | number_literal | char_literal | string_literal | struct_init | array_init | member_access |
+    unarypost | call | number_literal | char_literal | string_literal |bool_literal| struct_init | array_init | member_access |
     unarypre | ptr_access | array_access | takeref | deref | cast | type_name | "(" ~ expr ~ ")"
 }
 expr    = { term ~ (infix ~ term) * }
@@ -190,7 +202,15 @@ struct_init_field = { struct_init_field_name ~ "=" ~ termish }
 struct_init     = { anon_type ~ "{" ~  struct_init_field? ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
 array_init      = { "{" ~ termish ~ ("," ~ termish)* ~ ","?  ~ "}" }
 
-assignop    = { "!=" | "~=" | "|=" | "&=" | "+=" | "-=" | "="}
+assignop    = { assignbitor | assignbitand | assignadd | assignsub | assigneq }
+    assignbitor  = { "|=" }
+    assignbitand = { "&=" }
+    assignadd    = { "+=" }
+    assignsub    = { "-=" }
+    assigneq     = { "="  }
+
+
+
 lhs         = {
     member_access | unarypost | unarypre | ptr_access | array_access | takeref | deref | type_name | "(" ~ expr ~ ")"
 }
@@ -203,12 +223,12 @@ vardecl     = { named_type  ~ array? ~ ( "=" ~ expr )? }
 
 semicolon   = { ";" }
 stm_list    = _{ expr_stm ~ "," ~ stm_list | expr_stm }
-for_stm     = { "for" ~ "(" ~ stm_list? ~ semicolon ~ stm_list? ~ semicolon ~ stm_list? ~ ")" ~ block }
+for_stm     = { "for" ~ "(" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list? ~ ")" ~ block }
 while_stm   = { "while" ~ expr ~ block }
 case_stm    = { (expr | key_default) ~ "=>" ~ block }
 switch_stm  = { "switch" ~ expr ~ "{" ~ case_stm* ~ "}"}
 if_stm      = { "if"  ~ expr  ~ block }
-elseif_stm  = { "else" ~ "if" ~ "(" ~ expr  ~ ")" ~ block }
+elseif_stm  = { "else" ~ "if" ~ expr  ~ block }
 else_stm    = { "else" ~  block }
 return_stm  = { key_return ~ expr_stm? }
 continue_stm  = { key_continue }
@@ -263,6 +283,7 @@ block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" }
 file        = { SOI ~ (struct_d
                         | function
                         | fntype
+                        | theory
                         | ienum
                         | import
                         | constant

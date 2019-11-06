@@ -1,7 +1,7 @@
 using constants;
 using identity;
 using aye;
-using error;
+using err;
 using bob;
 using state;
 

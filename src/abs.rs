@@ -45,7 +45,7 @@ impl Scope{
 
     pub fn tags(&self, tags: &mut ast::Tags) {
         for (kk,vals) in tags.0.iter_mut() {
-            if kk.as_str() == "len" || kk.as_str() == "tail"{
+            if kk.as_str() == "static_assert" {
                 for (k,_) in vals.iter_mut() {
                     if let Some(v2) = self.v.get(k) {
                         #[allow(mutable_transmutes)]
@@ -63,92 +63,67 @@ impl Scope{
             self.tags(&mut ptr.tags);
         }
 
-        if t.name.is_absolute() {
+
+
+        let name = match &mut t.t {
+            ast::Type::Other(name) => name,
+            _ => return,
+        };
+
+        if name.is_absolute() {
             return;
         }
 
-        match t.name.to_string().as_str() {
-            "u8" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint8_t".to_string()]);
-                return;
-            },
-            "i8" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "int8_t".to_string()]);
-                return;
-            },
-            "u16" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint16_t".to_string()]);
-                return;
-            },
-            "i16" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "int16_t".to_string()]);
-                return;
-            },
-            "u32" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint32_t".to_string()]);
-                return;
-            },
-            "i32" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "int32_t".to_string()]);
-                return;
-            },
-            "u64" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdint.h>".to_string(), "uint64_t".to_string()]);
-                return;
-            },
-            "i64" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "int64_t".to_string()]);
-                return;
-            },
-            "isize" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "ssize_t".to_string()]);
-                return;
-            },
-            "usize" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stddef.h>".to_string(), "size_t".to_string()]);
-                return;
-            },
-            "bool" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdbool.h>".to_string(), "bool".to_string()]);
-                return;
-            },
-            "true" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdbool.h>".to_string(), "true".to_string()]);
-                return;
-            },
-            "false" => {
-                t.name = Name(vec![String::new(), "ext".to_string(), "<stdbool.h>".to_string(), "false".to_string()]);
-                return;
-            },
+        match name.to_string().as_str() {
+            "u8"    => { t.t = ast::Type::U8;       return; },
+            "u16"   => { t.t = ast::Type::U16;      return; },
+            "u32"   => { t.t = ast::Type::U32;      return; },
+            "u64"   => { t.t = ast::Type::U64;      return; },
+            "u128"  => { t.t = ast::Type::U128;     return; },
+
+            "i8"    => { t.t = ast::Type::I8;       return; },
+            "i16"   => { t.t = ast::Type::I16;      return; },
+            "i32"   => { t.t = ast::Type::I32;      return; },
+            "i64"   => { t.t = ast::Type::I64;      return; },
+            "i128"  => { t.t = ast::Type::I128;     return; },
+
+            "uint"  => { t.t = ast::Type::UInt;     return; },
+            "int"   => { t.t = ast::Type::Int;      return; },
+
+            "isize" => { t.t = ast::Type::ISize;    return; },
+            "usize" => { t.t = ast::Type::USize;    return; },
+
+            "bool"  => { t.t = ast::Type::Bool;     return; },
+
+            "f32"   => { t.t = ast::Type::F32;      return; },
+            "f64"   => { t.t = ast::Type::F64;      return; },
+
+
             "char"
             | "void"
-            | "int"
-            | "float"
-            | "double"
             | "sizeof"
             | "unsigned"
-            | "size_t"
             => {
                 let nuname = Name(vec![
                     String::new(),
                     "ext".to_string(),
                     "<stddef.h>".to_string(),
-                    t.name.to_string(),
+                    name.to_string(),
                 ]);
-                debug!("  {} => {}", t.name, nuname);
-                t.name = nuname;
+                debug!("  {} => {}", *name, nuname);
+                *name = nuname;
                 return
             }
             _ => (),
         };
 
-        let mut rhs : Vec<String> = t.name.0.clone();
+        let mut rhs : Vec<String> = name.0.clone();
         let lhs = rhs.remove(0);
 
         match self.v.get(&lhs) {
             None => {
                 if inbody {
-                    if t.name.len() > 1 {
+                    if name.len() > 1 {
                         emit_error(format!("possibly undefined name '{}'", lhs), &[
                               (t.loc.clone(), "cannot use :: notation to reference names not tracked by zz"),
                         ]);
@@ -163,7 +138,7 @@ impl Scope{
             },
             Some(v) => {
                 if rhs.len() != 0  && !v.subtypes {
-                    emit_error(format!("resolving '{}' as member is not possible", t.name), &[
+                    emit_error(format!("resolving '{}' as member is not possible", name), &[
                         (t.loc.clone(), format!("'{}' is not a module", lhs))
                     ]);
                     ABORT.store(true, Ordering::Relaxed);
@@ -182,16 +157,16 @@ impl Scope{
 
                 if rhs.len() == 0 && v.is_module {
                     emit_error(format!("cannot use module '{}' as a type", v.name), &[
-                           (t.loc.clone(), format!("cannot use module '{}' as a type", t.name)),
-                           (v.loc.clone(), format!("if you wanted to import '{}' as a type, use ::{{{}}} here", t.name, t.name)),
+                           (t.loc.clone(), format!("cannot use module '{}' as a type", name)),
+                           (v.loc.clone(), format!("if you wanted to import '{}' as a type, use ::{{{}}} here", name, name)),
                     ]);
                     ABORT.store(true, Ordering::Relaxed);
                 }
 
                 let mut vv = v.name.clone();
                 vv.0.extend(rhs);
-                debug!("  {} => {}", t.name, vv);
-                t.name = vv;
+                debug!("  {} => {}", name, vv);
+                *name = vv;
             }
         }
     }
@@ -383,6 +358,12 @@ fn abs_expr(
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, scope, inbody, all_modules, self_md_name);
         }
+        ast::Expression::StaticError{loc, message} => {
+            emit_error(format!("error in previous pass: {}", message), &[
+                (loc.clone(), "here")
+            ]);
+            ABORT.store(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -416,18 +397,24 @@ fn abs_statement(
                 abs_statement(s, scope, inbody, all_modules, self_md_name);
             }
             for s in e2 {
-                abs_statement(s, scope, inbody, all_modules, self_md_name);
+                abs_expr(s, scope, inbody, all_modules, self_md_name);
             }
             for s in e3 {
                 abs_statement(s, scope, inbody, all_modules, self_md_name);
             }
         },
-        ast::Statement::Cond{expr, body, ..} => {
-            for expr in expr {
-                abs_expr(expr, &scope, inbody, all_modules, self_md_name);
-            }
+        ast::Statement::While{expr, body} => {
+            abs_expr(expr, &scope, inbody, all_modules, self_md_name);
             abs_block(body, &scope, all_modules, self_md_name);
         },
+        ast::Statement::If{branches} => {
+            for branch in branches {
+                if let Some(expr) = &mut branch.0{
+                    abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+                }
+                abs_block(&mut branch.1, &scope, all_modules, self_md_name);
+            }
+        }
         ast::Statement::Assign{lhs, rhs, ..}  => {
             abs_expr(lhs, &scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, &scope, inbody, all_modules, self_md_name);
@@ -537,7 +524,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                         vis:  ast.vis.clone(),
                         def: ast::Def::Const {
                             typed: ast::Typed {
-                                name:   Name::from(&ast.name),
+                                t:      ast::Type::Int,
                                 loc:    ast.loc.clone(),
                                 ptr:    Vec::new(),
                                 tail:   ast::Tail::None,
@@ -568,23 +555,31 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
             ast::Def::Static{typed,expr,..} => {
                 abs_expr(expr, &scope, false, all_modules, &md.name);
                 scope.abs(typed, false);
-                check_abs_available(&typed.name, &ast.vis, all_modules, &typed.loc, &md.name);
+                if let ast::Type::Other(name) = &typed.t{
+                    check_abs_available(&name, &ast.vis, all_modules, &typed.loc, &md.name);
+                }
             }
             ast::Def::Const{typed, expr,..} => {
                 abs_expr(expr, &scope, false,all_modules, &md.name);
                 scope.abs(typed, false);
-                check_abs_available(&typed.name, &ast.vis, all_modules, &typed.loc, &md.name);
+                if let ast::Type::Other(name) = &typed.t{
+                    check_abs_available(&name, &ast.vis, all_modules, &typed.loc, &md.name);
+                }
             }
-            ast::Def::Function{ret, args, ref mut body, ..} => {
+            ast::Def::Function{ret, args, ref mut body, callassert, calleffect, ..} => {
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
-                    check_abs_available(&ret.typed.name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    if let ast::Type::Other(name) = &ret.typed.t{
+                        check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    }
                 }
                 let oargs = std::mem::replace(args, Vec::new());
                 for mut arg in oargs {
                     scope.abs(&mut arg.typed, false);
                     scope.tags(&mut arg.tags);
-                    check_abs_available(&arg.typed.name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                    if let ast::Type::Other(name) = &arg.typed.t{
+                        check_abs_available(&name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                    }
 
                     args.push(arg.clone());
                     match &arg.typed.tail {
@@ -607,7 +602,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                             tags.insert("tail".to_string(), String::new(), loc.clone());
                             args.push(ast::NamedArg {
                                 typed:      ast::Typed{
-                                    name:   Name::from("::ext::<stdlib.h>::size_t"),
+                                    t:      ast::Type::USize,
                                     loc:    loc.clone(),
                                     ptr:    Vec::new(),
                                     tail:   ast::Tail::None,
@@ -618,25 +613,51 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                             });
                         }
                     }
-
+                }
+                for calleffect in calleffect {
+                    abs_expr(calleffect, &scope, true, all_modules, &md.name);
+                }
+                for callassert in callassert {
+                    abs_expr(callassert, &scope, true, all_modules, &md.name);
                 }
                 abs_block(body, &scope,all_modules, &md.name);
             }
             ast::Def::Fntype{ret, args, ..} => {
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
-                    check_abs_available(&ret.typed.name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    if let ast::Type::Other(name) = &ret.typed.t{
+                        check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    }
                 }
                 for arg in args {
                     scope.abs(&mut arg.typed, false);
                     scope.tags(&mut arg.tags);
-                    check_abs_available(&arg.typed.name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                    if let ast::Type::Other(name) = &arg.typed.t{
+                        check_abs_available(&name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                    }
+                }
+            }
+            ast::Def::Theory{ret, args, ..} => {
+                if let Some(ret) = ret {
+                    scope.abs(&mut ret.typed, false);
+                    if let ast::Type::Other(name) = &ret.typed.t{
+                        check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    }
+                }
+                for arg in args {
+                    scope.abs(&mut arg.typed, false);
+                    scope.tags(&mut arg.tags);
+                    if let ast::Type::Other(name) = &arg.typed.t{
+                        check_abs_available(&name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                    }
                 }
             }
             ast::Def::Struct{fields,..} => {
                 for field in fields {
                     scope.abs(&mut field.typed, false);
-                    check_abs_available(&field.typed.name, &ast.vis, all_modules, &field.typed.loc, &md.name);
+                    if let ast::Type::Other(name) = &field.typed.t{
+                        check_abs_available(&name, &ast.vis, all_modules, &field.typed.loc, &md.name);
+                    }
                     if let Some(ref mut array) = &mut field.array {
                         if let Some(array) = array {
                             abs_expr(array, &scope, false, all_modules, &md.name);

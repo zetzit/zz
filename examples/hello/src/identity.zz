@@ -1,29 +1,27 @@
 using "mymath.h" as math;
-using <stdint.h>::{ uint32_t,
-};
 using <stdio.h>::{printf} ;
 
 using constants::{foo};
-using error::{Error};
+using err::{Err};
 using constants::{conflict as constant_conflict, ADD_IMPL};
 
 using main;
 
-static uint32_t wuast  = 9;
-static uint32_t mut counter = 1;
+static u32 wuast  = 9;
+static u32 mut counter = 1;
 
 
-pub fn some_helper(Error mut* err, uint32_t mut* bob) -> uint32_t {
+pub fn some_helper(Err mut* err, u32 mut* bob) -> u32 {
     counter+=1;
     printf("lol\n");
-    if (bob) {
-        (*bob) = math::add(horst(), foo);
+    if (bob > 0 ) {
+        (*bob) = as<u32>(math::add(horst(), foo));
         printf("bob %d\n", (*bob));
     }
     return ADD_IMPL(32, wuast);
 }
 
-fn horst() -> uint32_t {
+fn horst() -> u32 {
     constant_conflict();
     printf("wee? %f\n", main::gimme_wee(0));
     return ADD_IMPL(3, 3);

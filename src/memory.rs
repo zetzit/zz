@@ -908,7 +908,7 @@ impl Stack {
                                 match &t.tail {
                                     ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_) => {
                                         return Err(Error::new(format!("tail size of {} not known at compile time",
-                                                                      self.storage[callptr].name), vec![
+                                                self.storage[callptr].name), vec![
                                             (name.loc().clone(), format!("used here in tail binding")),
                                         ]));
                                     },
@@ -994,53 +994,65 @@ impl Stack {
             }
 
             ast::Expression::Infix { lhs, rhs, loc, op, ..} => {
-                let mut static_value = None;
 
+                let mut lhs_val = None;
                 let lhs = self.check_expr(lhs)?;
                 let lhs = match & self.storage[lhs].value {
                     Value::Literal(val) => {
                         if let Ok(n) = val.parse::<i64>() {
-                            static_value = Some(n);
+                            lhs_val = Some(n);
                         }
                     },
                     _ => (),
                 };
                 let ptr = self.check_expr(rhs)?;
-                match &self.storage[ptr].value {
+                let static_value = match &self.storage[ptr].value {
                     Value::Literal(val) => {
                         if let Ok(n) = val.parse::<i64>() {
-                            if let Some(a) = static_value {
-                                match op.as_str() {
-                                    "+" => {
-                                        static_value = Some(a + n);
+                            if let Some(a) = lhs_val {
+                                match op{
+                                    ast::InfixOperator::Add => {
+                                        Some(a + n)
                                     },
-                                    "-" => {
-                                        static_value = Some(a - n)
+                                    ast::InfixOperator::Subtract => {
+                                        Some(a - n)
                                     }
-                                    "*" => {
-                                        static_value = Some(a * n)
+                                    ast::InfixOperator::Multiply => {
+                                        Some(a * n)
                                     }
-                                    "/" => {
-                                        static_value = Some(a / n)
+                                    ast::InfixOperator::Divide => {
+                                        if n > 0 {
+                                            Some(a / n)
+                                        } else {
+                                            None
+                                        }
                                     }
-                                    "%" => {
-                                        static_value = Some(a % n)
+                                    ast::InfixOperator::Modulo => {
+                                        if n > 0 {
+                                            Some(a % n)
+                                        } else {
+                                            None
+                                        }
                                     }
-                                    "<<" => {
-                                        static_value = Some(a << n)
+                                    ast::InfixOperator::Shiftleft => {
+                                        Some(a << n)
                                     }
-                                    ">>" => {
-                                        static_value = Some(a >> n)
+                                    ast::InfixOperator::Shiftright  => {
+                                        Some(a >> n)
                                     }
                                     _ => {
-                                        static_value = None;
+                                        None
                                     }
                                 }
+                            } else {
+                                None
                             }
+                        } else {
+                            None
                         }
                     },
                     _ => {
-                        static_value = None;
+                        None
                     }
                 };
                 let temp_ptr = self.local(None, Name::from(
@@ -1067,27 +1079,30 @@ impl Stack {
             }
 
             ast::Expression::UnaryPre {expr, op, loc }=> {
-                if op == "&" {
-                    let lf = self.check_expr(expr)?;
-                    let mut typ =  self.storage[lf].typ.clone();
-                    if let Some(typ) = &mut typ {
-                        typ.ptr.push(ast::Pointer{
-                            loc: loc.clone(),
-                            tags: Tags::new(),
-                        });
+                match op {
+                    ast::PrefixOperator::AddressOf => {
+                        let lf = self.check_expr(expr)?;
+                        let mut typ =  self.storage[lf].typ.clone();
+                        if let Some(typ) = &mut typ {
+                            typ.ptr.push(ast::Pointer{
+                                loc: loc.clone(),
+                                tags: Tags::new(),
+                            });
+                        }
+                        let temp_ptr = self.local(typ, Name::from(
+                                &format!("taking address of {} {}", self.storage[lf].name, self.storage.len())),
+                                expr.loc().clone(),
+                                Tags::new());
+                        self.write(temp_ptr, Value::Address(lf), &expr.loc());
+                        Ok(temp_ptr)
                     }
-                    let temp_ptr = self.local(typ, Name::from(
-                            &format!("taking address of {} {}", self.storage[lf].name, self.storage.len())),
-                            expr.loc().clone(),
-                            Tags::new());
-                    self.write(temp_ptr, Value::Address(lf), &expr.loc());
-                    Ok(temp_ptr)
-
-                } else if op == "*" {
-                    let v = self.check_expr(expr)?;
-                    self.deref(v, &exprloc)
-                } else {
-                    self.check_expr(expr)
+                    ast::PrefixOperator::Deref => {
+                        let v = self.check_expr(expr)?;
+                        self.deref(v, &exprloc)
+                    }
+                    _ => {
+                        self.check_expr(expr)
+                    }
                 }
             }
 
@@ -1138,9 +1153,7 @@ impl Stack {
             }
 
             ast::Expression::ArrayInit {fields, ..} => {
-
                 let mut value = Vec::new();
-
                 let aptr = self.local(None, Name::from(
                         &format!("literal array {}", self.storage.len())),
                         exprloc.clone(),
@@ -1159,6 +1172,11 @@ impl Stack {
                 self.write(aptr, Value::Array(value), &exprloc);
 
                 Ok(aptr)
+            }
+            ast::Expression::StaticError{loc, message} => {
+                return Err(Error::new(format!("{}", message), vec![
+                    (loc.clone(), format!("here"))
+                ]));
             }
         }
     }
@@ -1198,21 +1216,38 @@ impl Stack {
                 self.pop(&block.end);
                 Ok(())
             }
-            ast::Statement::Cond{body, expr,..}=> {
-                self.push("if");
-                if let Some(expr) = expr {
-                    match self.check_expr(expr) {
-                        Ok(_) => (),
-                        Err(Error::Untrackable(e)) => {
-                            emit_debug("untrackable conditional", &[
-                                (expr.loc().clone(), format!("{}", e))
-                            ]);
-                        },
-                        Err(e) => return Err(e),
-                    };
-                }
+            ast::Statement::While{body, expr} => {
+                self.push("while");
+                match self.check_expr(expr) {
+                    Ok(_) => (),
+                    Err(Error::Untrackable(e)) => {
+                        emit_debug("untrackable conditional", &[
+                                   (expr.loc().clone(), format!("{}", e))
+                        ]);
+                    },
+                    Err(e) => return Err(e),
+                };
                 self.check_block(body);
                 self.pop(&body.end);
+                Ok(())
+            },
+            ast::Statement::If{branches} => {
+                for branch in branches {
+                    self.push("if");
+                    if let Some(expr) = &mut branch.0 {
+                        match self.check_expr(expr) {
+                            Ok(_) => (),
+                            Err(Error::Untrackable(e)) => {
+                                emit_debug("untrackable conditional", &[
+                                           (expr.loc().clone(), format!("{}", e))
+                                ]);
+                            },
+                            Err(e) => return Err(e),
+                        };
+                        self.check_block(&mut branch.1);
+                        self.pop(&branch.1.end);
+                    }
+                }
                 Ok(())
             },
             ast::Statement::For{body, e1, e2, e3,..} => {
@@ -1313,102 +1348,8 @@ impl Stack {
     // bounds are on a storage holding an address,
     // saying how much further to the right of the address it is legal to read.
     fn check_bounds(&mut self, array: &mut ast::Expression, index: &mut ast::Expression, index_access: bool) -> Result<(), Error> {
-
-        emit_debug("bounds",&[
-            (index.loc().clone(), format!("checking if this index")),
-            (array.loc().clone(), format!("will be within this array")),
-        ]);
-
-        let ptr         = self.check_expr(array)?;
-        let storage     = &self.storage[ptr];
-        let array_name  = self.storage[ptr].name.clone();
-        let array_loc   = storage.stored_here.clone();
-
-
-        let mut array_size = None;
-        if let Value::Array(v) = &storage.value {
-            array_size = Some(v.len() as u64)
-        }
-
-        if let Some(lens) = storage.tags.get("len").cloned() {
-            for (len,loc) in lens {
-                if let Ok(v) = len.parse::<u64>() {
-                    array_size = Some(v);
-                } else if let Ok(v) = self.check_name(&Name::from(&len), &loc) {
-                    match &self.storage[v].value {
-                        Value::Literal(val) => {
-                            if let Ok(val) = val.parse::<u64>() {
-                                array_size = Some(val);
-                            } else {
-                                emit_warn("len tag has no effect", &[
-                                    (self.storage[v].stored_here.clone(), format!("{} is not parseable as integer", v)),
-                                ]);
-                            }
-                        },
-                        o => {
-                            emit_warn("len tag has no effect", &[
-                                (self.storage[v].stored_here.clone(), format!("{} {} is not a literal", self.storage[v].name, o)),
-                            ]);
-                        }
-                    }
-                } else {
-                    emit_warn("len tag has no effect", &[
-                        (loc.clone(), format!("{} is not an integer or local", len)),
-                    ]);
-                }
-            }
-        }
-
-
-        let index_ptr = match self.check_expr(index) {
-            Ok(v) => v,
-            Err(Error::Untrackable(e)) => {
-                return Err(Error::new("possibly unbounded array access".to_string(), vec![
-                    (index.loc().clone(), format!("index is not known at compile time because it is: {}", e))
-                ]));
-            },
-            Err(e) => return Err(e),
-        };
-
-        if let Some(bounds) = self.storage[index_ptr].tags.get("bound") {
-            for (bound, loc) in bounds {
-                if Name::from(bound) == array_name {
-                    emit_debug("bounds",&[
-                        (loc.clone(), format!("index is bound to array")),
-                    ]);
-                    return Ok(());
-                }
-            }
-        }
-
-        if let Some(array_size) = array_size {
-            match &self.storage[index_ptr].value {
-                Value::Literal(val) => {
-                    if let Ok(v) = val.parse::<u64>() {
-                        if if index_access { array_size <= v } else {array_size < v } {
-                            return Err(Error::new("index exceeds array size".to_string(), vec![
-                                (index.loc().clone(), format!("index {} would overflow array bound", v)),
-                                (array_loc, "of this array".to_string())
-                            ]));
-                        }
-                    } else {
-                        emit_warn("array access with untrackable index", &[
-                            (index.loc().clone(), "expression is not an integer"),
-                        ]);
-                    }
-                    return Ok(());
-                },
-                _=> (),
-            }
-            return Err(Error::new("possibly unbounded array access".to_string(), vec![
-                (index.loc().clone(), "index is not known at compile time\n".to_string())
-            ]));
-        } else {
-            return Err(Error::new("possibly unbounded array access".to_string(), vec![
-                (index.loc().clone(), format!("array length is not known at compile time\n\
-                suggestion: add a bound<{}> tag to a value known to be safe at runtime", array_name
-            ))]));
-        }
+        //bounds checking is now part of symbolic
+        Ok(())
     }
 }
 
@@ -1504,6 +1445,11 @@ pub fn check(md: &mut flatten::Module) {
                     stack.write(ptr, Value::Literal(String::new()), &local.loc);
                 }
             },
+            ast::Def::Theory{args, ret, ..} => {
+                let localname = Name::from(&local.name);
+                let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());
+                stack.write(ptr, Value::Untrackable("theory".to_string()), &local.loc);
+            }
             ast::Def::Fntype{args, ret, vararg, ..} => {
                 let localname = Name::from(&local.name);
                 let ptr = stack.local(None, localname.clone(), local.loc.clone(), Tags::new());

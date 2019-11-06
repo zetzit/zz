@@ -129,8 +129,8 @@ fn main() {
 
 
                     for case in cases {
-                        println!("running \"./target/{}/{}\"\n", stage, artifact.name);
-                        let mut child = Command::new(format!("./target/{}/{}", stage, artifact.name))
+                        println!("running \"./target/{}/bin/{}\"\n", stage, artifact.name);
+                        let mut child = Command::new(format!("./target/{}/bin/{}", stage, artifact.name))
                             .stdin(std::process::Stdio::piped())
                             .stdout(std::process::Stdio::piped())
                             .spawn()

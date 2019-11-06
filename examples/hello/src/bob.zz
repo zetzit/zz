@@ -1,5 +1,5 @@
 using constants;
-using error::{Error};
+using err::{Err};
 
 
 enum Bla {
@@ -8,14 +8,14 @@ enum Bla {
 }
 
 
-fn usemeeee(Error* e) {
+fn usemeeee(Err* e) {
 }
 
 using <stdint.h>::{uint8_t};
 using <memory.h>::{memset};
 
-pub fn new(Error mut* self) {
-    memset(self, 0, sizeof(Error));
+pub fn new(Err mut* self) {
+    memset(self, 0, sizeof(Err));
 
 
 

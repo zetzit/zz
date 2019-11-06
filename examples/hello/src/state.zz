@@ -1,4 +1,3 @@
-using <stdint.h>::{uint8_t};
 using <string.h>::{memset};
 
 
@@ -8,10 +7,10 @@ pub struct State {
         uint19_t invalid;
     #elif 0
     #else
-        uint8_t yalla;
+        u8 yalla;
     #endif
 #endif
-    uint8_t mut counter;
+    u8 mut counter;
 }
 
 #if 0
@@ -25,10 +24,7 @@ pub fn new(State mut* self) {
 #endif
 }
 
-pub fn add(State mut* self, int i) {
+pub fn add(State mut* self, u8 i) {
     self is safe;
     self->counter += i;
-    goto exit;
-exit:
-    return;
 }

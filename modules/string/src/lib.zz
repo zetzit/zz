@@ -5,12 +5,16 @@ export struct String+ {
     char    mem[];
 }
 
+export fn append(String+t mut * self, char * cstr)
+{
+    usize mut inlen = as<usize>(strlen(cstr));
 
-export fn append(String+t mut * self, char * cstr) {
-    usize mut len = strlen(cstr);
-    if len + self->len > t - 1 {
-        len = t - 1 - self->len;
+    if inlen + self->len > t - 1 {
+        inlen = t - 1 - self->len;
     }
-    memcpy(self->mem + self->len, cstr, len);
-    self->len += len;
+
+    memcpy(self->mem + self->len, cstr, inlen);
+    self->len += inlen;
 }
+
+
