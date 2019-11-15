@@ -464,6 +464,7 @@ impl Emitter {
         write!(self.f, "typedef struct \n").unwrap();
 
         write!(self.f, "{{\n").unwrap();
+        let mut emitted_tail = false;
         for i in 0..fields.len() {
             let field = &fields[i];
             self.emit_loc(&field.loc);
@@ -484,6 +485,7 @@ impl Emitter {
                         std::process::exit(9);
                     }
                     if let Some(tt) = tail_variant {
+                        emitted_tail = true;
                         write!(self.f, " {}[{}]", field.name, tt).unwrap();
                     } else {
                         write!(self.f, " {}[]", field.name).unwrap();
@@ -493,6 +495,11 @@ impl Emitter {
                 write!(self.f, " {}", field.name).unwrap();
             }
             write!(self.f, " ;\n").unwrap();
+        }
+        if let Some(tt) = tail_variant {
+            if !emitted_tail {
+                write!(self.f, "   uint8_t _____tail [{}];\n", tt).unwrap();
+            }
         }
 
         write!(self.f, "}} {}", self.to_local_name(&Name::from(&ast.name))).unwrap();

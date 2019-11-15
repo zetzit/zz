@@ -1050,12 +1050,25 @@ impl Symbolic {
             });
         }
 
+        //nested tail
+        match fieldtyped.tail {
+            ast::Tail::None => (),
+            _ => {
+                fieldtyped.tail = self.memory[lhs_sym].typed.tail.clone();
+                //return Err(Error::new(
+                //    format!("TODO: implement access to nested tail member"), vec![
+                //    (loc.clone(), format!("here"))
+                //]));
+            }
+        }
+
         let tmp = self.temporary(
             format!("{}.{}", self.memory[lhs_sym].name, rhs),
             fieldtyped,
             loc.clone(),
             Tags::new(),
-            )?;
+        )?;
+
 
         match &mut self.memory[lhs_sym].value {
             Value::Struct{members, ..} => {

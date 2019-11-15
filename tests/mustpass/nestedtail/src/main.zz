@@ -1,0 +1,36 @@
+using <stdio.h>::{printf};
+using <string.h>::{memset};
+
+
+
+struct A+ {
+    u8 nothing;
+    u8 a[];
+}
+
+
+struct B+ {
+    A+ a;
+}
+
+
+
+fn gimme_a(A+tail *self) -> uint
+    where tail > 99
+{
+    return (self->a)[99];
+}
+
+fn gimme_b(B+tail *self) -> uint
+    where tail > 99
+{
+    return gimme_a(&(self->a));
+}
+
+export fn main() -> int {
+    B+100 mut b;
+    memset(&b, 12, sizeof(b));
+
+    printf("hello nestedtail %zu %u\n", sizeof(b), gimme_a(&b));
+    return 0;
+}
