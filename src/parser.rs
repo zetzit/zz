@@ -1044,7 +1044,7 @@ pub(crate) fn parse_statement(
             let body    = parse_block(n, features, part);
             *current_if_statement = Some(into.len());
             into.push(Statement::If{
-                branches: vec![(Some(expr),body)],
+                branches: vec![(loc.clone(), Some(expr), body)],
             });
         }
         Rule::elseif_stm => {
@@ -1062,7 +1062,7 @@ pub(crate) fn parse_statement(
                 }
                 Some(c) => {
                     if let Statement::If{ref mut branches} = into[c] {
-                        branches.push((Some(expr), body));
+                        branches.push((loc.clone(), Some(expr), body));
                     }
                 }
             }
@@ -1080,7 +1080,7 @@ pub(crate) fn parse_statement(
                 }
                 Some(c) => {
                     if let Statement::If{ref mut branches} = into[c] {
-                        branches.push((None, body));
+                        branches.push((loc.clone(), None, body));
                     }
                 }
             }

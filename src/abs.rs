@@ -409,10 +409,10 @@ fn abs_statement(
         },
         ast::Statement::If{branches} => {
             for branch in branches {
-                if let Some(expr) = &mut branch.0{
+                if let Some(expr) = &mut branch.1{
                     abs_expr(expr, &scope, inbody, all_modules, self_md_name);
                 }
-                abs_block(&mut branch.1, &scope, all_modules, self_md_name);
+                abs_block(&mut branch.2, &scope, all_modules, self_md_name);
             }
         }
         ast::Statement::Assign{lhs, rhs, ..}  => {
@@ -575,47 +575,10 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                         check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
                 }
-                let oargs = std::mem::replace(args, Vec::new());
-                for mut arg in oargs {
-                    scope.abs(&mut arg.typed, false);
-                    scope.tags(&mut arg.tags);
-                    if let ast::Type::Other(name) = &arg.typed.t{
-                        check_abs_available(&name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
-                    }
 
-                    args.push(arg.clone());
-                    match &arg.typed.tail {
-                        ast::Tail::None => {
-                        },
-                        ast::Tail::Dynamic => {
-                            emit_error(format!("missing tail binding "), &[
-                                (arg.loc.clone(), "+ without a name makes no sense in this context"),
-                            ]);
-                            std::process::exit(9);
-                        },
-                        ast::Tail::Static(_, _) => {
-                            emit_error(format!("missing tail binding "), &[
-                                (arg.loc.clone(), "+ with static size makes no sense in this context"),
-                            ]);
-                            std::process::exit(9);
-                        }
-                        ast::Tail::Bind(s, loc) => {
-                            let mut tags = ast::Tags::new();
-                            tags.insert("tail".to_string(), String::new(), loc.clone());
-                            args.push(ast::NamedArg {
-                                typed:      ast::Typed{
-                                    t:      ast::Type::USize,
-                                    loc:    loc.clone(),
-                                    ptr:    Vec::new(),
-                                    tail:   ast::Tail::None,
-                                },
-                                name:   s.clone(),
-                                tags:   tags,
-                                loc:    loc.clone(),
-                            });
-                        }
-                    }
-                }
+
+                abs_args(args, &scope, &ast.vis, all_modules, &md.name);
+
                 for calleffect in calleffect {
                     abs_expr(calleffect, &scope, true, all_modules, &md.name);
                 }
@@ -631,13 +594,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                         check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
                 }
-                for arg in args {
-                    scope.abs(&mut arg.typed, false);
-                    scope.tags(&mut arg.tags);
-                    if let ast::Type::Other(name) = &arg.typed.t{
-                        check_abs_available(&name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
-                    }
-                }
+                abs_args(args, &scope, &ast.vis, all_modules, &md.name);
             }
             ast::Def::Theory{ret, args, ..} => {
                 if let Some(ret) = ret {
@@ -686,3 +643,56 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
     }
 
 }
+
+
+fn abs_args(
+    args: &mut Vec<ast::NamedArg>,
+    scope: &Scope,
+    astvis: &ast::Visibility,
+    all_modules: &HashMap<Name, loader::Module>,
+    mdname: &Name
+) {
+    let oargs = std::mem::replace(args, Vec::new());
+    for mut arg in oargs {
+        scope.abs(&mut arg.typed, false);
+        scope.tags(&mut arg.tags);
+        if let ast::Type::Other(name) = &arg.typed.t{
+            check_abs_available(&name, astvis, all_modules, &arg.typed.loc, mdname);
+        }
+
+        args.push(arg.clone());
+        match &arg.typed.tail {
+            ast::Tail::None => {
+            },
+            ast::Tail::Dynamic => {
+                emit_error(format!("missing tail binding "), &[
+                           (arg.loc.clone(), "+ without a name makes no sense in this context"),
+                ]);
+                std::process::exit(9);
+            },
+            ast::Tail::Static(_, _) => {
+                emit_error(format!("missing tail binding "), &[
+                           (arg.loc.clone(), "+ with static size makes no sense in this context"),
+                ]);
+                std::process::exit(9);
+            }
+            ast::Tail::Bind(s, loc) => {
+                let mut tags = ast::Tags::new();
+                tags.insert("tail".to_string(), String::new(), loc.clone());
+                args.push(ast::NamedArg {
+                    typed:      ast::Typed{
+                        t:      ast::Type::USize,
+                        loc:    loc.clone(),
+                        ptr:    Vec::new(),
+                        tail:   ast::Tail::None,
+                    },
+                    name:   s.clone(),
+                    tags:   tags,
+                    loc:    loc.clone(),
+                });
+            }
+        }
+    }
+}
+
+

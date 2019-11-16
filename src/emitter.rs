@@ -870,19 +870,19 @@ impl Emitter {
 
                 write!(self.f, "if (").unwrap();
                 let ifc = branches.next().unwrap();
-                self.emit_expr(ifc.0.as_ref().unwrap());
+                self.emit_expr(ifc.1.as_ref().unwrap());
                 write!(self.f, ")").unwrap();
-                self.emit_zblock(&ifc.1, true);
+                self.emit_zblock(&ifc.2, true);
 
                 for branch in branches {
-                    if let Some(expr) = &branch.0 {
+                    if let Some(expr) = &branch.1 {
                         write!(self.f, " else if (").unwrap();
                         self.emit_expr(expr);
                         write!(self.f, ")").unwrap();
                     } else {
                         write!(self.f, " else ").unwrap();
                     }
-                    self.emit_zblock(&branch.1, true);
+                    self.emit_zblock(&branch.2, true);
                 }
 
                 false

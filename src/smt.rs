@@ -17,8 +17,8 @@ pub struct Solver {
     solver:         z3::Solver<'static>,
     syms:           HashMap<Symbol, (z3::FuncDecl<'static>, String)>,
     debug_line:     usize,
-    debug:          RefCell<File>,
-    pub infinite:       bool,
+    pub debug:      RefCell<File>,
+    pub infinite:   bool,
     debug_indent:   String,
 }
 
@@ -36,7 +36,6 @@ pub struct ModelRef(Model<'static>);
 impl Solver {
 
     pub fn theory(&mut self, sym: Symbol, args: Vec<Type>, name: &str, t: Type) {
-
         let lname = format!("{}_{}", sym, name.replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
 
         let mut capi_args = Vec::new();
@@ -79,6 +78,7 @@ impl Solver {
             }
         };
         self.syms.insert(sym, (f, lname));
+        self.checkpoint();
     }
 
     pub fn invocation(&mut self, theory: Symbol, args: Vec<TemporalSymbol>, tmp: Symbol) {
@@ -99,6 +99,7 @@ impl Solver {
         let call = self.syms[&theory].0.apply(&capi_args[..]);
         let tmp  = self.syms[&tmp].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, 0))]);
         self.solver.assert(&call._eq(&tmp));
+        self.checkpoint();
     }
 
 
@@ -125,6 +126,7 @@ impl Solver {
         );
 
         self.syms.insert(sym, (f, lname));
+        self.checkpoint();
     }
 
     pub fn assign(&mut self, lhs: TemporalSymbol, rhs: TemporalSymbol, t: Type) {
@@ -173,6 +175,7 @@ impl Solver {
         }
 
 
+        self.checkpoint();
     }
 
     pub fn literal(&mut self, tmp: Symbol, val: u64, typ: Type) {
@@ -205,6 +208,7 @@ impl Solver {
 
             }
         }
+        self.checkpoint();
     }
 
     pub fn infix_op_will_wrap(
@@ -434,6 +438,7 @@ impl Solver {
                 self.solver.assert(&tmp_s.as_bv().unwrap()._eq(&lhs_s.as_bv().unwrap().bvor(&rhs_s.as_bv().unwrap())));
             }
         };
+        self.checkpoint();
     }
 
 
@@ -476,6 +481,7 @@ impl Solver {
             crate::ast::PostfixOperator::Decrement  => ast::Dynamic::from_ast(&from.as_bv().unwrap().bvsub(&bone)),
         };
         self.solver.assert(&to._eq(&e));
+        self.checkpoint();
     }
 
     pub fn prefix_op(&mut self,
@@ -521,11 +527,12 @@ impl Solver {
                 self.solver.assert(&tmp._eq(&ast::Dynamic::from_ast(&lhs.as_bool().unwrap().not())));
             }
         }
+        self.checkpoint();
     }
 
-    pub fn constrain(&mut self, lhs: (Symbol, u64), compare: bool) {
+    pub fn constrain(&mut self, lhs: (Symbol, u64), compare: bool) -> bool {
         if self.infinite {
-            return;
+            return true;
         }
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "; constrain. we know this to be true because of an if condition or callsite assert\n").unwrap();
@@ -534,7 +541,7 @@ impl Solver {
             write!(self.debug.borrow_mut(), "(assert (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
         } else {
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-            write!(self.debug.borrow_mut(), "(assert (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
+            write!(self.debug.borrow_mut(), "(assert (not (S{} {})))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
         }
 
         let lhs = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
@@ -544,6 +551,9 @@ impl Solver {
         } else {
             self.solver.assert(&lhs.not());
         };
+
+        write!(self.debug.borrow_mut(), "{}(check-sat); check after constrain\n", self.debug_indent).unwrap();
+        self.solve()
     }
 
 
@@ -585,55 +595,45 @@ impl Solver {
         where F : Fn(Assertion<bool>, Option<ModelRef>) -> R,
               R : Sized,
     {
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(echo \"\")\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(push)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(echo \"vvv positive assert\")\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(assert (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(push)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(echo \"vvv negative assert. to be constrained, this must be different\")\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(assert (not (S{} {})))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
 
 
         let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
+
+        write!(self.debug.borrow_mut(), "{}(echo \"\")\n", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{} (echo \"vvv positive assert\")\n", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{} (assert (S{} {}))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{}(pop)\n", self.debug_indent).unwrap();
 
         self.solver.push();
         self.solver.assert(&lhs_s);
         let rs1 = self.solver.check();
         self.solver.pop(1);
 
+        write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{} (echo \"vvv negative assert. to be constrained, this must be different\")\n"
+               , self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{} (assert (not (S{} {})))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
+
         self.solver.push();
         self.solver.assert(&lhs_s.not());
         let rs2 = self.solver.check();
+
         let r = match (rs1, rs2) {
             (SatResult::Sat, SatResult::Sat) => {
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(echo \"unconstrained\")\n").unwrap();
+                write!(self.debug.borrow_mut(), "{}(echo \"unconstrained\")\n", self.debug_indent).unwrap();
+
                 with(Assertion::Unconstrained(false), Some(ModelRef(self.solver.get_model())))
             }
             (SatResult::Sat, SatResult::Unsat) => {
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(echo \"constrained true\")\n").unwrap();
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(push)\n").unwrap();
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
+
+                write!(self.debug.borrow_mut(), "{} (echo \"constrained true \")\n", self.debug_indent).unwrap();
+                write!(self.debug.borrow_mut(), "{}(pop)\n", self.debug_indent).unwrap();
+                write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
+                write!(self.debug.borrow_mut(), "{} (assert (S{} {}))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
+                write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
 
                 self.solver.pop(1);
                 self.solver.push();
@@ -642,11 +642,16 @@ impl Solver {
                 with(Assertion::Constrained(true), Some(ModelRef(self.solver.get_model())))
             }
             (SatResult::Unsat, SatResult::Sat) => {
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(echo \"constrained false\")\n").unwrap();
+                write!(self.debug.borrow_mut(), "{} (echo \"constrained false\")\n", self.debug_indent).unwrap();
+
                 with(Assertion::Constrained(false), Some(ModelRef(self.solver.get_model())))
             }
+            (SatResult::Unsat, SatResult::Unsat) => {
+                write!(self.debug.borrow_mut(), "{} (echo \"both unsat. something broke earlier\")\n", self.debug_indent).unwrap();
+                with(Assertion::Unsolveable, None)
+            }
             _ => {
+                write!(self.debug.borrow_mut(), "{} (echo \"unsolveable\")\n", self.debug_indent).unwrap();
                 with(Assertion::Unsolveable, None)
             }
         };
@@ -748,6 +753,16 @@ impl Solver {
         }
     }
 
+    #[cfg(debug_assertions)]
+    pub fn checkpoint(&self) {
+        if !self.solve() {
+            panic!("ICE: function is unsolveable");
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    pub fn checkpoint(&self) {}
+
+
     pub fn debug(&mut self, m: &str) {
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "; {}\n", m).unwrap();
@@ -761,9 +776,9 @@ impl Solver {
     }
 
     pub fn new(module_name: String) -> Self {
-        Config::set_global_param_value(":model.partial", "true");
+        //Config::set_global_param_value(":model.partial", "true");
         let mut config  = Config::new();
-        config.set_model_generation(true);
+        //config.set_model_generation(true);
         config.set_timeout_msec(1000);
         let ctx     = Box::leak(Box::new(Context::new(&config)));
         let solver  = z3::Solver::new(ctx);

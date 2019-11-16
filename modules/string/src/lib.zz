@@ -11,6 +11,17 @@ export fn clear(String+tail mut * self) {
     memset(self->mem, 0, tail);
 }
 
+export fn push(String+t mut * self, char cstr) -> bool
+{
+    if self->len > t - 2 {
+        return false;
+    }
+
+    static_attest(self->len < len(self->mem));
+    (self->mem)[self->len] = cstr;
+    self->len += 1;
+    return true;
+}
 export fn append(String+t mut * self, char * cstr)
 {
     usize mut inlen = as<usize>(strlen(cstr));

@@ -199,7 +199,7 @@ cast            = { "as" ~ "<" ~ anon_type ~ ">" ~ termish | "(" ~ anon_type ~ "
 
 struct_init_field_name = _{ "." ~ ident }
 struct_init_field = { struct_init_field_name ~ "=" ~ termish }
-struct_init     = { anon_type ~ "{" ~  struct_init_field? ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
+struct_init     = { anon_type ~ "{" ~  struct_init_field ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
 array_init      = { "{" ~ termish ~ ("," ~ termish)* ~ ","?  ~ "}" }
 
 assignop    = { assignbitor | assignbitand | assignadd | assignsub | assigneq }

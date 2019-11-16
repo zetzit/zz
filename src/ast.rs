@@ -548,7 +548,7 @@ pub enum Statement {
         body:       Block,
     },
     If {
-        branches:   Vec<(Option<Expression>, Block)>,
+        branches:   Vec<(Location, Option<Expression>, Block)>,
     },
     Block(Box<Block>),
     Unsafe(Box<Block>),

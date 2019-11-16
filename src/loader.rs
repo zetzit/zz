@@ -27,7 +27,10 @@ pub fn load(
         let entry = entry.unwrap();
         let path  = entry.path();
         if path.is_file() {
-            let ext = path.extension().map(|v|v.to_str()).expect(&format!("invalid file name {:?}", path));
+            let ext = match path.extension().map(|v|v.to_str()) {
+                Some(ext) => ext,
+                None => continue
+            };
             match ext {
                 Some("h") => {
                     let mut name = artifact_name.clone();

@@ -118,7 +118,7 @@ fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, ast::Locatio
         },
         ast::Statement::If{branches} => {
             let mut deps = Vec::new();
-            for (expr, body) in branches {
+            for (loc, expr, body) in branches {
                 if let Some(expr) = expr {
                     deps.extend(expr_deps(cr, expr));
                 }

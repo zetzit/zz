@@ -102,7 +102,7 @@ model checked(*err)
     static_attest(checked(*err));
     if (err->error != 0) {
         backtrace(err, file, scope, line);
-        fprintf(stderr, "fatal error: %s%s\n", err->description, (err->locations).mem);
+        fprintf(stderr, "fatal error %u: %s%s\n", err->error, err->description, (err->locations).mem);
         cabort();
     }
 }
