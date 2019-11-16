@@ -27,7 +27,7 @@ export  fn check(
         Err+tail mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
-        int   callsite_source<line>      line,
+        usize callsite_source<line>      line,
 ) -> bool
     model checked(*self)
 {
@@ -40,9 +40,9 @@ export  fn check(
 }
 
 
-fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, int line) {
+fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line) {
     if tail > 0 {
-        string::format(&(self->locations), "\n  %s:%d \t%s", file, line, scope);
+        string::format(&(self->locations), "\n  %s:%zu \t%s", file, line, scope);
     }
 }
 
@@ -50,7 +50,7 @@ export fn fail_with_errno(
         Err+tail mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
-        int   callsite_source<line>      line,
+        usize callsite_source<line>      line,
         char*  fmt,
         ...
 )
@@ -74,7 +74,7 @@ export fn fail(
         u8  e,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
-        int   callsite_source<line>      line,
+        usize callsite_source<line>      line,
         char*  fmt,
         ...
 )
@@ -94,7 +94,7 @@ export fn abort(
         Err+tail mut* err,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
-        int   callsite_source<line>      line,
+        usize callsite_source<line>      line,
 )
 
 model checked(*err)

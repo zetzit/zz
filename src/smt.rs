@@ -106,13 +106,13 @@ impl Solver {
         let lname = format!("{}_{}", sym, name.replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
 
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(declare-fun S{} (Int) {}); local {}\n",
+        write!(self.debug.borrow_mut(), "(declare-fun S{} (Int) {}); local \n",
         lname,
         match typ {
             Type::Bool => format!("bool"),
             Type::Signed(s) | Type::Unsigned(s) => format!("(_ BitVec {})", s),
         },
-        name).unwrap();
+        ).unwrap();
 
         let f = FuncDecl::new(
             &self.ctx,
@@ -756,7 +756,7 @@ impl Solver {
         if self.debug_line != loc.line() {
             self.debug_line = loc.line();
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-            write!(self.debug.borrow_mut(), "; line {}\n", self.debug_line).unwrap();
+            write!(self.debug.borrow_mut(), "; at {}:{}\n", loc.file, self.debug_line).unwrap();
         }
     }
 

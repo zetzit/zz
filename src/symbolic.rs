@@ -437,8 +437,9 @@ impl Symbolic {
         calleffect: &mut Vec<ast::Expression>,
     ) -> Result<(), Error> {
 
+        let freeze = self.memory.clone();
         self.push(format!("function {}", name));
-        self.ssa.push(&format!("start of function {}", name));
+        self.ssa.push(&format!("\n\n;start of function {}", name));
         self.current_function_name = name.clone();
 
         let mut prev : Option<Symbol> =  None;
@@ -563,8 +564,9 @@ impl Symbolic {
             })?;
         };
 
-        self.ssa.pop(&format!("end of function {}", name));
+        self.ssa.pop(&format!("end of function {}\n\n", name));
         self.pop();
+        self.memory = freeze;
         Ok(())
     }
 
@@ -674,10 +676,6 @@ impl Symbolic {
                     let mut expanded = Vec::new();
                     let mut negative_stack : Vec<ast::Expression> = Vec::new();
 
-
-
-
-                    //FIXME callsite side effects of an if expression are lost
 
                     // create branch expansions
                     let freeze = self.memory.clone();
@@ -792,21 +790,27 @@ impl Symbolic {
                     self.execute_expr(expr)?;
                     for (conds,body) in cases {
                         for expr in conds {
+                            let freeze = self.memory.clone();
+                            self.ssa.debug_loc(&expr.loc());
                             self.push("case".into());
                             self.ssa.push("case");
                             self.execute_expr(expr)?;
                             self.execute_scope(&mut (body.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
                             self.ssa.pop("end of case");
                             self.pop();
+                            self.memory = freeze;
+                            self.ssa.debug_loc(&expr.loc());
                         }
                     }
 
                     if let Some(default) = default {
+                        let freeze = self.memory.clone();
                         self.push("case".into());
                         self.ssa.push("case");
                         self.execute_scope(&mut (default.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
                         self.ssa.pop("end of case");
                         self.pop();
+                        self.memory = freeze;
                     }
 
                     self.pop();
@@ -926,13 +930,22 @@ impl Symbolic {
                 let (v, loc) = cs.iter().next().unwrap();
                 let lit = match v.as_str() {
                     "file" => {
-                        format!("\"{}\"", callloc.file.clone())
+                        ast::Expression::LiteralString {
+                            loc: loc.clone(),
+                            v: callloc.file.as_bytes().to_vec(),
+                        }
                     },
                     "line" => {
-                        format!("{}", callloc.line())
+                        ast::Expression::Literal{
+                            loc: loc.clone(),
+                            v:   format!("{}", callloc.line())
+                        }
                     },
                     "function" => {
-                        format!("\"{}\"", self.current_function_name)
+                        ast::Expression::LiteralString {
+                            loc: loc.clone(),
+                            v: self.current_function_name.as_bytes().to_vec(),
+                        }
                     }
                     _ => {
                         return Err(Error::new(format!("invalid callsite_source"), vec![
@@ -940,10 +953,7 @@ impl Symbolic {
                         ]));
                     }
                 };
-                let genarg = Box::new(ast::Expression::Literal{
-                    loc: loc.clone(),
-                    v:   lit.clone(),
-                });
+                let genarg = Box::new(lit);
                 called.push(genarg);
             } else if let Some(_) = defined[i].tags.get("tail") {
                 let mut prev = called.get_mut(i-1).expect("ICE: tail tag without previous arg");
@@ -1288,7 +1298,6 @@ impl Symbolic {
                 }
             }
             ast::Expression::Call { name, ref mut args, loc, ref mut expanded, .. } => {
-                self.ssa.debug("call");
 
 
                 let mut static_name = None;
@@ -1296,6 +1305,12 @@ impl Symbolic {
                     if let ast::Type::Other(name) = &t.t {
                         static_name = Some(name.0[0].clone());
                     }
+                }
+
+                if let Some(static_name) = &static_name {
+                    self.ssa.debug(&format!("call of {}", static_name));
+                } else {
+                    self.ssa.debug(&format!("call"));
                 }
 
                 match static_name.as_ref().map(|s|s.as_str()) {
@@ -1890,6 +1905,7 @@ impl Symbolic {
                 }
             }
             Value::Address(to) => {
+                self.ssa.debug(&format!("{} to temporal +1 because of function borrow", to));
                 self.memory[*to].temporal += 1;
                 self.memory[*to].value     = Value::Unconstrained("borrowed in function call".to_string());
             }
