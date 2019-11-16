@@ -212,7 +212,7 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, ast::Loca
             v.extend(expr_deps(cr, expr));
             v
         }
-        ast::Expression::Literal {..} => {
+        ast::Expression::Literal {..} | ast::Expression::LiteralString {..} | ast::Expression::LiteralChar {..}=> {
             Vec::new()
         }
         ast::Expression::Call { name, args, ..} => {

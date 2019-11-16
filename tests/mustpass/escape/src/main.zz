@@ -1,0 +1,13 @@
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+using <string.h>::{strlen};
+
+export fn main() -> int {
+    char c1 = ' ';
+    char c2 = '\x12';
+    char c3 = '\'';
+
+    char *str = "abc123 \' \" \? \\ \a \b \f \n \r \t \v \x12 \x12 abc1923u123    {} 23[123 ";
+    assert(static(len(str)) == strlen(str));
+    return 0;
+}

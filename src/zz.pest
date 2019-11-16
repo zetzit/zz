@@ -14,7 +14,7 @@ bitdigit    = { '0'..'1' }
 
 string_literal  = @{ "\"" ~ ( "\"\"" | "\\\""    | (!"\"" ~ ANY) )* ~ "\"" }
 bool_literal    = @{"false" | "true"}
-char_literal    = @{ "'" ~ ( "''" | (!"'" ~ ANY) )* ~ "'" }
+char_literal    = @{ "'" ~ ( "''" | "\\'" | (!"'" ~ ANY) )* ~ "'" }
 number_literal  = @{ hex_literal | bit_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
 int_literal     = @{ ("+" | "-")? ~ digit+ }
 hex_literal     = @{ "0x"  ~ hexdigit+ }
@@ -225,7 +225,8 @@ semicolon   = { ";" }
 stm_list    = _{ expr_stm ~ "," ~ stm_list | expr_stm }
 for_stm     = { "for" ~ "(" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list? ~ ")" ~ block }
 while_stm   = { "while" ~ expr ~ block }
-case_stm    = { (expr | key_default) ~ "=>" ~ block }
+case_cond   = { termish ~ ("|" ~ termish)* }
+case_stm    = { (key_default | case_cond ) ~ "=>" ~ block }
 switch_stm  = { "switch" ~ expr ~ "{" ~ case_stm* ~ "}"}
 if_stm      = { "if"  ~ expr  ~ block }
 elseif_stm  = { "else" ~ "if" ~ expr  ~ block }

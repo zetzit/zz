@@ -1,57 +1,53 @@
 using <string.h>::{memcmp, strlen};
-using <stdio.h>::{printf};
+using <stdio.h>::{getline, printf, putchar, stdin};
 using hex;
+using <stdlib.h>::{free};
 
 
 
+test empty {
+    stdin  = ""
+    stdout = ""
+}
 
-fn t(char *str, u8 *expect, usize expect_size) -> int {
+test test1 {
+    stdin  = "76"
+    stdout = {0x76}
+}
+
+test test2 {
+    stdin  = "7612"
+    stdout = {0x76, 0x12}
+}
+
+
+fn t(char *str) {
     u8 mut out[1024];
     out[0] = 0;
-
 
     usize slen = as<usize>(strlen(str));
     static_attest(len(str) == slen);
     usize count = hex::str2bin(str, slen, out, 1024);
 
-    printf("%x %x %d<>%d\n", out[0], out[1], count, expect_size);
+    static_attest(count < len(out));
 
-    if count != expect_size {
-        return 1;
+    for (usize mut i = 0; i < count; i++) {
+        putchar(out[i]);
     }
-
-    return memcmp(expect, out, count);
 }
 
 pub fn main() -> int {
-
-    {
-        u8 expect[] = {0x76};
-        if t("76", expect, static(len(expect))) != 0 {
-            return 1;
+    for (;;) {
+        char mut * mut line = 0;
+        usize mut l = 0;
+        int nread = as<int>(getline(&line, &l, stdin));
+        if nread < 1 {
+            free(line);
+            break;
         }
+        static_attest(safe(line));
+        t(line);
+        free(line);
     }
-
-    {
-        u8 expect[] = {0x76};
-        if t("761", expect, static(len(expect))) != 0 {
-            return 2;
-        }
-    }
-
-    {
-        u8 expect[] = {0x76, 0x12};
-        if t("7612", expect, static(len(expect))) != 0 {
-            return 3;
-        }
-    }
-
-    {
-        u8 expect[0];
-        if t("", expect, 0) != 0 {
-            return 4;
-        }
-    }
-
     return 0;
 }

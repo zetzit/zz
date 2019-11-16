@@ -2,7 +2,7 @@ use crate::flatten;
 use crate::ast;
 use crate::name::Name;
 use std::collections::HashMap;
-use super::parser::{emit_error, emit_warn, emit_debug};
+use super::parser::{self, emit_error, emit_warn, emit_debug};
 use ast::Tags;
 use crate::smt::{Solver, self};
 
@@ -790,13 +790,15 @@ impl Symbolic {
 
                     self.push("switch".into());
                     self.execute_expr(expr)?;
-                    for (expr,body) in cases {
-                        self.push("case".into());
-                        self.ssa.push("case");
-                        self.execute_expr(expr)?;
-                        self.execute_scope(&mut (body.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
-                        self.ssa.pop("end of case");
-                        self.pop();
+                    for (conds,body) in cases {
+                        for expr in conds {
+                            self.push("case".into());
+                            self.ssa.push("case");
+                            self.execute_expr(expr)?;
+                            self.execute_scope(&mut (body.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+                            self.ssa.pop("end of case");
+                            self.pop();
+                        }
                     }
 
                     if let Some(default) = default {
@@ -1211,8 +1213,45 @@ impl Symbolic {
 
                 Ok(tmp)
             },
-            ast::Expression::Literal { loc, v } => {
+            ast::Expression::LiteralString{ loc, v } => {
+                let tmp = self.temporary(
+                    format!("literal string \"{}\"", String::from_utf8_lossy(&v)),
+                    ast::Typed {
+                        t: ast::Type::U8,
+                        loc:    loc.clone(),
+                        ptr:    vec![ast::Pointer{
+                            tags: ast::Tags::new(),
+                            loc:    loc.clone(),
+                        }],
+                        tail:   ast::Tail::None,
+                    },
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                self.memory[tmp].value = Value::Array{
+                    array:  HashMap::new(),
+                    len:    v.len(),
+                };
+                self.ssa_mark_safe(tmp, loc)?;
+                Ok(tmp)
+            }
+            ast::Expression::LiteralChar{ loc, v } => {
+                let tmp = self.temporary(
+                    format!("literal char '{}'", *v as char),
+                    ast::Typed {
+                        t: ast::Type::Other("::ext::<stddef.h>::char".into()),
+                        loc:    loc.clone(),
+                        ptr:    Vec::new(),
+                        tail:   ast::Tail::None,
+                    },
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                self.memory[tmp].value = Value::Integer(*v as u64);
+                Ok(tmp)
+            }
 
+            ast::Expression::Literal { loc, v } => {
                 self.ssa.debug("literal expr");
                 if v == "true" {
                     let t = ast::Typed {
@@ -1230,7 +1269,7 @@ impl Symbolic {
                         tail:   ast::Tail::None,
                     };
                     self.literal(loc, Value::Integer(0), t)
-                } else if let Ok(v) = v.parse::<u64>() {
+                } else if let Some(v) = parser::parse_u64(&v) {
                     let t = ast::Typed {
                         t:      ast::Type::ULiteral,
                         loc:    loc.clone(),
@@ -1238,27 +1277,6 @@ impl Symbolic {
                         tail:   ast::Tail::None,
                     };
                     self.literal(loc, Value::Integer(v), t)
-                } else if v.starts_with("\"") {
-                    let tmp = self.temporary(
-                        format!("literal {}", v),
-                        ast::Typed {
-                            t: ast::Type::U8,
-                            loc:    loc.clone(),
-                            ptr:    vec![ast::Pointer{
-                                tags: ast::Tags::new(),
-                                loc:    loc.clone(),
-                            }],
-                            tail:   ast::Tail::None,
-                        },
-                        loc.clone(),
-                        Tags::new(),
-                     )?;
-                    self.memory[tmp].value = Value::Array{
-                        array:  HashMap::new(),
-                        len:    v.len() - 1,
-                    };
-                    self.ssa_mark_safe(tmp, loc)?;
-                    Ok(tmp)
                 } else {
                     let t = ast::Typed {
                         t:      ast::Type::ULiteral,

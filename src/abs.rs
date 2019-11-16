@@ -346,7 +346,7 @@ fn abs_expr(
         ast::Expression::Name(name)  => {
             scope.abs(name, inbody);
         },
-        ast::Expression::Literal {..} => {
+        ast::Expression::Literal {..} | ast::Expression::LiteralString {..} | ast::Expression::LiteralChar {..} => {
         }
         ast::Expression::Call { ref mut name, args, ..} => {
             abs_expr(name, scope, inbody, all_modules, self_md_name);
@@ -441,8 +441,10 @@ fn abs_statement(
         }
         ast::Statement::Switch {expr, cases, default, ..} => {
             abs_expr(expr, &scope, inbody, all_modules, self_md_name);
-            for (expr, block) in cases {
-                abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+            for (conds, block) in cases {
+                for expr in conds {
+                    abs_expr(expr, &scope, inbody, all_modules, self_md_name);
+                }
                 abs_block(block, &scope, all_modules, self_md_name);
             }
             if let Some(block) = default {

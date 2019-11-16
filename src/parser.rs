@@ -660,7 +660,8 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         span: expr.as_span(),
     };
 
-    match expr.as_rule() {
+    let asrule = expr.as_rule();
+    match asrule {
         Rule::unarypre => {
             let mut expr = expr.into_inner();
             let part    = expr.next().unwrap();
@@ -819,7 +820,29 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                 tail: Tail::None,
             })
         },
-        Rule::number_literal | Rule::string_literal | Rule::char_literal | Rule::bool_literal=> {
+        Rule::string_literal => {
+            let mut val = expr.as_str().to_string();
+            val.remove(0);
+            val.pop();
+            let v = unescape(&val, &loc);
+
+            Expression::LiteralString {
+                v,
+                loc,
+            }
+        }
+        Rule::char_literal => {
+            let mut val = expr.as_str().to_string();
+            val.remove(0);
+            val.pop();
+            let v = unescape(&val, &loc);
+
+            Expression::LiteralChar {
+                v: v[0],
+                loc,
+            }
+        }
+        Rule::number_literal | Rule::bool_literal=> {
             Expression::Literal {
                 v: expr.as_str().to_string(),
                 loc,
@@ -915,7 +938,6 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         e => panic!("unexpected rule {:?} in expr", e),
     }
 }
-
 
 pub(crate) fn parse_statement(
     n: (&'static str, &Path),
@@ -1193,6 +1215,7 @@ pub(crate) fn parse_statement(
             let expr = parse_expr(n, stm.next().unwrap());
 
             let mut cases = Vec::new();
+
             for part in stm {
                 let mut part = part.into_inner();
                 let ppart = part.next().unwrap();
@@ -1206,9 +1229,13 @@ pub(crate) fn parse_statement(
                         default = Some(parse_block(n, features.clone(), part.next().unwrap()));
                     }
                 } else {
-                    let expr  = parse_expr(n, ppart);
+                    let mut case_cond = Vec::new();
+                    for case in ppart.into_inner() {
+                        case_cond.push(parse_expr(n, case));
+                    }
+
                     let block = parse_block(n, features.clone(), part.next().unwrap());
-                    cases.push((expr,block));
+                    cases.push((case_cond,block));
                 }
             }
 
@@ -1611,4 +1638,61 @@ pub fn emit_debug<'a, S1, S2, I>(message: S1, v: I)
         s += &format!("\n{}", e);
     }
     debug!("{}", s);
+}
+
+fn unescape(s: &str, loc: &Location) -> Vec<u8> {
+    let mut result = Vec::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        result.push(
+            if ch != '\\' {
+                ch as u8
+            } else {
+                match chars.next() {
+                    Some('x') => {
+                        let value = chars.by_ref().take(2).fold(0, |acc, c| acc * 16 + c.to_digit(16).unwrap());
+                        if value > 255 {
+                            emit_error("octal value too big for char", &[
+                                (loc.clone(), "in this literal string")
+                            ]);
+                            std::process::exit(9);
+                        }
+                        value as u8
+                    }
+                    Some('?') => 0x3f,
+                    Some('\\')=> '\\' as u8,
+                    Some('a') => 0x07,
+                    Some('b') => 0x08,
+                    Some('f') => 0x0c,
+                    Some('n') => '\n' as u8,
+                    Some('r') => '\r' as u8,
+                    Some('t') => '\t' as u8,
+                    Some('v') => 0x0b,
+                    Some('"') => '"' as u8,
+                    Some('\'') => '\'' as u8,
+                    _ => {
+                        emit_error("unsupported escape character", &[
+                            (loc.clone(), "in this literal string")
+                        ]);
+                        std::process::exit(9);
+                    }
+                }
+            }
+        )
+    }
+    result
+}
+
+
+
+pub fn parse_u64(s: &str) -> Option<u64> {
+    if s.len() > 2 && s.chars().nth(0) == Some('0') && s.chars().nth(1) == Some('x') {
+        return u64::from_str_radix(&s[2..], 16).ok();
+    }
+
+    if let Ok(v) = s.parse::<u64>() {
+        return Some(v)
+    }
+
+    None
 }

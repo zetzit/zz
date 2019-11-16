@@ -293,7 +293,7 @@ fn main() {
                 .arg(indir.path())
                 .arg("-o")
                 .arg(&outdir)
-                .arg(format!("./target/{}/{}", stage, exes[0].0))
+                .arg(format!("./target/{}/bin/{}", stage, exes[0].0))
                 .spawn()
                 .expect("failed to execute process");
             child.wait();

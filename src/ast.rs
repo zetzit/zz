@@ -411,7 +411,15 @@ pub enum Expression {
         lhs:    Box<Expression>,
         rhs:    Box<Expression>,
     },
-    Literal {
+    LiteralString {
+        loc:    Location,
+        v:      Vec<u8>,
+    },
+    LiteralChar {
+        loc:    Location,
+        v:      u8,
+    },
+    Literal{
         loc:    Location,
         v:      String,
     },
@@ -463,7 +471,9 @@ impl Expression {
             Expression::Name(name)              => &name.loc,
             Expression::MemberAccess {loc,..}   => loc,
             Expression::ArrayAccess {loc,..}    => loc,
-            Expression::Literal {loc,..}        => loc,
+            Expression::Literal{loc,..}         => loc,
+            Expression::LiteralString{loc,..}   => loc,
+            Expression::LiteralChar{loc,..}     => loc,
             Expression::Call {loc,..}           => loc,
             Expression::Infix{loc,..}           => loc,
             Expression::Cast {loc,..}           => loc,
@@ -506,7 +516,7 @@ pub enum Statement {
     Switch {
         loc:        Location,
         expr:       Expression,
-        cases:      Vec<(Expression, Block)>,
+        cases:      Vec<(Vec<Expression>, Block)>,
         default:    Option<Block>,
     },
     Continue{

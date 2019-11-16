@@ -7,7 +7,7 @@ use std::io::{Write, Read};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use super::name::Name;
-use super::parser::emit_error;
+use super::parser::{self, emit_error};
 
 
 pub struct CFile {
@@ -123,7 +123,7 @@ impl Emitter {
                 s
             }
             ast::Type::ILiteral | ast::Type::ULiteral => {
-                super::parser::emit_error(
+                parser::emit_error(
                     "ICE: untyped ended up in emitter",
                     &[(name.loc.clone(), format!("this should have been resolved earlier"))]
                     );
@@ -264,7 +264,7 @@ impl Emitter {
         if i.inline {
 
             if !i.expr.starts_with("\"") || !i.expr.ends_with("\"") || i.expr.len() < 3 {
-                super::parser::emit_error(
+                parser::emit_error(
                     "cannot inline non-relative include",
                     &[(i.loc.clone(), format!("'{}' is not a relative include", i.expr))]
                     );
@@ -276,7 +276,7 @@ impl Emitter {
 
             let mut f = match fs::File::open(&path) {
                 Err(e) => {
-                    super::parser::emit_error(
+                    parser::emit_error(
                         format!("cannot inline {:?}", path),
                         &[(i.loc.clone(), format!("{}", e))]
                         );
@@ -432,20 +432,45 @@ impl Emitter {
             let p = format!("{}/{}", dir, fname);
             let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
             match expr {
-                ast::Expression::Literal{v,..} => {
-                    let mut v = v.clone();
-                    if v.starts_with("\"") {
-                        v.remove(0);
-                        v.remove(v.len() -1);
-                        v = v
-                            .replace("\\n", "\n")
-                            .replace("\\r", "\r")
-                            .replace("\\\"", "\"")
-                    }
-                    f.write_all(v.as_bytes()).unwrap();
+                ast::Expression::LiteralString{v,..} => {
+                    f.write_all(v).unwrap();
                 },
+                ast::Expression::ArrayInit{fields, ..} => {
+                    for field in fields {
+                        match field.as_ref() {
+                            ast::Expression::Literal{v,loc} => {
+                                match parser::parse_u64(v) {
+                                    Some(v) if v <= 255 => {
+                                        f.write(&[v as u8]).unwrap();
+                                    }
+                                    _ => {
+                                        parser::emit_error(
+                                            "testcase field must be literal string or byte array",
+                                            &[(loc.clone(), format!("this expression cannot be emitted as testcase file"))]
+                                            );
+                                        std::process::exit(9);
+                                    }
+                                }
+                            },
+                            _ => {
+                                parser::emit_error(
+                                    "testcase field must be literal string or byte array, not",
+                                    &[(field.loc().clone(), format!("this expression cannot be emitted as testcase file"))]
+                                    );
+                                std::process::exit(9);
+                            }
+                        }
+                    }
+                },
+                ast::Expression::Literal{v, ..} => {
+                    f.write_all(v.as_bytes()).unwrap();
+                }
                 _ => {
-                    panic!("ICE: testcase {} {} {} was not reduced to literal", self.module.name, ast.name, fname);
+                    parser::emit_error(
+                        "testcase field must be literal string or byte array",
+                        &[(expr.loc().clone(), format!("this expression cannot be emitted as testcase file"))]
+                        );
+                    std::process::exit(9);
                 }
             }
         }
@@ -478,7 +503,7 @@ impl Emitter {
                     write!(self.f, "]").unwrap();
                 } else {
                     if i != (fields.len() - 1) {
-                        super::parser::emit_error(
+                        parser::emit_error(
                             "tail field has no be the last field in a struct",
                             &[(field.loc.clone(), format!("tail field would displace next field"))]
                             );
@@ -563,7 +588,7 @@ impl Emitter {
         for (attr, loc) in attr {
             match attr.as_str() {
                 o => {
-                    super::parser::emit_error(
+                    parser::emit_error(
                         "ICE: unsupported attr",
                         &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
                         );
@@ -619,7 +644,7 @@ impl Emitter {
                 "inline" => {
                 },
                 o => {
-                    super::parser::emit_error(
+                    parser::emit_error(
                         "ICE: unsupported attr",
                         &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
                         );
@@ -711,7 +736,7 @@ impl Emitter {
                     write!(self.f, " inline ").unwrap();
                 },
                 o => {
-                    super::parser::emit_error(
+                    parser::emit_error(
                         "ICE: unsupported attr",
                         &[(loc.clone(), format!("'{}' is not a valid c attribute", o))]
                         );
@@ -925,10 +950,13 @@ impl Emitter {
                 write!(self.f, "switch (\n").unwrap();
                 self.emit_expr(expr);
                 write!(self.f, ") {{\n").unwrap();
-                for (expr, block) in cases {
-                    write!(self.f, "case ").unwrap();
-                    self.emit_expr(expr);
-                    write!(self.f, ": {{\n").unwrap();
+                for (conds, block) in cases {
+                    for expr in conds {
+                        write!(self.f, "case ").unwrap();
+                        self.emit_expr(expr);
+                        write!(self.f, ":\n").unwrap();
+                    }
+                    write!(self.f, "{{\n").unwrap();
                     self.emit_zblock(block, true);
                     write!(self.f, "break;}}\n").unwrap();
                 }
@@ -1039,6 +1067,20 @@ impl Emitter {
                 self.emit_loc(&name.loc);
                 write!(self.f, "    {}", self.to_local_typed_name(&name)).unwrap();
             },
+            ast::Expression::LiteralString {loc, v} => {
+                self.emit_loc(&loc);
+                write!(self.f, "    \"").unwrap();
+                for c in v {
+                    self.write_escaped_literal(*c, true);
+                }
+                write!(self.f, "\"").unwrap();
+            }
+            ast::Expression::LiteralChar {loc, v} => {
+                self.emit_loc(&loc);
+                write!(self.f, "    '").unwrap();
+                self.write_escaped_literal(*v, false);
+                write!(self.f, "'").unwrap();
+            }
             ast::Expression::Literal {loc, v} => {
                 self.emit_loc(&loc);
                 write!(self.f, "    {}", v).unwrap();
@@ -1103,6 +1145,41 @@ impl Emitter {
                     (loc.clone(), "here")
                 ]);
                 std::process::exit(9);
+            }
+        }
+    }
+
+
+    fn write_escaped_literal(&mut self, c: u8, isstr: bool) {
+        let c = c as char;
+        match c {
+            '"' if isstr => {
+                write!(self.f, "\\\"").unwrap();
+            }
+            '\'' if !isstr => {
+                write!(self.f, "\\'").unwrap();
+            }
+            '\\' => {
+                write!(self.f, "\\\\").unwrap();
+            }
+            '\t' => {
+                write!(self.f, "\\t").unwrap();
+            }
+            '\r' => {
+                write!(self.f, "\\r").unwrap();
+            }
+            '\n' => {
+                write!(self.f, "\\n").unwrap();
+            }
+            _ if c.is_ascii() && !c.is_ascii_control() => {
+                write!(self.f, "{}", c).unwrap();
+            }
+            _ => {
+                if isstr {
+                    write!(self.f, "\"\"\\x{:x}\"\"", c as u8).unwrap();
+                } else {
+                    write!(self.f, "\\x{:x}", c as u8).unwrap();
+                }
             }
         }
     }
