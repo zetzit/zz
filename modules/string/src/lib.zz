@@ -1,8 +1,14 @@
-using <string.h>::{strlen, memcpy};
+using <string.h>::{strlen, memcpy, memset};
+using <stdarg.h>::{va_list, va_start, va_end};
+using <stdio.h>::{vsnprintf, printf};
 
 export struct String+ {
     usize   len;
     char    mem[];
+}
+
+export fn clear(String+tail mut * self) {
+    memset(self->mem, 0, tail);
 }
 
 export fn append(String+t mut * self, char * cstr)
@@ -17,4 +23,32 @@ export fn append(String+t mut * self, char * cstr)
     self->len += inlen;
 }
 
+export fn format(String+tail mut * self, char *fmt, ...) -> int
+    where tail > 0
+{
+    va_list mut args;
+    va_start (args, fmt);
 
+    usize isfree = tail - self->len;
+
+    int r = as<int>(vsnprintf(
+        self->mem +  self->len,
+        isfree,
+        fmt,
+        args
+    ));
+    va_end (args);
+
+    if r > 0 {
+        if (usize)r >= isfree {
+            self->len += isfree;
+        } else {
+            self->len += as<usize>(r);
+        }
+    }
+
+    static_attest(self->len < len(self->mem));
+    (self->mem)[self->len] = 0;
+
+    return r;
+}

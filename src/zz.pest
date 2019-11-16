@@ -235,7 +235,7 @@ continue_stm  = { key_continue }
 break_stm   = { key_break }
 goto_stm    = { "goto" ~ ident }
 label       = ${ ident ~ ":"}
-mark_stm    = { lhs ~ "is" ~ tag_name }
+mark_stm    = ${ lhs ~ WHITESPACE+ ~ "is" ~ WHITESPACE+ ~ tag_name }
 unsafe_block = {"unsafe" ~ block }
 
 cblock_inner = { ( (!"}}@" ~ ANY))*}

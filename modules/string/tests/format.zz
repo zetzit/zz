@@ -1,0 +1,20 @@
+using string;
+using <stdio.h>::{getline, printf, stdin};
+using <stdlib.h>::{free};
+
+
+
+test blah {
+    stdout = "hello2366\n"
+}
+
+export fn main() -> int {
+    string::String+10 mut s = {0};
+
+    string::append(&s, "hello");
+    string::format(&s, "%d%d%d%d", 2, 3, 66,9);
+    string::format(&s, "%s", "12345678901234567890");
+
+    printf("%s\n", s.mem);
+    return 0;
+}

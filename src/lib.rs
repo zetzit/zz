@@ -232,6 +232,16 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
     }
     //std::env::set_current_dir(pp).unwrap();
 
+    if let Some(deps) = &project.dependencies {
+        for (name, dep) in deps {
+            match dep {
+                toml::Value::String(v) => {
+                    getdep(name, modules);
+                },
+                _ => (),
+            }
+        }
+    }
 }
 
 

@@ -488,6 +488,9 @@ impl Emitter {
                         emitted_tail = true;
                         write!(self.f, " {}[{}]", field.name, tt).unwrap();
                     } else {
+
+                        //TODO emit as something else (not as pointer!)
+                        // nested flexible arrays are non standard
                         write!(self.f, " {}[]", field.name).unwrap();
                     }
                 }

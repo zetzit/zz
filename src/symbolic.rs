@@ -2141,9 +2141,7 @@ impl Symbolic {
             self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp1);
             self.ssa.assert((tmp1, self.memory[tmp1].temporal), |a,_| match a {
                 smt::Assertion::Unsolveable => {
-                    Err(Error::new(format!("copy of safe value is not provable"), vec![
-                       (used_here.clone(), format!("there may be conflicting constraints"))
-                    ]))
+                    Ok(false)
                 }
                 smt::Assertion::Unconstrained(_) => {
                     Ok(false)

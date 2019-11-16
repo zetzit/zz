@@ -264,6 +264,11 @@ impl Make {
         args.push("-Wall".to_string());
         args.push("-Wno-unused-function".to_string());
         args.push("-Wno-parentheses-equality".to_string());
+
+        // should translate tails to something not else. nested flexible arrays are not standard
+        args.push("-Wno-flexible-array-extensions".to_string());
+        args.push("-Wno-gnu-variable-sized-type-not-at-end".to_string());
+
         args.push("-Werror=pointer-sign".to_string());
         args.push("-Werror=int-to-pointer-cast".to_string());
         args.push("-c".to_string());

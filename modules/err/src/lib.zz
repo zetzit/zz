@@ -3,76 +3,74 @@ using <string.h>::{memset, strncat, strlen};
 using <errno.h>::{errno, strerror};
 using <stdlib.h>::{abort as cabort};
 using <stdarg.h>::{va_list, va_start};
-
+using string::{String};
+using string;
 
 theory checked(Err * self) -> bool;
 
 export struct Err+ {
     u8      mut error;
     char    description[255];
-    char    locations[];
+    String+ locations;
 };
 
 
-export fn new(Err+tail mut * err)
-    model checked(*err)
+export fn new(Err+tail mut *self)
+    model checked(*self)
 {
-    memset(err, 0, sizeof(Err));
-    memset(err->locations, 0, tail);
-    static_attest(checked(*err));
+    memset(self, 0, sizeof(Err));
+    string::clear(&(self->locations));
+    static_attest(checked(*self));
 }
 
 export  fn check(
-        Err+tail mut* err,
+        Err+tail mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         int   callsite_source<line>      line,
 ) -> bool
-    model checked(*err)
+    model checked(*self)
 {
-    static_attest(checked(*err));
-    if ((err)->error != 0) {
-        backtrace(err, file, scope, line);
+    static_attest(checked(*self));
+    if (self->error != 0) {
+        backtrace(self, file, scope, line);
         return true;
     }
     return false;
 }
 
 
-fn backtrace(Err+tail mut* err, char * unsafe file, char * unsafe scope, int line)
-{
-    snprintf(
-        (char mut*)(&((err)->locations)) + as<usize>(strlen((err)->locations)),
-        tail- as<usize>(strlen((err)->locations)),
-        "\n  %s:%d \t%s", file, line, scope);
+fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, int line) {
+    if tail > 0 {
+        string::format(&(self->locations), "\n  %s:%d \t%s", file, line, scope);
+    }
 }
 
 export fn fail_with_errno(
-        Err+tail mut* err,
+        Err+tail mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         int   callsite_source<line>      line,
         char*  fmt,
         ...
 )
-    where checked(*err)
+    where checked(*self)
 {
-    (err)->error = (u8)errno;
+    self->error = (u8)errno;
 
     va_list mut vargs;
     va_start(vargs, fmt);
-    vsnprintf((err)->description, sizeof((err)->description), fmt, vargs);
+    vsnprintf(self->description, sizeof(self->description), fmt, vargs);
 
-    strncat((err)->description, " : ", as<usize>(sizeof((err)->description)) - as<usize>(strlen((err)->description)));
-    strncat((err)->description, strerror(errno), as<usize>(sizeof((err)->description)) - as<usize>(strlen((err)->description)));
+    strncat(self->description, " : ", as<usize>(sizeof(self->description)) - as<usize>(strlen(self->description)));
+    strncat(self->description, strerror(errno), as<usize>(sizeof(self->description)) - as<usize>(strlen(self->description)));
 
-    memset((err)->locations, 0, tail);
-
-    backtrace(err, file, scope, line);
+    string::clear(&(self->locations));
+    backtrace(self, file, scope, line);
 }
 
 export fn fail(
-        Err+tail mut* err,
+        Err+tail mut* self,
         u8  e,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
@@ -80,17 +78,16 @@ export fn fail(
         char*  fmt,
         ...
 )
-    where checked(*err)
+    where checked(*self)
 {
-    (err)->error = e;
+    self->error = e;
 
     va_list mut vargs;
     va_start(vargs, fmt);
-    vsnprintf((err)->description, sizeof((err)->description), fmt, vargs);
+    vsnprintf(self->description, sizeof(self->description), fmt, vargs);
 
-    memset((err)->locations, 0, tail);
-
-    backtrace(err, file, scope, line);
+    string::clear(&(self->locations));
+    backtrace(self, file, scope, line);
 }
 
 export fn abort(
@@ -101,12 +98,11 @@ export fn abort(
 )
 
 model checked(*err)
-
 {
     static_attest(checked(*err));
     if (err->error != 0) {
         backtrace(err, file, scope, line);
-        fprintf(stderr, "fatal error: %s%s\n", err->description, err->locations);
+        fprintf(stderr, "fatal error: %s%s\n", err->description, (err->locations).mem);
         cabort();
     }
 }
@@ -117,5 +113,5 @@ export fn to_str(
     usize dest_len,
 )
 {
-    snprintf(dest, dest_len, "%s%s\n", err->description, err->locations);
+    snprintf(dest, dest_len, "%s%s\n", err->description, (err->locations).mem);
 }

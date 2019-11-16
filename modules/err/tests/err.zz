@@ -6,11 +6,20 @@ fn bad(err::Err+et mut *e)
     err::fail(e, 1, "no you cannot %s", "do this");
 }
 
+fn maybe(err::Err+et mut *e)
+    where err::checked(*e)
+{
+    bad(e);
+    if err::check(e) {
+        return;
+    }
+}
+
 pub fn main() -> int {
 
-    err::Err+100 mut e;
+    err::Err+500 mut e;
     err::new(&e);
-    bad(&e);
+    maybe(&e);
     if err::check(&e) {
         return 0;
     }
