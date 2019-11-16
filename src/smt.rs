@@ -553,7 +553,15 @@ impl Solver {
         };
 
         write!(self.debug.borrow_mut(), "{}(check-sat); check after constrain\n", self.debug_indent).unwrap();
-        self.solve()
+
+        //#[cfg(debug_assertions)]
+        //{
+        //    self.solve()
+        //}
+        //#[cfg(not(debug_assertions))]
+        {
+            true
+        }
     }
 
 
@@ -755,9 +763,9 @@ impl Solver {
 
     #[cfg(debug_assertions)]
     pub fn checkpoint(&self) {
-        if !self.solve() {
-            panic!("ICE: function is unsolveable");
-        }
+        //if !self.solve() {
+        //    panic!("ICE: function is unsolveable");
+        //}
     }
     #[cfg(not(debug_assertions))]
     pub fn checkpoint(&self) {}

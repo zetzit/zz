@@ -1,0 +1,14 @@
+[project]
+version = "0.1.0"
+name = "json"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[dependencies]
+err = "1"
+
+[variants]
+default = []

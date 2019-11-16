@@ -9,6 +9,7 @@ export struct String+ {
 
 export fn clear(String+tail mut * self) {
     memset(self->mem, 0, tail);
+    self->len = 0;
 }
 
 export fn push(String+t mut * self, char cstr) -> bool

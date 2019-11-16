@@ -1,0 +1,176 @@
+using <stdio.h>::{printf};
+using <stdlib.h>::{atoi};
+using <string.h>::{strcmp};
+using err;
+using string::{String};
+using string;
+
+
+struct Vehicle {
+    int height;
+    int wheels;
+}
+
+
+fn deserialize_vehicle(err::Err mut *e, Vehicle mut *into, char *k, char *v)
+{
+    printf(">%s< == >%s<\n", k, v);
+    if strcmp("heigh", k) == 0 {
+        into->height = as<int>(atoi(v));
+    }
+}
+
+
+fntype deserialize_t(err::Err mut *e, void mut *user, char *k, char *v);
+
+
+enum ParserState {
+    Document,
+    Object,
+    Key,
+    PostKey,
+    PreVal,
+    Val,
+}
+
+struct Parser+ {
+    usize           at;
+    usize           col;
+    usize           line;
+
+    void *user;
+    deserialize_t   de;
+    ParserState     state;
+
+    //FIXME swapping these should have been an error
+    usize           keylen;
+    String+         capture;
+}
+
+
+fn new(Parser+tail mut*self, deserialize_t de, void mut *user)
+    where safe(de)
+    model safe(self->de)
+{
+    self->user  = user;
+    self->de    = de;
+    self->line  = 1;
+}
+
+fn push(err::Err+et mut *e, Parser+tail mut *self, char *str, usize strlen)
+    where err::checked(*e)
+    where len(str) >= strlen
+    where safe(self->de)
+{
+    for (;self->at < strlen; (self->at)++) {
+        self->col += 1;
+        char ch = str[self->at];
+
+        switch ch {
+            '\n' => {
+                (self->line)++;
+                self->col = 0;
+            }
+            '\t' | '\r' | ' ' => {
+            }
+            '{' | '[' | '}' | ']' | '"' | ':' => {
+                advance(e, self, ch);
+                if err::check(e) {
+                    return;
+                }
+            }
+            default => {
+                if self->state != ParserState::Key && self->state != ParserState::Val {
+                    err::fail(e, 10, "unexpected '%c' at %u:%u", ch, self->line, self->col);
+                    return;
+                } else {
+                    if !string::push(&(self->capture), ch) {
+                        err::fail(e, 10, "buffer overflowat %u:%u", self->line, self->col);
+                        return;
+                    }
+                }
+            }
+        }
+
+    }
+}
+
+fn advance(err::Err+et mut *e, Parser+tail mut *self, char token)
+    where err::checked(*e)
+    where safe(self->de)
+{
+    switch self->state {
+        ParserState::Document => {
+            if token == '{' {
+                self->state = ParserState::Object;
+            } else {
+                err::fail(e, 1, "unexpected '%c', expected { at %u:%u", token, self->line, self->col);
+                return;
+            }
+        }
+        ParserState::Object => {
+            if token == '"' {
+                self->state = ParserState::Key;
+                string::clear(&self->capture);
+            } else if token == '}' {
+                self->state = ParserState::Document;
+            } else {
+                err::fail(e, 2, "unexpected '%c', expected '\"' or } at %u:%u", token, self->line, self->col);
+                return;
+            }
+        }
+        ParserState::Key => {
+            if token == '"' {
+                self->state = ParserState::PostKey;
+            } else {
+                err::fail(e, 3, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
+                return;
+            }
+        }
+        ParserState::PostKey => {
+            if token == ':' {
+                self->state  = ParserState::PreVal;
+                string::push(&(self->capture), 0);
+                self->keylen = (self->capture).len;
+            } else {
+                err::fail(e, 4, "unexpected '%c', expected ':' at %u:%u", token, self->line, self->col);
+                return;
+            }
+        }
+        ParserState::PreVal => {
+            if token == '"' {
+                self->state = ParserState::Val;
+            } else {
+                err::fail(e, 6, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
+                return;
+            }
+        }
+        ParserState::Val => {
+            if token == '"' {
+                self->state = ParserState::Object;
+                (self->de)(e, 0, (self->capture).mem, (self->capture).mem + self->keylen);
+            } else {
+                err::fail(e, 7, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
+                return;
+            }
+        }
+    }
+}
+
+
+export fn main() -> int {
+    err::Err+1000 mut e = {0};
+    err::new(&e);
+
+
+    Vehicle mut v = {0};
+
+    Parser+100 mut parser = {0};
+    new(&parser,  (deserialize_t)deserialize_vehicle, (void mut*)&v);
+    char *str = "{\"height\": \n \t \"12\"}\n";
+
+    push(&e, &parser, str, static(len(str)));
+    err::abort(&e);
+
+    return 0;
+}
