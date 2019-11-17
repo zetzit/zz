@@ -1,0 +1,18 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    int t;
+    int blob[];
+}
+
+
+struct B {
+    A+ a;
+    int b;
+}
+
+export fn main() -> int {
+    printf("hello nested_tail_not_last\n");
+    return 0;
+}

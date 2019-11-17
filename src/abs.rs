@@ -612,7 +612,9 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                 }
             }
             ast::Def::Struct{fields,..} => {
-                for field in fields {
+
+                let fieldslen = fields.len();
+                for (i, field) in fields.iter_mut().enumerate() {
                     scope.abs(&mut field.typed, false);
                     if let ast::Type::Other(name) = &field.typed.t{
                         check_abs_available(&name, &ast.vis, all_modules, &field.typed.loc, &md.name);
@@ -620,6 +622,18 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                     if let Some(ref mut array) = &mut field.array {
                         if let Some(array) = array {
                             abs_expr(array, &scope, false, all_modules, &md.name);
+                        }
+                    }
+
+                    match field.typed.tail {
+                        ast::Tail::None | ast::Tail::Static(_, _) => {},
+                        ast::Tail::Bind(_,_) | ast::Tail::Dynamic => {
+                            if i != fieldslen - 1 {
+                                emit_error(format!("nested tail must be last field"), &[
+                                    (field.loc.clone(), format!("field {} is non static tail, but not the last field", field.name)),
+                                ]);
+                                std::process::exit(9);
+                            }
                         }
                     }
                 }

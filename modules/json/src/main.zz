@@ -6,9 +6,20 @@ using string::{String};
 using string;
 
 
+
+enum Fuel {
+    Dinosaurs,
+    Electric,
+}
+
+struct Engine{
+    Fuel fuel;
+}
+
 struct Vehicle {
     int height;
     int wheels;
+    Engine engine;
 }
 
 
