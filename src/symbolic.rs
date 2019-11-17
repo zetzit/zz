@@ -1763,50 +1763,6 @@ impl Symbolic {
                     Tags::new(),
                 )?;
 
-                let rhs_safe = if self.memory[rhs].t == smt::Type::Unsigned(64) {
-                    self.ssa.debug("safe check before cast");
-                    let tmp1 = self.temporary(
-                        format!("safe({})", self.memory[rhs].name),
-                        ast::Typed{
-                            t:      ast::Type::Bool,
-                            ptr:    Vec::new(),
-                            loc:    loc.clone(),
-                            tail:   ast::Tail::None,
-                        },
-                        loc.clone(),
-                        Tags::new(),
-                        )?;
-                    let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-                    self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp1);
-                    self.ssa.assert((tmp1, self.memory[tmp1].temporal), |a,_| match a {
-                        smt::Assertion::Unsolveable => {
-                            Ok(false)
-                        }
-                        smt::Assertion::Unconstrained(_) => {
-                            Ok(false)
-                        }
-                        smt::Assertion::Constrained(true) => {
-                            Ok(true)
-                        }
-                        smt::Assertion::Constrained(false) => {
-                            Ok(false)
-                        }
-                    })?
-                } else {
-                    false
-                };
-
-                if rhs_safe {
-                    if self.memory[tmp].t != smt::Type::Unsigned(64) {
-                        return Err(Error::new(format!("cast of safe value to not pointer"), vec![
-                            (loc.clone(), format!("whatever you did here really confused the symbolic executor. this might be a compiler bug")),
-                            (self.memory[tmp].declared.clone(), format!("cast to {} {:?}", self.memory[tmp].typed, self.memory[tmp].t)),
-                            (self.memory[rhs].declared.clone(), format!("rhs is {} {:?}", self.memory[rhs].typed, self.memory[rhs].t)),
-                        ]));
-                    }
-                    self.ssa_mark_safe(tmp, loc)?;
-                }
-
                 self.memory[tmp].value = self.memory[rhs].value.clone();
                 self.ssa.assign(
                     (tmp, self.memory[tmp].temporal),
@@ -2233,12 +2189,10 @@ impl Symbolic {
     //                  cpy here   from here
     fn copy(&mut self, lhs: Symbol, rhs: Symbol, used_here: &ast::Location) -> Result<(), Error> {
 
-
-
-        let rhs_safe = if self.memory[rhs].t == smt::Type::Unsigned(64) {
-            self.ssa.debug("safe check before copy");
-            let tmp1 = self.temporary(
-                format!("safe({})", self.memory[rhs].name),
+        // transfer safe mark
+        if self.memory[rhs].t == smt::Type::Unsigned(64) && self.memory[lhs].t == smt::Type::Unsigned(64) {
+            let tmp_safe_transfer = self.temporary(
+                format!("safe({}) == safe({})", self.memory[rhs].name, self.memory[lhs].name),
                 ast::Typed{
                     t:      ast::Type::Bool,
                     ptr:    Vec::new(),
@@ -2249,36 +2203,11 @@ impl Symbolic {
                 Tags::new(),
                 )?;
             let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp1);
-            self.ssa.assert((tmp1, self.memory[tmp1].temporal), |a,_| match a {
-                smt::Assertion::Unsolveable => {
-                    Ok(false)
-                }
-                smt::Assertion::Unconstrained(_) => {
-                    Ok(false)
-                }
-                smt::Assertion::Constrained(true) => {
-                    Ok(true)
-                }
-                smt::Assertion::Constrained(false) => {
-                    Ok(false)
-                }
-            })?
-        } else {
-            false
-        };
-
-        self.memory[lhs].temporal += 1;
-        if rhs_safe {
-            if self.memory[lhs].t != smt::Type::Unsigned(64) {
-                return Err(Error::new(format!("copy of safe value to not pointer"), vec![
-                    (used_here.clone(), format!("whatever you did here really confused the symbolic executor. this might be a compiler bug")),
-                    (self.memory[lhs].declared.clone(), format!("lhs is {} {:?}", self.memory[lhs].typed, self.memory[lhs].t)),
-                    (self.memory[rhs].declared.clone(), format!("rhs is {} {:?}", self.memory[rhs].typed, self.memory[rhs].t)),
-                ]));
-            }
-            self.ssa_mark_safe(lhs, used_here)?;
+            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp_safe_transfer);
+            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], tmp_safe_transfer);
         }
+        self.memory[lhs].temporal += 1;
+
 
 
         match self.memory[rhs].value.clone() {
@@ -2287,7 +2216,7 @@ impl Symbolic {
                     (used_here.clone(), "used here".to_string())
                 ]));
             }
-            Value::Uninitialized if !rhs_safe => {
+            Value::Uninitialized => {
                 // FIXME for now this is too noisy.
                 //return Err(Error::new(format!("unsafe read access to uninitialized local '{}'", self.memory[rhs].name), vec![
                 //    (used_here.clone(), "used here".to_string())
