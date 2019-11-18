@@ -1,0 +1,15 @@
+[project]
+version = "0.1.0"
+name = "static_attest_in_third_branch"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[dependencies]
+err = "1"
+
+
+[variants]
+default = []

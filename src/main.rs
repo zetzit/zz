@@ -26,6 +26,7 @@ fn main() {
         .setting(clap::AppSettings::UnifiedHelpMessage)
         .subcommand(SubCommand::with_name("check").about("check the current project"))
         .subcommand(SubCommand::with_name("build").about("build the current project")
+            .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
             .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
         )
@@ -59,7 +60,7 @@ fn main() {
         ("test", Some(submatches)) => {
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::test();
-            zz::build(true, false, variant, stage.clone());
+            zz::build(true, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -188,7 +189,7 @@ fn main() {
                 zz::make::Stage::test()
             };
             let variant = submatches.value_of("variant").unwrap_or("default");
-            zz::build(true, false, variant, stage.clone());
+            zz::build(true, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -217,7 +218,7 @@ fn main() {
         ("fuzz", Some(submatches)) => {
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::fuzz();
-            zz::build(true, false, variant, stage.clone());
+            zz::build(true, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -304,7 +305,7 @@ fn main() {
         },
         ("check", Some(submatches)) => {
             zz::parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
-            zz::build(false, true, submatches.value_of("variant").unwrap_or("default"), zz::make::Stage::test())
+            zz::build(false, true, submatches.value_of("variant").unwrap_or("default"), zz::make::Stage::test(), false)
         },
         ("build", Some(submatches)) => {
             let stage = if submatches.is_present("release"){
@@ -312,10 +313,11 @@ fn main() {
             } else {
                 zz::make::Stage::test()
             };
-            zz::build(false, false, submatches.value_of("variant").unwrap_or("default"), stage)
+
+            zz::build(false, false, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
         },
         ("", None) => {
-            zz::build(false, false, "default", zz::make::Stage::test());
+            zz::build(false, false, "default", zz::make::Stage::test(), false);
         },
         _ => unreachable!(),
     }

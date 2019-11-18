@@ -1,0 +1,14 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    int a = 0;
+    bool b = (bool)a;
+    static_assert(b == false);
+
+    int a2 = 1;
+    bool b2 = (bool)a2;
+    static_assert(b2 == true);
+
+    return 0;
+}

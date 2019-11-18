@@ -1,0 +1,10 @@
+pub fn rand(u8 mut* mut bytes)
+{
+    for (;;) {
+        bytes   += 1;
+    }
+}
+
+
+export fn main() -> int {return 0;}
+

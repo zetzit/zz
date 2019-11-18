@@ -1,0 +1,15 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    u8 a[10];
+    u8 b;
+}
+
+export fn main() -> int {
+
+    A a;
+    u8 *x = a.a + a.b;
+
+    return 0;
+}

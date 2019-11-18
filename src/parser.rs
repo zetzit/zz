@@ -1536,7 +1536,8 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
         loc: loc,
         name,
         args,
-        expanded: false,
+        expanded:       false,
+        emit:           EmitBehaviour::Default,
     }
 }
 

@@ -26,7 +26,7 @@ struct Vehicle {
 fn deserialize_vehicle(err::Err mut *e, Vehicle mut *into, char *k, char *v)
 {
     printf(">%s< == >%s<\n", k, v);
-    if strcmp("heigh", k) == 0 {
+    if as<int>(strcmp("heigh", k)) == 0 {
         into->height = as<int>(atoi(v));
     }
 }

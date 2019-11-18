@@ -1,0 +1,7 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+    len = 1;
+    printf("hello assign_to_theory\n");
+    return 0;
+}

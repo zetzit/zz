@@ -1085,7 +1085,18 @@ impl Emitter {
                 self.emit_loc(&loc);
                 write!(self.f, "    {}", v).unwrap();
             }
-            ast::Expression::Call { loc, name, args, ..} => {
+            ast::Expression::Call { loc, name, args, emit , ..} => {
+                match emit {
+                    ast::EmitBehaviour::Default     => {},
+                    ast::EmitBehaviour::Skip        => {return;},
+                    ast::EmitBehaviour::Error{loc, message}   => {
+                        emit_error(format!("{}", message), &[
+                            (loc.clone(), "here")
+                        ]);
+                        std::process::exit(9);
+                    }
+                };
+
                 self.emit_loc(&loc);
                 self.emit_expr(&name);
                 write!(self.f, "(").unwrap();
@@ -1139,12 +1150,6 @@ impl Emitter {
                 write!(self.f, " [ ").unwrap();
                 self.emit_expr(rhs);
                 write!(self.f, "]").unwrap();
-            }
-            ast::Expression::StaticError{loc, message} => {
-                emit_error(format!("{}", message), &[
-                    (loc.clone(), "here")
-                ]);
-                std::process::exit(9);
             }
         }
     }

@@ -370,6 +370,31 @@ impl InfixOperator {
             => false,
         }
     }
+    pub fn takes_integer(&self) -> bool {
+        match self {
+            | InfixOperator::Booland
+            | InfixOperator::Boolor
+            => false,
+
+            InfixOperator::Equals
+            | InfixOperator::Nequals
+            | InfixOperator::Add
+            | InfixOperator::Subtract
+            | InfixOperator::Multiply
+            | InfixOperator::Divide
+            | InfixOperator::Bitxor
+            | InfixOperator::Shiftleft
+            | InfixOperator::Shiftright
+            | InfixOperator::Modulo
+            | InfixOperator::Bitand
+            | InfixOperator::Bitor
+            | InfixOperator::Moreeq
+            | InfixOperator::Lesseq
+            | InfixOperator::Lessthan
+            | InfixOperator::Morethan
+            => true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -395,6 +420,16 @@ pub enum AssignOperator {
     Add,
     Sub,
     Eq,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum EmitBehaviour {
+    Default,
+    Skip,
+    Error{
+        loc:        Location,
+        message:    String,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -424,10 +459,11 @@ pub enum Expression {
         v:      String,
     },
     Call {
-        loc:        Location,
-        name:       Box<Expression>,
-        args:       Vec<Box<Expression>>,
-        expanded:   bool,
+        loc:            Location,
+        name:           Box<Expression>,
+        args:           Vec<Box<Expression>>,
+        expanded:       bool,
+        emit:           EmitBehaviour,
     },
     Infix {
         loc:    Location,
@@ -459,10 +495,6 @@ pub enum Expression {
         loc:        Location,
         fields:     Vec<Box<Expression>>,
     },
-    StaticError {
-        loc:        Location,
-        message:    String,
-    }
 }
 
 impl Expression {
@@ -481,7 +513,6 @@ impl Expression {
             Expression::UnaryPre {loc,..}       => loc,
             Expression::StructInit {loc,..}     => loc,
             Expression::ArrayInit {loc,..}      => loc,
-            Expression::StaticError{loc,..}     => loc,
         }
     }
 }

@@ -265,10 +265,14 @@ impl Symbolic {
                                     loc:    loc.clone(),
                                     name:   Box::new(ast_safe),
                                     args:   vec![Box::new(ast_argname)],
-                                    expanded: true,
+                                    expanded:   true,
+                                    emit:       ast::EmitBehaviour::Default,
                                 };
                                 callassert.insert(0, ast_call.clone());
-                                calleffect.insert(0, ast_call);
+
+
+                                //TODO this is very confusing, see tests/mustpass/callsite_safe_effect
+                                //calleffect.insert(0, ast_call);
                             }
                         }
                     }
@@ -575,6 +579,18 @@ impl Symbolic {
 
     fn type_coersion(&mut self, a: Symbol, b: Symbol, here: &ast::Location) -> Result<(ast::Typed, Symbol, Symbol), Error>  {
 
+
+        if let Value::Theory{..} =  self.memory[a].value {
+            return Err(Error::new(format!("theory '{}' is not a real world object", self.memory[a].name ), vec![
+                (here.clone(), format!("cannot use theory in this instance"))
+            ]));
+        }
+        if let Value::Theory{..} =  self.memory[b].value {
+            return Err(Error::new(format!("theory '{}' is not a real world object", self.memory[b].name ), vec![
+                (here.clone(), format!("cannot use theory in this instance"))
+            ]));
+        }
+
         if self.memory[a].typed == self.memory[b].typed {
             return Ok((self.memory[a].typed.clone(), a,b));
         }
@@ -620,7 +636,6 @@ impl Symbolic {
         if let (ast::Type::Other(at), ast::Type::Other(bt)) = (&self.memory[a].typed.t, &self.memory[b].typed.t) {
             if let (Some(ast::Def::Fntype{..}), Some(ast::Def::Function{..})) = (self.defs.get(at), self.defs.get(bt)) {
                 return Ok((self.memory[b].typed.clone(), a, b));
-
             }
         }
 
@@ -760,8 +775,9 @@ impl Symbolic {
                         self.push("branch".to_string());
 
                         // exexute a branch including the conditional body
-                        self.ssa.push("branch");
-                        self.ssa.push("positive branch");
+                        self.ssa.push("branch at");
+                        self.ssa.debug_loc(&branchloc);
+                        self.ssa.push("positive branch at");
                         self.ssa.debug_loc(&branchloc);
 
                         if let Some((sym, loc)) = positive_constrain {
@@ -788,9 +804,11 @@ impl Symbolic {
 
 
                         self.execute_scope(&mut (body2.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
-                        self.ssa.pop("end of possitive branch / rest following after positive branch");
+                        self.ssa.pop("end of possitive branch at / rest following after positive branch");
+                        self.ssa.debug_loc(&branchloc);
                         self.execute_scope(&mut (rest.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
-                        self.ssa.pop("end of branch / rest following after negative branch");
+                        self.ssa.pop("end of branch at / rest following after negative branch");
+                        self.ssa.debug_loc(&branchloc);
 
                         self.pop();
                         self.memory = freeze;
@@ -917,6 +935,11 @@ impl Symbolic {
 
                     if let Some(expr) = e2 {
                         let sym = self.execute_expr(expr)?;
+                        if self.memory[sym].t != smt::Type::Bool {
+                            return Err(Error::new(format!("expected boolean, got {}", self.memory[sym].typed), vec![
+                                                  (expr.loc().clone(), format!("must be boolean"))
+                            ]));
+                        }
                         let sym = (sym, self.memory[sym].temporal);
                         self.cur().trace.push(sym.clone());
                         if !self.ssa.constrain(sym, true) {
@@ -935,8 +958,14 @@ impl Symbolic {
                     self.ssa.push("while loop");
 
                     let sym = self.execute_expr(expr)?;
+                    if self.memory[sym].t != smt::Type::Bool {
+                        return Err(Error::new(format!("expected boolean, got {}", self.memory[sym].typed), vec![
+                            (expr.loc().clone(), format!("must be boolean"))
+                        ]));
+                    }
                     let sym = (sym, self.memory[sym].temporal);
                     self.cur().trace.push(sym.clone());
+
                     if !self.ssa.constrain(sym, true) {
                         return Err(Error::new(format!("condition breaks ssa"), vec![
                             (expr.loc().clone(), format!("there may be conflicting constraints"))
@@ -1121,6 +1150,11 @@ impl Symbolic {
             loc.clone(),
             Tags::new(),
         )?;
+
+        // access to an array member as pointer is always safe, because its part of the struct mem
+        if field.1.array.is_some() {
+            self.ssa_mark_safe(tmp, loc)?;
+        }
 
 
         match &mut self.memory[lhs_sym].value {
@@ -1338,13 +1372,13 @@ impl Symbolic {
                     self.literal(loc, Value::Unconstrained(format!("literal {}", v)), t)
                 }
             }
-            ast::Expression::Call { name, ref mut args, loc, ref mut expanded, .. } => {
+            ast::Expression::Call { name, ref mut args, loc, ref mut expanded, ref mut emit, .. } => {
 
 
                 let mut static_name = None;
                 if let ast::Expression::Name(ref t) =  name.as_ref() {
                     if let ast::Type::Other(name) = &t.t {
-                        static_name = Some(name.0[0].clone());
+                        static_name = Some(format!("{}", name));
                     }
                 }
 
@@ -1379,6 +1413,7 @@ impl Symbolic {
                         return r;
                     },
                     Some("static_attest") => {
+                        *emit = ast::EmitBehaviour::Skip;
                         let prev_inf = self.ssa.infinite;
                         self.ssa.infinite = false;
                         self.ssa.debug_loc(loc);
@@ -1406,14 +1441,11 @@ impl Symbolic {
                             ptr:    Vec::new(),
                             tail:   ast::Tail::None,
                         });
-                        *expr = ast::Expression::Literal{
-                            loc: loc.clone(),
-                            v:  "".to_string(),
-                        };
                         self.ssa.infinite = prev_inf;
                         return r;
                     },
                     Some("static_assert") => {
+                        *emit = ast::EmitBehaviour::Skip;
                         self.ssa.debug_loc(loc);
                         self.ssa.debug("static_assert");
                         if args.len() != 1 {
@@ -1528,6 +1560,10 @@ impl Symbolic {
 
                 match &self.memory[name_sym].value {
                     Value::Theory{args: fargs, ret} => {
+                        *emit = ast::EmitBehaviour::Error {
+                            loc:        loc.clone(),
+                            message:    format!("assertion of theory {} outside static()", self.memory[name_sym].name),
+                        };
                         let fargs = fargs.clone();
                         let ret = ret.clone();
                         if !*expanded {
@@ -1553,7 +1589,6 @@ impl Symbolic {
                                     (arg.loc().clone(), format!("expected {} got {}", fargs[i].typed , self.memory[s].typed))
                                     ]));
                             }
-
                         }
 
                         let tmp = self.temporary(
@@ -1566,11 +1601,6 @@ impl Symbolic {
                         self.memory[tmp].value = value;
 
                         self.ssa.invocation(name_sym, syms, tmp);
-
-                        *expr = ast::Expression::StaticError{
-                            loc:        loc.clone(),
-                            message:    format!("assertion of theory {} outside static()", self.memory[name_sym].name),
-                        };
 
                         Ok(tmp)
                     },
@@ -1728,6 +1758,30 @@ impl Symbolic {
 
                 let (mut newtype, lhs_sym, rhs_sym) = self.type_coersion(lhs_sym, rhs_sym, loc)?;
 
+                if !op.takes_boolean() && newtype.t == ast::Type::Bool{
+                    return Err(Error::new(format!("invalid types for integer operator"), vec![
+                        (loc.clone(), format!("not defined for type {}", newtype))
+                    ]))
+                } else if !op.takes_integer() && newtype.t != ast::Type::Bool{
+                    return Err(Error::new(format!("invalid types for boolean operator"), vec![
+                        (loc.clone(), format!("not defined for type {}", newtype))
+                    ]))
+                }
+
+                /* TODO too noisy
+                if let ast::Type::Other(o) = &newtype.t {
+                    match format!("{}", o).as_str() {
+                        "::ext::<stddef.h>::char" => (),
+                        _ => if newtype.ptr.len() == 0 {
+                            return Err(Error::new(format!("unprovable types for expression"), vec![
+                                (loc.clone(), format!("not defined for type {}. consider casting to a builtin type", newtype))
+                            ]))
+                        }
+                    }
+                }
+                */
+
+
                 let signed  = newtype.t.signed();
                 if op.returns_boolean() {
                     newtype = ast::Typed{
@@ -1757,6 +1811,7 @@ impl Symbolic {
                     op:     op.clone(),
                 };
                 self.memory[tmp].value = value;
+
 
                 self.ssa.infix_op(
                     tmp,
@@ -1931,11 +1986,6 @@ impl Symbolic {
                 self.ssa_mark_safe(aptr, loc)?;
 
                 Ok(aptr)
-            }
-            ast::Expression::StaticError{loc, message} => {
-                return Err(Error::new(format!("error in previous pass: {}", message), vec![
-                    (loc.clone(), format!("here"))
-                ]));
             }
         }
     }

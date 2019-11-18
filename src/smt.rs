@@ -513,7 +513,7 @@ impl Solver {
                 let d_lhs_n = &self.syms[&lhs.0].1;
                 let debug_op = match op {
                     crate::ast::PrefixOperator::Boolnot     => format!("(not (= (S{} {})))",   d_lhs_n, lhs.1),
-                    crate::ast::PrefixOperator::Bitnot      => format!("(bvxnor (S{} {}) #x{:x})", d_lhs_n, lhs.1, std::u64::MAX),
+                    crate::ast::PrefixOperator::Bitnot      => format!("(bvxnor (S{} {}) #x{})", d_lhs_n, lhs.1, "ff".repeat(size as usize/8)),
                     _ => unreachable!(),
                 };
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
@@ -790,11 +790,11 @@ impl Solver {
         write!(self.debug.borrow_mut(), "; {}\n", m).unwrap();
     }
     pub fn debug_loc(&mut self, loc: &crate::ast::Location) {
-        if self.debug_line != loc.line() {
+        //if self.debug_line != loc.line() {
             self.debug_line = loc.line();
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
             write!(self.debug.borrow_mut(), "; at {}:{}\n", loc.file, self.debug_line).unwrap();
-        }
+        //}
     }
 
     pub fn new(module_name: String) -> Self {

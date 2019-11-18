@@ -244,12 +244,6 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, ast::Loca
             v.extend(expr_deps(cr, rhs));
             v
         }
-        ast::Expression::StaticError{message,loc}  => {
-            emit_error(format!("ICE: {}", message), &[
-                (loc.clone(), "here")
-            ]);
-            std::process::exit(9);
-        },
     }
 }
 

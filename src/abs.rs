@@ -358,12 +358,6 @@ fn abs_expr(
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, scope, inbody, all_modules, self_md_name);
         }
-        ast::Expression::StaticError{loc, message} => {
-            emit_error(format!("error in previous pass: {}", message), &[
-                (loc.clone(), "here")
-            ]);
-            ABORT.store(true, Ordering::Relaxed);
-        }
     }
 }
 

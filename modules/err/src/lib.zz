@@ -55,6 +55,7 @@ export fn fail_with_errno(
         ...
 )
     where checked(*self)
+    model checked(*self)
 {
     self->error = (u8)errno;
 
@@ -67,6 +68,7 @@ export fn fail_with_errno(
 
     string::clear(&(self->locations));
     backtrace(self, file, scope, line);
+    static_attest(checked(*self));
 }
 
 export fn fail(
@@ -79,6 +81,7 @@ export fn fail(
         ...
 )
     where checked(*self)
+    model checked(*self)
 {
     self->error = e;
 
@@ -88,6 +91,7 @@ export fn fail(
 
     string::clear(&(self->locations));
     backtrace(self, file, scope, line);
+    static_attest(checked(*self));
 }
 
 export fn abort(

@@ -39,10 +39,10 @@ pub fn build_rs(variant: &str) {
         .init();
 
     make::BUILD_RS.store(true, Ordering::SeqCst);
-    build(false, false, variant, make::Stage::release());
+    build(false, false, variant, make::Stage::release(), false);
 }
 
-pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
+pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: bool) {
     use rayon::prelude::*;
     use std::sync::{Arc, Mutex};
 
@@ -113,7 +113,8 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
     pb.lock().unwrap().show_speed = false;
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
-    let cfiles : HashMap<Name, emitter::CFile> = flat.into_par_iter().map(|mut module|{
+
+    let iterf =  |mut module|{
         let symbolic = symbolic::execute(&mut module);
 
         if !silent {
@@ -131,7 +132,12 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage) {
             pb.lock().unwrap().inc();
         }
         (cf.name.clone(), cf)
-    }).collect();
+    };
+    let cfiles : HashMap<Name, emitter::CFile> = if slow {
+        flat.into_iter().map(iterf).collect()
+    } else {
+        flat.into_par_iter().map(iterf).collect()
+    };
 
     if !silent {
         pb.lock().unwrap().finish_print("done emitting");

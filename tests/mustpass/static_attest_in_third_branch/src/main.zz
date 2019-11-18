@@ -1,0 +1,32 @@
+theory bob(int a) -> bool;
+
+fn doh(int *a)
+    where bob(*a)
+{
+    
+}
+
+fn from_str(bool whatever, int * i)
+    where bob(*i)
+{
+    if whatever {
+    } else {
+    }
+
+    if (whatever) {
+        doh(i);
+        return;
+    }
+
+    static_attest(bob(*i));
+
+    if (whatever) {
+        doh(i);
+    }
+
+}
+
+
+export fn main() -> int {
+    return 0;
+}
