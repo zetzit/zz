@@ -129,6 +129,7 @@ impl Solver {
         self.checkpoint();
     }
 
+
     pub fn assign(&mut self, lhs: TemporalSymbol, rhs: TemporalSymbol, t: Type) {
         if self.infinite {
             return;
@@ -136,8 +137,21 @@ impl Solver {
 
 
         if t == Type::Bool {
-            let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]);
+
+
+            let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
             let rhs_s = self.syms[&rhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs.1))]);
+
+
+
+            let rhs_s = match rhs_s.as_bool() {
+                Some(b) => b,
+                None => {
+                    let rhs_s = rhs_s.as_bv().unwrap();
+                    let bone = ast::BV::from_u64(&self.ctx, 1, rhs_s.get_size());
+                    rhs_s.bvuge(&bone)
+                }
+            };
 
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
             write!(self.debug.borrow_mut(), "(assert (= (S{} {})  (S{} {})))\n",

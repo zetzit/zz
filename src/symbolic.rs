@@ -599,9 +599,22 @@ impl Symbolic {
         }
 
 
-        // TODO if the lhs is a pointer, allow it for now, but we actually need to bounds check the expression
+        // TODO if the lhs is a pointer, do an implicit cast
         if self.memory[a].typed.ptr.len() > 0 {
-            return Ok((self.memory[a].typed.clone(), a, b));
+            let tmp = self.temporary(
+                format!("implicit cast of {}", self.memory[b].name),
+                self.memory[a].typed.clone(),
+                here.clone(),
+                Tags::new(),
+            )?;
+
+            self.memory[tmp].value = self.memory[b].value.clone();
+            self.ssa.assign(
+                (tmp,   self.memory[tmp].temporal),
+                (b,     self.memory[b].temporal),
+                Self::smt_type(&self.memory[tmp].typed),
+            );
+            return Ok((self.memory[a].typed.clone(), a, tmp));
         }
 
         if let (ast::Type::Other(at), ast::Type::Other(bt)) = (&self.memory[a].typed.t, &self.memory[b].typed.t) {

@@ -344,7 +344,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             };
 
             // should have been cought by abs
-            let local = local.expect(&format!("ICE: module {} does not contain {}", module_name, local_name));
+            let local = match local {
+                Some(v) => v,
+                None => {
+                    emit_error(format!("module {} does not contain {}", module_name, local_name ), &[
+                        (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
+                    ]);
+                    std::process::exit(9);
+                }
+            };
 
 
             let mut decl_deps : Vec<(Name, ast::Location)> = Vec::new();
