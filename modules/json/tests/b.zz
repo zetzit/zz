@@ -1,0 +1,95 @@
+using <stdio.h>::{printf};
+using <stdlib.h>::{atoi};
+using <string.h>::{strcmp, memset};
+using err;
+using string::{String};
+using string;
+using json;
+
+enum Fuel {
+    Dinosaurs,
+    Electric,
+}
+
+struct Engine{
+    Fuel fuel;
+    int charge[8];
+}
+
+struct Vehicle {
+    int height;
+    int wheels;
+    Engine engine;
+}
+
+fn deserialize_charge(err::Err+et mut *e, json::Parser+pt mut* p, int mut *into, char *k, json::Value v)
+    where err::checked(*e)
+{
+    printf("charge.>%s< == >%s< %u, %d [%zu]\n", k, v.string, v.t, v.integer, v.index);
+}
+
+fn deserialize_engine(err::Err+et mut *e, json::Parser+pt mut* p, Engine mut *into, char *k, json::Value v)
+    where err::checked(*e)
+{
+    printf("engine.>%s< == >%s< %d\n", k, v.string, v.integer);
+    if string::cstr_eq("fuel", k) && v.t == json::ValueType::String {
+        if string::cstr_eq("dinosaurs", v.string) {
+            into->fuel = Fuel::Dinosaurs;
+        } else if string::cstr_eq("electric", v.string)  {
+            into->fuel = Fuel::Electric;
+        } else {
+            err::fail(e, 10, "invalid fuel value %s", v);
+        }
+    } else if string::cstr_eq("charge", k) && v.t == json::ValueType::Array {
+        json::next(p, e, (json::deserialize_t)deserialize_charge, &(into->charge));
+        if err::check(e) {
+            return;
+        }
+    }
+}
+
+fn deserialize_vehicle(err::Err+et mut *e, json::Parser+pt mut* p, Vehicle mut *into, char *k, json::Value v)
+    where err::checked(*e)
+{
+    printf("vehicle.>%s< == >%s< %d\n", k, v.string, v.integer);
+
+    if string::cstr_eq("height", k) {
+        into->height = v.integer;
+    } else if string::cstr_eq("engine", k) {
+        json::next(p, e, (json::deserialize_t)deserialize_engine, &(into->engine));
+        if err::check(e) {
+            return;
+        }
+    }
+}
+
+
+
+export fn main() -> int {
+    err::Err+1000 mut e = {0};
+    err::new(&e);
+
+
+    Vehicle mut v = {0};
+
+    json::Parser+100 mut parser = {0};
+    json::new(&parser,  &e, (json::deserialize_t)deserialize_vehicle, (void mut*)&v);
+    err::abort(&e);
+    char *str = r#"{
+        "height":   
+            12,
+        "add": "\"[{123123}:b",
+        "v": [23],
+        "engine": {
+            "rolling": "hard",
+            "fuel": "electric",
+            "charge": [9229, -399888]
+        },
+        "deep": "nah"
+    }"#;
+
+    json::push(&e, &parser, str, static(len(str)));
+    err::abort(&e);
+
+    return 0;
+}

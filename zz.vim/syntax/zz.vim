@@ -21,6 +21,7 @@ syn keyword zzSSA1              where
 syn keyword zzSSA2              model
 
 syn region zzCommentLineDoc     start="//\%(//\@!\|!\)"         end="$"  contains=@Spell
+syn region zzString             start=+\(L\|u\|u8\|U\|R\|LR\|u8R\|uR\|UR\)\=r#"+ end=+"#+ contains=@Spell extend
 
 
 " Default highlighting
@@ -34,6 +35,7 @@ hi def link zzType              cType
 hi def link zzOperator          cOperator
 hi def link zzSSA1              Structure
 hi def link zzSSA2              cString
+hi def link zzString            cString
 
 let b:current_syntax = "zz"
 

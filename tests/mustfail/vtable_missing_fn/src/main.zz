@@ -13,8 +13,7 @@ struct Math {
 }
 
 fn bla(Math *m) -> int
-    where valid(m)
-    where valid(m->adder)
+    where safe(m->adder)
 {
     return m->adder(1,2);
 }

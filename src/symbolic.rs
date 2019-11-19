@@ -546,27 +546,15 @@ impl Symbolic {
         for callsite_effect in calleffect {
             let casym = self.execute_expr(callsite_effect)?;
             self.ssa.assert((casym, self.memory[casym].temporal), |a,model| match a {
-                smt::Assertion::Unsolveable => {
-                    Err(Error::new(format!("model not provable"), vec![
-                        (callsite_effect.loc().clone(), format!("there may be conflicting constraints")),
-                    ]))
-                }
-                smt::Assertion::Unconstrained(_) => {
+                false  => {
                     let mut estack = vec![
                         (callsite_effect.loc().clone(), format!("function must behave like this model")),
                     ];
                     estack.extend(self.demonstrate(model.as_ref().unwrap(), (casym, self.memory[casym].temporal), 0));
                     Err(Error::new(format!("unproven model"), estack))
                 }
-                smt::Assertion::Constrained(true) => {
+                true => {
                     Ok(())
-                }
-                smt::Assertion::Constrained(false) => {
-                    let mut estack = vec![
-                        (callsite_effect.loc().clone(), format!("function must behave like this model")),
-                    ];
-                    estack.extend(self.demonstrate(model.as_ref().unwrap(), (casym, self.memory[casym].temporal), 0));
-                    Err(Error::new(format!("function violates model"), estack))
                 }
             })?;
         };
@@ -742,6 +730,7 @@ impl Symbolic {
                             }
 
                             let sym = (sym, self.memory[sym].temporal);
+                            /*
                             self.ssa.assert(sym, |a,model|match a {
                                 smt::Assertion::Unsolveable => {
                                     Err(Error::new(format!("condition is not solveable"), vec![
@@ -762,6 +751,7 @@ impl Symbolic {
                                     Ok(())
                                 }
                             })?;
+                            */
 
                             self.cur().trace.push(sym);
                             self.ssa.debug_loc(&expr.loc());
@@ -1124,8 +1114,28 @@ impl Symbolic {
             }
         }
 
+
+        let mut fieldvalue = Value::Uninitialized;
         let mut fieldtyped = field.1.typed.clone();
         if let Some(array) = &field.1.array {
+            if let Some(expr) = array {
+                let mut expr = expr.clone();
+                let asym = self.execute_expr(&mut expr)?;
+                let val = self.ssa.value((asym, self.memory[asym].temporal), |a,_| match a {
+                    smt::Assertion::Constrained(i) => {
+                        Ok(i)
+                    },
+                    _ => {
+                        Err(Error::new("array size must be static".to_string(), vec![
+                                       (expr.loc().clone(), format!("expression cannot be reduced to a constrained value at compile time"))
+                        ]))
+                    }
+                })?;
+                fieldvalue = Value::Array {
+                    len:    val as usize,
+                    array:  HashMap::new(),
+                };
+            }
             fieldtyped.ptr.push(ast::Pointer{
                 loc:  field.1.loc.clone(),
                 tags: Tags::new(),
@@ -1151,10 +1161,21 @@ impl Symbolic {
             Tags::new(),
         )?;
 
-        // access to an array member as pointer is always safe, because its part of the struct mem
-        if field.1.array.is_some() {
-            self.ssa_mark_safe(tmp, loc)?;
+
+        match (&fieldvalue, &field.1.array) {
+            (Value::Array{len,..}, _) if *len > 0 => {
+                self.len_into_ssa(tmp, loc, *len)?;
+                self.ssa_mark_safe(tmp, loc)?;
+            },
+            (_, Some(_)) => {
+                // access to an array member as pointer is always safe, because its part of the struct mem
+                self.ssa_mark_safe(tmp, loc)?;
+            },
+            _ => (),
         }
+        self.memory[tmp].value = fieldvalue;
+
+
 
 
         match &mut self.memory[lhs_sym].value {
@@ -1254,23 +1275,13 @@ impl Symbolic {
 
                 self.ssa.debug("assert that length less than index is true");
                 self.ssa.assert((tmp2, self.memory[tmp2].temporal), |a,model| match a {
-                    smt::Assertion::Unsolveable => {
-                        Err(Error::new(format!("array index is not provable"), vec![
-                                       (loc.clone(), format!("there may be conflicting constraints"))
-                        ]))
-                    }
-                    smt::Assertion::Unconstrained(_) => {
+                    false => {
                         let mut estack = Vec::new();
                         estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp2, self.memory[tmp2].temporal), 0));
                         Err(Error::new(format!("possible out of bounds array access"), estack))
                     }
-                    smt::Assertion::Constrained(true) => {
+                    true => {
                         Ok(())
-                    }
-                    smt::Assertion::Constrained(false) => {
-                        let mut estack = Vec::new();
-                        estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp2, self.memory[tmp2].temporal), 0));
-                        Err(Error::new(format!("array access is out of bounds"), estack))
                     }
                 })?;
 
@@ -1460,25 +1471,14 @@ impl Symbolic {
                             ]));
                         }
                         self.ssa.assert((sym, self.memory[sym].temporal) , |a,model|match a{
-                            smt::Assertion::Unsolveable => {
-                                Err(Error::new(format!("theory is not provable"), vec![
-                                    (loc.clone(), format!("there may be conflicting constraints"))
-                                ]))
-                            }
-                            smt::Assertion::Unconstrained(_) => {
+                            false => {
                                 let mut estack = vec![(loc.clone(),
                                     format!("you may need an if condition or callsite_assert to increase confidence"))];
                                 estack.extend(self.demonstrate(model.as_ref().unwrap(), (sym, self.memory[sym].temporal), 0));
-                                Err(Error::new(format!("theory is unconstrained"), estack))
+                                Err(Error::new(format!("theory is unproven"), estack))
                             }
-                            smt::Assertion::Constrained(true) => {
+                            true => {
                                 Ok(())
-                            }
-                            smt::Assertion::Constrained(false) => {
-                                let mut estack = vec![(loc.clone(),
-                                    format!("condition can never be true"))];
-                                estack.extend(self.demonstrate(model.as_ref().unwrap(), (sym, self.memory[sym].temporal), 0));
-                                Err(Error::new(format!("theory is provably false"), estack))
                             }
                         })?;
 
@@ -1652,14 +1652,7 @@ impl Symbolic {
 
                             let casym = self.execute_expr(callsite_assert)?;
                             self.ssa.assert((casym, self.memory[casym].temporal), |a,model| match a {
-                                smt::Assertion::Unsolveable => {
-                                    Err(Error::new(format!("callsite assert not provable"), vec![
-                                        (loc.clone(), format!("in this callsite")),
-                                        (callsite_assert.loc().clone(),
-                                            format!("there may be conflicting constraints for {}", self.memory[casym].name)),
-                                    ]))
-                                }
-                                smt::Assertion::Unconstrained(_) => {
+                                false => {
                                     let mut estack = vec![
                                         (loc.clone(),format!("in this callsite")),
                                         (callsite_assert.loc().clone(), format!("function call requires these conditions")),
@@ -1667,16 +1660,8 @@ impl Symbolic {
                                     estack.extend(self.demonstrate(model.as_ref().unwrap(), (casym, self.memory[casym].temporal), 0));
                                     Err(Error::new(format!("unproven callsite assert for {}", self.memory[casym].name), estack))
                                 }
-                                smt::Assertion::Constrained(true) => {
+                                true => {
                                     Ok(())
-                                }
-                                smt::Assertion::Constrained(false) => {
-                                    let mut estack = vec![
-                                        (loc.clone(),format!("in this callsite")),
-                                        (callsite_assert.loc().clone(), format!("function call requires these conditions")),
-                                    ];
-                                    estack.extend(self.demonstrate(model.as_ref().unwrap(), (casym, self.memory[casym].temporal), 0));
-                                    Err(Error::new(format!("callsite assert failed for {}", self.memory[casym].name), estack))
                                 }
                             })?;
 
@@ -2043,24 +2028,14 @@ impl Symbolic {
         self.ssa.invocation(*theosym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], tmp1);
 
         self.ssa.assert((tmp1, self.memory[tmp1].temporal), |a,model| match a {
-            smt::Assertion::Unsolveable => {
-                Err(Error::new(format!("deref is not provable"), vec![
-                    (loc.clone(), format!("there may be conflicting constraints"))
-                ]))
-            }
-            smt::Assertion::Unconstrained(_) => {
+            false  => {
                 let mut estack = vec![(loc.clone(),
                 format!("you may need an if condition or callsite_assert to prove it is safe"))];
                 estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp1, self.memory[tmp1].temporal), 0));
                 Err(Error::new(format!("deref of unsafe pointer"), estack))
             }
-            smt::Assertion::Constrained(true) => {
+            true => {
                 Ok(())
-            }
-            smt::Assertion::Constrained(false) => {
-                let mut estack = Vec::new();
-                estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp1, self.memory[tmp1].temporal), 0));
-                Err(Error::new(format!("deref of insafe pointer"), estack))
             }
         })?;
 

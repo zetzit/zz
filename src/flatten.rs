@@ -310,7 +310,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 let module = if module_name == md.name { &md } else {match all_modules.get(&module_name) {
                     None => {
                         // try moving left
-                        if module_name.len() > 3{
+                        if module_name.len() > 2{
                             local_name = module_name.pop().unwrap();
                             expecting_sub_type = true;
                             if let Some(loader::Module::ZZ(ast)) = all_modules.get(&module_name) {
@@ -320,7 +320,10 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                             }
                         }
 
-                        panic!("ice: unknown module {}", module_name)
+                        emit_error(format!("ice: unknown module {}", module_name), &[
+                            (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
+                        ]);
+                        std::process::exit(9);
                     },
                     Some(loader::Module::C(_)) => panic!("not implemented"),
                     Some(loader::Module::ZZ(ast)) => ast,
@@ -553,6 +556,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             &mut sorted,
             &mut sorted_mark,
             &mut collected.0 , &name,
+            None,
         );
     }
 
@@ -619,32 +623,42 @@ fn sort_visit(
         sorted_mark: &mut HashSet<Name>,
         unsorted: &mut HashMap<Name, Local>,
         name: &Name,
+        here: Option<&ast::Location>,
 ) {
     if sorted_mark.contains(name) {
         return;
     }
+
     let n = match unsorted.remove(name) {
         Some(v) => v,
         None => {
-            eprintln!("recursive type {} will never complete.\ndecl_sorted:", name);
-            eprintln!("sorted:");
-            for (name, _) in sorted{
-                eprintln!("  {}", name);
+            let mut estack = Vec::new();
+            if let Some(here) = here {
+                estack.push((here.clone(), format!("type incomplete in this scope")));
             }
-            eprintln!("unsorted:");
+            emit_error(format!("recursive type {} will never complete", name), &estack);
+
+            debug!("sorted:");
+            for (name, _) in sorted{
+                debug!("  {}", name);
+            }
+            debug!("unsorted:");
             for (name, _) in unsorted {
-                eprintln!("  {}", name);
+                debug!("  {}", name);
             }
             std::process::exit(10);
         },
     };
 
-    for (dep,_) in &n.impl_deps {
-        sort_visit(sorted, sorted_mark, unsorted, dep);
+    for (dep,loc) in &n.impl_deps {
+        if dep == name {
+            continue;
+        }
+        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc));
     }
 
-    for (dep,_) in &n.decl_deps {
-        sort_visit(sorted, sorted_mark, unsorted, dep);
+    for (dep,loc) in &n.decl_deps {
+        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc));
     }
 
     sorted_mark.insert(name.clone());

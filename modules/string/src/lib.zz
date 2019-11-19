@@ -1,4 +1,4 @@
-using <string.h>::{strlen, memcpy, memset};
+using <string.h>::{strlen, memcpy, memset, strcmp};
 using <stdarg.h>::{va_list, va_start, va_end};
 using <stdio.h>::{vsnprintf, printf};
 
@@ -63,4 +63,9 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
     (self->mem)[self->len] = 0;
 
     return r;
+}
+
+export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
+{
+    return as<int>(strcmp(a,b)) == 0;
 }

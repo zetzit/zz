@@ -1,0 +1,17 @@
+using <stdio.h>::{printf};
+
+
+
+fn bob(bool more) {
+    printf("bob\n");
+    if more {
+        bob(false);
+    }
+}
+
+
+export fn main() -> int {
+    bob(true);
+    printf("hello recursive_fn\n");
+    return 0;
+}

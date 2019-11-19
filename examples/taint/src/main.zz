@@ -26,7 +26,7 @@ fn close(Socket mut* self)
     model !isopen(*self)
 {
     //convince the symbolic executor that we did something, so we can have new constrains
-    *self = Socket{.fd = 0};
+    *self = Socket{fd: 0};
     static_attest(isopen(*self) == false);
 }
 

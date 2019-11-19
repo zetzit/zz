@@ -12,7 +12,7 @@ struct Bob {
 };
 static u32 mut bob = 932;
 static Bob mut stbob = Bob{
-    .a = 2,
+    a: 2,
 };
 
 pub fn gimme_wee(aye::bob * unsafe lol) -> f32 {

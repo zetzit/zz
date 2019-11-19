@@ -822,9 +822,18 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         },
         Rule::string_literal => {
             let mut val = expr.as_str().to_string();
-            val.remove(0);
-            val.pop();
-            let v = unescape(&val, &loc);
+            let v = if val.starts_with("r#") {
+                val.remove(0);
+                val.remove(0);
+                val.remove(0);
+                val.pop();
+                val.pop();
+                val.as_bytes().to_vec()
+            } else {
+                val.remove(0);
+                val.pop();
+                unescape(&val, &loc)
+            };
 
             Expression::LiteralString {
                 v,

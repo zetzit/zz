@@ -614,7 +614,7 @@ impl Solver {
     }
 
     pub fn assert<R, F> (&self, lhs: (Symbol, u64), with: F) -> R
-        where F : Fn(Assertion<bool>, Option<ModelRef>) -> R,
+        where F : Fn(bool, Option<ModelRef>) -> R,
               R : Sized,
     {
 
@@ -623,58 +623,27 @@ impl Solver {
 
         write!(self.debug.borrow_mut(), "{}(echo \"\")\n", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{} (echo \"vvv positive assert\")\n", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{} (assert (S{} {}))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{} (echo \"vvv assert (as negative)\")\n", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{} (assert (not (S{} {})))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
         write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "{}(pop)\n", self.debug_indent).unwrap();
 
         self.solver.push();
-        self.solver.assert(&lhs_s);
-        let rs1 = self.solver.check();
-        self.solver.pop(1);
-
-        write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{} (echo \"vvv negative assert. to be constrained, this must be different\")\n"
-               , self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{} (assert (not (S{} {})))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
-
-        self.solver.push();
         self.solver.assert(&lhs_s.not());
-        let rs2 = self.solver.check();
+        let rs = self.solver.check();
 
-        let r = match (rs1, rs2) {
-            (SatResult::Sat, SatResult::Sat) => {
-                write!(self.debug.borrow_mut(), "{}(echo \"unconstrained\")\n", self.debug_indent).unwrap();
-
-                with(Assertion::Unconstrained(false), Some(ModelRef(self.solver.get_model())))
+        let r = match rs {
+            SatResult::Sat  => {
+                write!(self.debug.borrow_mut(), "{}(echo \"sat / failed\")\n", self.debug_indent).unwrap();
+                with(false, Some(ModelRef(self.solver.get_model())))
             }
-            (SatResult::Sat, SatResult::Unsat) => {
-
-                write!(self.debug.borrow_mut(), "{} (echo \"constrained true \")\n", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "{}(pop)\n", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "{} (assert (S{} {}))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
-                write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
-
-                self.solver.pop(1);
-                self.solver.push();
-                self.solver.assert(&lhs_s);
-                self.solver.check();
-                with(Assertion::Constrained(true), Some(ModelRef(self.solver.get_model())))
-            }
-            (SatResult::Unsat, SatResult::Sat) => {
-                write!(self.debug.borrow_mut(), "{} (echo \"constrained false\")\n", self.debug_indent).unwrap();
-
-                with(Assertion::Constrained(false), Some(ModelRef(self.solver.get_model())))
-            }
-            (SatResult::Unsat, SatResult::Unsat) => {
-                write!(self.debug.borrow_mut(), "{} (echo \"both unsat. something broke earlier\")\n", self.debug_indent).unwrap();
-                with(Assertion::Unsolveable, None)
+            SatResult::Unsat => {
+                write!(self.debug.borrow_mut(), "{}(echo \"unsat / pass \")\n", self.debug_indent).unwrap();
+                with(true, None)
             }
             _ => {
                 write!(self.debug.borrow_mut(), "{} (echo \"unsolveable\")\n", self.debug_indent).unwrap();
-                with(Assertion::Unsolveable, None)
+                with(false, None)
             }
         };
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();

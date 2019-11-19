@@ -111,6 +111,11 @@ model checked(*err)
     }
 }
 
+export fn eprint(Err+tail mut* err)
+{
+    fprintf(stderr, "fatal error %u: %s%s\n", err->error, err->description, (err->locations).mem);
+}
+
 export fn to_str(
     Err mut* err,
     char mut *dest,

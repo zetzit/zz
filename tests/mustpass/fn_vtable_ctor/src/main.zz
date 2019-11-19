@@ -22,7 +22,7 @@ fn new(Math mut *self, AdderFn add)
 
 export fn main() -> int {
     Math mm = Math {
-        .add = add_impl,
+        add: add_impl,
     };
     int x = mm.add(1,8);
 

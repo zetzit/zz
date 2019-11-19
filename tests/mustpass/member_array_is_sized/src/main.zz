@@ -1,0 +1,20 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    int a[100];
+}
+
+
+
+fn bob(int *a) {
+}
+
+export fn main() -> int {
+
+    A a;
+    bob(a.a);
+    static_assert(len(a.a) == 100);
+
+    return 0;
+}

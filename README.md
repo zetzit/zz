@@ -155,8 +155,6 @@ by default, everything is const. this is the opposite of C. the mut keyword is u
 
 #### struct initialization
 
-
-identical to C with the minor difference that you have to explicitly state the type, like rust.
 To prepare for type elision, all expressions have to have a known type.
 
 ```C
@@ -167,7 +165,7 @@ struct A {
 
 fn main() {
     A a = A{
-        .a = 2,
+        a : 2,
     };
 }
 ```

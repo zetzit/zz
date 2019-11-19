@@ -12,7 +12,11 @@ digit       = { '0'..'9' }
 hexdigit    = { '0'..'9' | 'a'..'f' }
 bitdigit    = { '0'..'1' }
 
-string_literal  = @{ "\"" ~ ( "\"\"" | "\\\""    | (!"\"" ~ ANY) )* ~ "\"" }
+
+string_literal1 = @{ "\"" ~ ( "\"\"" | "\\\""    | (!"\"" ~ ANY) )* ~ "\"" }
+string_literal2 = @{ "r#\"" ~  (!"\"#" ~ ANY)* ~ "\"#" }
+string_literal  = @{ string_literal2 | string_literal1 }
+
 bool_literal    = @{"false" | "true"}
 char_literal    = @{ "'" ~ ( "''" | "\\'" | (!"'" ~ ANY) )* ~ "'" }
 number_literal  = @{ hex_literal | bit_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
@@ -197,8 +201,7 @@ ptr_access      = { (type_name | "(" ~ expr ~ ")") ~ "->" ~ ident}
 array_access    = { (type_name | "(" ~ expr ~ ")") ~ array }
 cast            = { "as" ~ "<" ~ anon_type ~ ">" ~ termish | "(" ~ anon_type ~ ")" ~ termish }
 
-struct_init_field_name = _{ "." ~ ident }
-struct_init_field = { struct_init_field_name ~ "=" ~ termish }
+struct_init_field = { ident ~ ":" ~ termish }
 struct_init     = { anon_type ~ "{" ~  struct_init_field ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
 array_init      = { "{" ~ termish ~ ("," ~ termish)* ~ ","?  ~ "}" }
 
