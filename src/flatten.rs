@@ -691,3 +691,27 @@ fn decl_visit(
     }
 
 }
+
+
+
+
+impl Module {
+    pub fn is_newer_than(&self, target: &str) -> bool {
+        let itarget = match std::fs::metadata(&target) {
+            Ok(v)  => v,
+            Err(_) => return true,
+        };
+        let itarget = itarget.modified().expect(&format!("cannot stat {}", target));
+
+        for source in &self.sources {
+            let isource = std::fs::metadata(source).expect(&format!("cannot stat {:?}", source));
+
+            let isource = isource.modified().expect(&format!("cannot stat {:?}", source));
+
+            if isource > itarget {
+                return true;
+            }
+        }
+        return false;
+    }
+}

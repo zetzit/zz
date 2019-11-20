@@ -53,7 +53,7 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
 
     if r > 0 {
         if (usize)r >= isfree {
-            self->len += isfree;
+            self->len += (isfree - 1);
         } else {
             self->len += as<usize>(r);
         }

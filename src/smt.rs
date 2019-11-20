@@ -626,7 +626,6 @@ impl Solver {
         write!(self.debug.borrow_mut(), "{} (echo \"vvv assert (as negative)\")\n", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "{} (assert (not (S{} {})))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
         write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{}(pop)\n", self.debug_indent).unwrap();
 
         self.solver.push();
         self.solver.assert(&lhs_s.not());

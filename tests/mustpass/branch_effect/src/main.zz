@@ -1,0 +1,13 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+    int x;
+
+    if x != 2 {
+        return 0;
+    }
+
+    static_assert(x == 2);
+
+    return 0;
+}

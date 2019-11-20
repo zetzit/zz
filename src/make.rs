@@ -183,10 +183,15 @@ impl Make {
             lflags.push("-O3".into());
         }
 
-        if stage.lto {
-            cflags.push("-flto".into());
-            lflags.push("-flto".into());
+
+        //TODO
+        if artifact.typ != super::project::ArtifactType::Staticlib {
+            if stage.lto {
+                cflags.push("-flto".into());
+                lflags.push("-flto".into());
+            }
         }
+
 
         if stage.debug {
             cflags.push("-g".into());

@@ -13,6 +13,7 @@ pub mod make;
 pub mod loader;
 pub mod flatten;
 pub mod emitter;
+pub mod emitter_rs;
 pub mod abs;
 pub mod name;
 pub mod pp;
@@ -115,23 +116,43 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
 
     let iterf =  |mut module|{
-        let symbolic = symbolic::execute(&mut module);
 
-        if !silent {
-            pb.lock().unwrap().message(&format!("emitting {} ", module.name));
+        //only do symbolic execution if any source file is newer than the c file
+
+
+        let (_, outname) = emitter::outname(&project.project, &stage, &module, false);
+        if module.is_newer_than(&outname) {
+            if !silent {
+                pb.lock().unwrap().message(&format!("emitting {} ", module.name));
+            }
+            let symbolic = symbolic::execute(&mut module);
+            let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
+            let header  = header.emit();
+
+            let rsbridge = emitter_rs::Emitter::new(&project.project, stage.clone(), module.clone());
+            rsbridge.emit();
+
+            let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
+            let cf = em.emit();
+
+            if !silent {
+                pb.lock().unwrap().inc();
+            }
+            (cf.name.clone(), cf)
+        } else {
+            if !silent {
+                pb.lock().unwrap().message(&format!("cached {} ", module.name));
+                pb.lock().unwrap().inc();
+            }
+            let cf = emitter::CFile{
+                name:       module.name,
+                filepath:   outname,
+                sources:    module.sources,
+                deps:       module.deps
+            };
+            (cf.name.clone(), cf)
         }
-        let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
-        let header  = header.emit();
 
-        let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
-        let cf = em.emit();
-
-
-
-        if !silent {
-            pb.lock().unwrap().inc();
-        }
-        (cf.name.clone(), cf)
     };
     let cfiles : HashMap<Name, emitter::CFile> = if slow {
         flat.into_iter().map(iterf).collect()
@@ -198,6 +219,11 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
 
     let mut searchpaths = Vec::new();
+
+    searchpaths.push(
+        std::env::current_dir().unwrap().join("modules")
+    );
+
     searchpaths.push(std::env::current_exe().expect("self path")
         .canonicalize().expect("self path")
         .parent().expect("self path")
@@ -209,6 +235,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
     searchpaths.push(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules")
     );
+
 
 
 

@@ -113,6 +113,12 @@ pub struct Symbolic {
     current_function_name: String,
 }
 
+
+pub enum ScopeReturn {
+    NoReturn,
+    Return(ast::Location),
+}
+
 impl Symbolic {
     fn execute_module(&mut self, module: &mut flatten::Module) -> Result<(), Error> {
 
@@ -635,7 +641,7 @@ impl Symbolic {
     }
 
 
-    fn execute_scope(&mut self, body: &mut [&mut ast::Statement]) -> Result<(), Error> {
+    fn execute_scope(&mut self, body: &mut [&mut ast::Statement]) -> Result<ScopeReturn, Error> {
         for i in 0..body.len() {
             let (body, rest) = body.split_at_mut(i + 1);
 
@@ -770,8 +776,8 @@ impl Symbolic {
                         self.ssa.push("positive branch at");
                         self.ssa.debug_loc(&branchloc);
 
-                        if let Some((sym, loc)) = positive_constrain {
-                            if !self.ssa.constrain(sym, true) {
+                        if let Some((sym, loc)) = &positive_constrain {
+                            if !self.ssa.constrain(*sym, true) {
                                 return Err(Error::new(format!("positive condition breaks ssa"), vec![
                                     (loc.clone(), format!("there may be conflicting constraints"))
                                 ]));
@@ -779,7 +785,7 @@ impl Symbolic {
                         }
 
                         // all previous expressions are therefor false
-                        for (loc, expr) in &mut negative{
+                        for (loc, expr) in &mut negative {
                             let sym = self.execute_expr(expr)?;
                             let sym = (sym, self.memory[sym].temporal);
                             if !self.ssa.constrain(sym, false) {
@@ -791,17 +797,31 @@ impl Symbolic {
                             self.cur().trace.push(sym);
                         }
 
-
-
-                        self.execute_scope(&mut (body2.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
-                        self.ssa.pop("end of possitive branch at / rest following after positive branch");
-                        self.ssa.debug_loc(&branchloc);
-                        self.execute_scope(&mut (rest.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
-                        self.ssa.pop("end of branch at / rest following after negative branch");
+                        let rere = self.execute_scope(&mut (body2.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+                        // this currently only detects the simplest case where the if body returns without further nesting
+                        if let ScopeReturn::Return(_) = rere {
+                            self.ssa.pop("no rest because branch returned function");
+                            self.ssa.pop("end of branch");
+                        } else {
+                            self.ssa.pop("end of possitive branch at / rest following after positive branch");
+                            self.ssa.debug_loc(&branchloc);
+                            self.execute_scope(&mut (rest.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+                            self.ssa.pop("end of branch at / rest following after negative branch");
+                        }
                         self.ssa.debug_loc(&branchloc);
 
                         self.pop();
                         self.memory = freeze;
+
+                        if let ScopeReturn::Return(_) = rere {
+                            if let Some((sym, loc)) = positive_constrain {
+                                if !self.ssa.constrain(sym, false) {
+                                    return Err(Error::new(format!("positive condition breaks ssa"), vec![
+                                        (loc.clone(), format!("there may be conflicting constraints"))
+                                    ]));
+                                }
+                            }
+                        }
                     }
 
                     // continue execution as if no condition was met
@@ -814,7 +834,7 @@ impl Symbolic {
                         self.execute_expr(expr)?;
                     }
                     // stop. do not execute anything behind return
-                    return Ok(());
+                    return Ok(ScopeReturn::Return(loc.clone()));
                 }
                 ast::Statement::Label{..} => {
                 },
@@ -972,7 +992,7 @@ impl Symbolic {
                 }
             }
         }
-        Ok(())
+        Ok(ScopeReturn::NoReturn)
     }
 
 
@@ -1423,6 +1443,27 @@ impl Symbolic {
                         };
                         return r;
                     },
+                    Some("len") => {
+                        if args.len() != 1 {
+                            return Err(Error::new("call argument count mismatch".to_string(), vec![
+                                (name.loc().clone(), format!("builtin needs 1 argument, but you passed {}", args.len()))
+                            ]));
+                        }
+                        // shortcut, as calls to z3 are expensive and can pile up to unsolveable mess
+                        let sym = self.execute_expr(&mut args[0])?;
+                        if let Value::Array{len,.. } = self.memory[sym].value {
+                            if len > 0 {
+                                let r = self.literal(loc, Value::Integer(len as u64), ast::Typed {
+                                    t:      ast::Type::ULiteral,
+                                    loc:    loc.clone(),
+                                    ptr:    Vec::new(),
+                                    tail:   ast::Tail::None,
+                                });
+                                return r;
+                            }
+                        }
+                        // no shortcut found, continue
+                    }
                     Some("static_attest") => {
                         *emit = ast::EmitBehaviour::Skip;
                         let prev_inf = self.ssa.infinite;

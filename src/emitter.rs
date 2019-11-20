@@ -28,8 +28,7 @@ pub struct Emitter{
     casedir:        String,
 }
 
-
-fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module, header: bool) -> (bool, String) {
+pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module, header: bool) -> (bool, String) {
     let mut cxx = false;
     if let Some(std) = &project.std {
         if std.contains("c++") {
@@ -74,6 +73,7 @@ impl Emitter {
             cur_loc: None,
         }
     }
+
 
     fn emit_loc(&mut self, loc: &ast::Location) {
 
@@ -259,6 +259,7 @@ impl Emitter {
     }
 
 
+
     pub fn emit_include(&mut self, i: &ast::Include) {
         trace!("    emit include {} (inline? {})", i.fqn, i.inline);
         if i.inline {
@@ -438,6 +439,9 @@ impl Emitter {
                 ast::Expression::ArrayInit{fields, ..} => {
                     for field in fields {
                         match field.as_ref() {
+                            ast::Expression::LiteralChar{v,..} => {
+                                f.write(&[*v as u8]).unwrap();
+                            },
                             ast::Expression::Literal{v,loc} => {
                                 match parser::parse_u64(v) {
                                     Some(v) if v <= 255 => {

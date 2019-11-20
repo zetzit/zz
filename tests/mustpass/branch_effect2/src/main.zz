@@ -1,0 +1,38 @@
+using <stdio.h>::{printf};
+using err;
+
+
+
+fn boh (err::Err+et mut*e)
+    where err::checked(*e)
+{
+    err::fail(e, 12, "buh");
+}
+
+export fn main() -> int {
+
+    err::Err+1000 e;
+    err::new(&e);
+    boh(&e);
+
+    // must not compile
+    //static_assert(err::checked(e));
+
+    if err::check(&e) {
+        int x = 0;
+        static_assert(err::checked(e));
+        return 0;
+    }
+    static_assert(err::checked(e));
+    boh(&e);
+
+
+    int x;
+    if x != 2 {
+        return 0;
+    }
+
+    static_assert(x == 2);
+
+    return 0;
+}

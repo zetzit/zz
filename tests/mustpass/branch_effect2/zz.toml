@@ -1,0 +1,14 @@
+[project]
+version = "0.1.0"
+name = "branch_effect"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[dependencies]
+err = "1"
+
+[variants]
+default = []

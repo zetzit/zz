@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use toml::Value;
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ArtifactType {
     #[serde(rename = "lib")]
     Lib,
