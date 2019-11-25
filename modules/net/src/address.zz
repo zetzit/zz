@@ -1,8 +1,9 @@
 using string;
+using err;
 
 using <stdio.h>::{printf};
 using <arpa/inet.h>::{inet_pton, htons, inet_aton, ntohs};
-using <string.h>::{memset};
+using <string.h>::{memset, strlen};
 using <netinet/in.h>::{
     (struct sockaddr_in)    as SockAddrIn,
     (struct sockaddr)       as SockAddr,
@@ -14,14 +15,18 @@ export struct Address {
     SockAddrIn posix;
 }
 
-export fn from_string(Address mut* to, string::String+st *s) -> bool
+export fn from_cstr(err::Err+et mut*e, Address mut* to, char *s) -> bool
+    where err::checked(*e)
 {
+    usize slen = as<usize>(strlen(s));
+    static_attest(len(s) >= slen);
+
     memset(&to->posix, 0, sizeof(SockAddrIn));
     @{{
         to->posix.sin_family      = AF_INET;
     }}@
 
-    static_attest(len(s->mem) >= s->len);
+
     u8 mut *mut ip;
     u16 mut* mut port;
     @{{
@@ -33,29 +38,47 @@ export fn from_string(Address mut* to, string::String+st *s) -> bool
 
     usize mut at = 0;
 
-    for(usize mut i = 0; i < s->len; i++) {
-        char ch = (s->mem)[i];
+    for(usize mut i = 0; i < slen; i++) {
+        char ch = s[i];
         if ch >= '0' && ch <= '9' {
-            ip[at] = (ip[at] * 10) + as<u8>(ch - '0');
+            uint nv = as<uint>(ip[at] * 10) + as<uint>(ch - '0');
+            if nv > 255 {
+                err::fail(e, 22, "u8 overflow at %zu", i);
+                return false;
+            }
+            ip[at] = as<u8>(nv);
         } else if ch == '.' {
             at += 1;
             if at == 4 {
+                err::fail(e, 22, "unexpected . at %zu", i);
                 return false;
             }
         } else if ch == ':' {
             i += 1;
-            for(; i < s->len; i++) {
-                char ch = (s->mem)[i];
+            for(; i < slen; i++) {
+                char ch = s[i];
                 if ch >= '0' && ch <= '9' {
-                    *port = (*port * 10) + as<u16>(ch - '0');
+                    uint nv = as<uint>(*port * 10) + as<uint>(ch - '0');
+                    if nv > 65535 {
+                        err::fail(e, 22, "u16 overflow . at %zu", i);
+                        return false;
+                    }
+                    *port =  as<u16>(nv);
                 } else {
+                    err::fail(e, 22, "unexpected '%c' at %zu", ch, i);
                     return false;
                 }
             }
-
+        } else {
+            err::fail(e, 22, "unexpected '%c' at %zu", ch, i);
+            return false;
         }
     }
     *port = as<u16>(htons(*port));
+    if at != 3 {
+        err::fail(e, 22, "not enough parts");
+        return false;
+    }
     return true;
 }
 
@@ -79,4 +102,18 @@ export fn to_string(string::String+st mut*to, Address * from)
         ip[3],
         ntohs(*port)
     );
+}
+
+
+
+export fn set_port(Address mut*self, u16 port) {
+    @{{
+        self->posix.sin_port = htons(port);
+    }}@
+}
+
+export fn get_port(Address *self) -> u16 {
+    @{{
+        return ntohs(self->posix.sin_port);
+    }}@
 }

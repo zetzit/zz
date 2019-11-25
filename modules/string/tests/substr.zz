@@ -1,0 +1,86 @@
+using string;
+using <stdio.h>::{getline, printf, stdin};
+using <stdlib.h>::{free, atoi};
+
+
+test t1{
+    stdin  = "abc\nhello\n1\n1"
+    stdout = "abce"
+}
+
+test t2{
+    stdin  = "123\nhello\n1\n1000"
+    stdout = "123ello"
+}
+
+test t3{
+    stdin  = "\nhello\n1000\n1"
+    stdout = ""
+}
+
+test t4{
+    stdin  = "12345678901234567890\nxxxxxxxxxxxxxxxxxxxx\n1\n10"
+    stdout = "1234567890123456789"
+}
+
+test t5{
+    stdin  = "123456789012345678\nxxxxxxxxxxxxxxxxxxxx\n1\n10"
+    stdout = "123456789012345678x"
+}
+
+test t6{
+    stdin  = "123\nxxxxxxxxxxxxxxxxxxxx\n1\n10000"
+    stdout = "123xxxxxxxxxxxxxxxx"
+}
+
+test t7{
+    stdin  = "123\nxxxxxxxxxxxxxxxxxxxx\n1\n0"
+    stdout = "123xxxxxxxxxxxxxxxx"
+}
+
+
+export fn main() -> int {
+    string::String+20 mut sub = {0};
+
+    char mut * mut line = 0;
+    usize mut l = 0;
+    int mut nread = as<int>(getline(&line, &l, stdin));
+    if nread < 1 { return 1; }
+    static_attest(safe(line));
+    static_attest(len(line) >= (usize)nread);
+    string::append_bytes(&sub, (u8*)line, (usize)nread -1);
+
+
+    string::String+20 mut s = {0};
+
+    nread = as<int>(getline(&line, &l, stdin));
+    if nread < 1 { return 1; }
+    static_attest(safe(line));
+    static_attest(len(line) >= (usize)nread);
+    string::append_bytes(&s, (u8*)line, (usize)nread -1);
+
+
+    nread = as<int>(getline(&line, &l, stdin));
+    if nread < 1 { return 1; }
+    int start = as<int>(atoi(line));
+    if start < 0 {
+        return 2;
+    }
+
+
+    nread = as<int>(getline(&line, &l, stdin));
+    if nread < 1 { return 1; }
+    int size = as<int>(atoi(line));
+    if size < 0 {
+        return 2;
+    }
+
+    free(line);
+
+
+    string::substr(&s, (usize)start, (usize)size, &sub);
+
+
+    printf("%.*s", sub.len, sub.mem);
+    return 0;
+}

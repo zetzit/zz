@@ -11,7 +11,7 @@ test blah {
 export fn main() -> int {
     string::String+10 mut s = {0};
 
-    string::append(&s, "hello");
+    string::append_cstr(&s, "hello");
     string::format(&s, "%d%d%d%d", 2, 3, 66,9);
     string::format(&s, "%s", "12345678901234567890");
 

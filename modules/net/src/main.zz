@@ -6,20 +6,20 @@ using udp;
 using err;
 
 export fn main() -> int {
+    err::Err+1000 mut e;
+    err::new(&e);
 
     string::String+100 sin = {0};
     string::append_cstr(&sin, "127.0.0.1:8083");
 
     address::Address mut sa = {0};
-    address::from_string(&sa, &sin);
+    address::from_cstr(&e, &sa, sin.mem);
+    err::abort(&e);
 
     string::String+100 sout = {0};
     address::to_string(&sout, &sa);
 
     printf(">%.*s<\n", sout.len, sout.mem);
-
-    err::Err+1000 mut e = {0};
-    err::new(&e);
 
     udp::Socket mut sock = {0};
 

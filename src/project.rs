@@ -71,11 +71,12 @@ pub enum Dependency {
 pub struct Config {
     pub project:        Project,
     pub artifacts:      Option<Vec<Artifact>>,
-    pub dependencies:   Option<HashMap<String, Value>>,
 
     pub features:       Option<HashMap<String, Feature>>,
     #[serde(default)]
     pub variants:       HashMap<String, Vec<String>>,
+
+    pub dependencies:   Option<HashMap<String, Value>>,
 }
 
 pub fn init() {
@@ -99,6 +100,7 @@ pub fn init() {
     }
 
     std::fs::create_dir_all("./src/").expect("create src dir");
+    std::fs::create_dir_all("./tests/").expect("create tests dir");
     if !std::env::current_dir().unwrap().join("src/main.zz").exists() {
         let mut f = File::create("./src/main.zz").unwrap();
         write!(f, "\

@@ -492,6 +492,12 @@ impl Emitter {
         self.emit_loc(&ast.loc);
         write!(self.f, "typedef struct \n").unwrap();
 
+
+        if *packed {
+            write!(self.f, " __attribute__((__packed__)) ").unwrap();
+        }
+
+
         write!(self.f, "{{\n").unwrap();
         let mut emitted_tail = false;
         for i in 0..fields.len() {

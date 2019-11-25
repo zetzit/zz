@@ -1,6 +1,7 @@
 using <string.h>::{strlen, memcpy, memset, strcmp, strncmp};
+using <stdio.h> as stdio;
 using <stdarg.h>::{va_list, va_start, va_end};
-using <stdio.h>::{vsnprintf, printf};
+using <stdio.h>::{vsnprintf, printf, FILE};
 
 export struct String+ {
     usize   len;
@@ -23,6 +24,18 @@ export fn push(String+t mut * self, char cstr) -> bool
     self->len += 1;
     return true;
 }
+
+
+export fn pop(String+t mut * self) -> bool {
+    if self->len == 0 {
+        return false;
+    }
+    self->len -= 1;
+    static_attest(self->len < len(self->mem));
+    (self->mem)[self->len] = 0;
+    return true;
+}
+
 export fn append_cstr(String+t mut * self, char * cstr)
 {
     usize mut inlen = as<usize>(strlen(cstr));
@@ -32,6 +45,17 @@ export fn append_cstr(String+t mut * self, char * cstr)
     }
 
     memcpy(self->mem + self->len, cstr, inlen);
+    self->len += inlen;
+}
+
+export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
+    where len(bytes) >= inlen
+{
+    if inlen + self->len > t - 1 {
+        inlen = t - 1 - self->len;
+    }
+
+    memcpy(self->mem + self->len, bytes, inlen);
     self->len += inlen;
 }
 
@@ -70,12 +94,91 @@ export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
     return as<int>(strcmp(a,b)) == 0;
 }
 
-
-
 export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
     usize alen = as<usize>(strlen(a));
     if alen > self->len {
         return false;
     }
     return as<int>(strncmp(self->mem,a,alen)) == 0;
+}
+
+export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool {
+    char *rr = (char*)stdio::fgets(self->mem + self->len, tail - self->len, stream);
+    if rr == 0 {
+        return false;
+    }
+    self->len += as<usize>(strlen(self->mem + self->len));
+    return true;
+}
+
+
+
+export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut* other)
+{
+    static_attest(len(other->mem) >= tail2);
+    static_attest(len(self->mem) >= tail);
+
+    if from >= self->len {
+        return;
+    }
+
+    if self->len == 0 {
+        return;
+    }
+
+    if tail2 == 0 {
+        return;
+    }
+
+    if tail == 0 {
+        return;
+    }
+
+    if size == 0 {
+        size = self->len;
+    }
+
+    if from + size >= self->len {
+        size = self->len - from;
+    }
+
+    //printf("A len1: %zu, len2: %zu, from: %zu, size: %zu\n",
+    //    self->len, other->len, from, size);
+
+    if other->len + size + 1 >= tail2 {
+        if other->len + 1 >= tail2 {
+            return;
+        }
+        size = tail2 - 1 - other->len;
+    }
+
+    //TODO i'm not sure what ssa is confused about
+    static_attest(size + other->len < tail2);
+
+    //printf("B len1: %zu, len2: %zu, from: %zu, size: %zu\n",
+    //    self->len, other->len, from, size);
+
+
+    if size == 0 {
+        return;
+    }
+
+    memcpy(other->mem + other->len, self->mem + from, size);
+    (other->mem)[size + other->len] = 0;
+    other->len += size;
+}
+
+
+
+struct Iterator {
+    String *self;
+    char    token;
+}
+
+export fn split(String+tail *self, char token) -> Iterator {
+    Iterator r = Iterator{
+        token:  token,
+        self:   self,
+    };
+    return r;
 }

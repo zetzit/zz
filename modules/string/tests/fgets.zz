@@ -1,0 +1,28 @@
+using string;
+using <stdio.h>::{printf, stdin};
+
+
+test test1 {
+    stdin = "bob"
+    stdout == "bob"
+}
+
+
+test test2 {
+    stdin = "dudeldii\nasdasd"
+    stdout == "dudeldii\n"
+}
+
+test limiter {
+    stdin = "12345678901234567890"
+    stdout == "123456789"
+}
+
+pub fn main() -> int {
+    string::String+10 mut s = {0};
+    if !string::fgets(&s, stdin) {
+        return 2;
+    }
+    printf("%.*s", (int)s.len, s.mem);
+    return 0;
+}

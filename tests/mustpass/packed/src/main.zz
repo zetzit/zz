@@ -1,0 +1,15 @@
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+
+struct A packed {
+    u8  a;
+    u16 b;
+    u64 c;
+    u8  d;
+}
+
+export fn main() -> int {
+    assert(sizeof(A) == 12);
+
+    return 0;
+}

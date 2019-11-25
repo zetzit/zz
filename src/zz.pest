@@ -120,13 +120,13 @@ ppelif      = ${ "#elif" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
 ppelse      = ${ "#else" ~ WHITESPACE+ }
 ppendif     = ${ "#endif" ~ WHITESPACE+}
 
-testop      = { "=" | "!=" | "<" | ">" | ">=" | "<=" }
+testop      = { "==" | "=" | "!=" | "<" | ">" | ">=" | "<=" }
 testfield   = { ident ~ testop ~ expr }
 testcase    = { "test" ~ ident ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
 struct_c    = _{"{" ~ (pp | struct_f )* ~ "}" }
-struct_d    = { (exported | key_shared | key_packed)* ~ "struct" ~ ident ~ tail? ~ struct_c ~ ";"?}
+struct_d    = { (exported | key_shared )* ~ "struct" ~ ident ~ tail? ~ (key_packed)* ~ struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
 
