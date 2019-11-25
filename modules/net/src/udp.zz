@@ -1,0 +1,79 @@
+using address;
+using string;
+using err;
+
+using <sys/socket.h> as posix_socket;
+using <arpa/inet.h>::{IPPROTO_UDP};
+using <unistd.h> as unistd;
+using <netinet/in.h>::{
+    (struct sockaddr_in)    as SockAddrIn,
+    (struct sockaddr)       as SockAddr,
+};
+
+
+export struct Socket {
+    int fd;
+}
+
+
+export fn open(Socket mut *self, err::Err+et mut*e)
+    where err::checked(*e)
+{
+    self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
+
+    if self->fd < 0 {
+        err::fail_with_errno(e, "socket");
+        return;
+    }
+}
+
+
+export fn close(Socket mut *self)
+{
+    if self->fd >= 0 {
+        unistd::close(self->fd);
+    }
+    self->fd = 0;
+}
+
+export fn bind(Socket mut *self, err::Err+et mut*e, address::Address *addr)
+    where err::checked(*e)
+{
+    int r = as<int>(posix_socket::bind(self->fd, as<SockAddr*>(&addr->posix), sizeof(SockAddrIn)));
+    if r != 0 {
+        err::fail_with_errno(e, "bind");
+    }
+}
+
+
+
+export fn sendto(Socket mut *self, err::Err+et mut*e, address::Address *to, u8*msg, usize msglen)
+    where err::checked(*e)
+    where len(msg) >= msglen
+{
+    int r = as<int>(posix_socket::sendto(self->fd, msg, msglen, 0, as<SockAddr*>(&to->posix), sizeof(SockAddrIn)));
+    if r != 0 {
+        err::fail_with_errno(e, "bind");
+    }
+}
+
+
+export fn recv(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, address::Address mut*from)
+    where err::checked(*e)
+{
+    uint mut alen = (uint)sizeof(SockAddrIn);
+
+    int r = as<int>(posix_socket::recvfrom(
+        self->fd,
+        buf->mem + buf->len,
+        st - buf->len ,
+        0,
+        as<SockAddr mut*>(&from->posix),
+        &alen
+    ));
+    if r < 1 {
+        err::fail_with_errno(e, "recv");
+        return;
+    }
+    buf->len += as<usize>(r);
+}

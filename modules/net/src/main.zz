@@ -1,0 +1,49 @@
+using <stdio.h>::{printf};
+
+using string;
+using address;
+using udp;
+using err;
+
+export fn main() -> int {
+
+    string::String+100 sin = {0};
+    string::append_cstr(&sin, "127.0.0.1:8083");
+
+    address::Address mut sa = {0};
+    address::from_string(&sa, &sin);
+
+    string::String+100 sout = {0};
+    address::to_string(&sout, &sa);
+
+    printf(">%.*s<\n", sout.len, sout.mem);
+
+    err::Err+1000 mut e = {0};
+    err::new(&e);
+
+    udp::Socket mut sock = {0};
+
+    udp::open(&sock, &e);
+    err::abort(&e);
+
+    udp::bind(&sock, &e, &sa);
+    err::abort(&e);
+
+    udp::sendto(&sock, &e, &sa, (u8*)"lulz", 4);
+    err::abort(&e);
+
+    string::String+100 srecv = {0};
+    address::Address mut sa2 = {0};
+    udp::recv(&sock, &e, &srecv, &sa2);
+    err::abort(&e);
+
+    string::clear(&sout);
+    address::to_string(&sout, &sa2);
+    printf(">%.*s<\n", sout.len, sout.mem);
+
+    printf(">%.*s<\n", srecv.len, srecv.mem);
+
+    udp::close(&sock);
+
+    return 0;
+}

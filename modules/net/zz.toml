@@ -1,0 +1,15 @@
+[project]
+version = "0.1.0"
+name = "net"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[dependencies]
+string = "1"
+err = "1"
+
+[variants]
+default = []

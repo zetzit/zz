@@ -1,0 +1,82 @@
+using string;
+
+using <stdio.h>::{printf};
+using <arpa/inet.h>::{inet_pton, htons, inet_aton, ntohs};
+using <string.h>::{memset};
+using <netinet/in.h>::{
+    (struct sockaddr_in)    as SockAddrIn,
+    (struct sockaddr)       as SockAddr,
+    (struct in_addr)        as InnetAddr,
+};
+
+
+export struct Address {
+    SockAddrIn posix;
+}
+
+export fn from_string(Address mut* to, string::String+st *s) -> bool
+{
+    memset(&to->posix, 0, sizeof(SockAddrIn));
+    @{{
+        to->posix.sin_family      = AF_INET;
+    }}@
+
+    static_attest(len(s->mem) >= s->len);
+    u8 mut *mut ip;
+    u16 mut* mut port;
+    @{{
+        ip      = (void*)&(to->posix.sin_addr.s_addr);
+        port    = &(to->posix.sin_port);
+    }}@
+    static_attest(len(ip) == 4);
+    static_attest(safe(port));
+
+    usize mut at = 0;
+
+    for(usize mut i = 0; i < s->len; i++) {
+        char ch = (s->mem)[i];
+        if ch >= '0' && ch <= '9' {
+            ip[at] = (ip[at] * 10) + as<u8>(ch - '0');
+        } else if ch == '.' {
+            at += 1;
+            if at == 4 {
+                return false;
+            }
+        } else if ch == ':' {
+            i += 1;
+            for(; i < s->len; i++) {
+                char ch = (s->mem)[i];
+                if ch >= '0' && ch <= '9' {
+                    *port = (*port * 10) + as<u16>(ch - '0');
+                } else {
+                    return false;
+                }
+            }
+
+        }
+    }
+    *port = as<u16>(htons(*port));
+    return true;
+}
+
+
+export fn to_string(string::String+st mut*to, Address * from)
+    where st>0
+{
+    u8 * mut ip;
+    u16 * mut port;
+    @{{
+        ip      = (void*)&(from->posix.sin_addr.s_addr);
+        port    = &(from->posix.sin_port);
+    }}@
+    static_attest(len(ip) == 4);
+    static_attest(safe(port));
+
+    string::format(to, "%u.%u.%u.%u:%u",
+        ip[0],
+        ip[1],
+        ip[2],
+        ip[3],
+        ntohs(*port)
+    );
+}

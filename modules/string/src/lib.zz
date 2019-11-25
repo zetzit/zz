@@ -1,4 +1,4 @@
-using <string.h>::{strlen, memcpy, memset, strcmp};
+using <string.h>::{strlen, memcpy, memset, strcmp, strncmp};
 using <stdarg.h>::{va_list, va_start, va_end};
 using <stdio.h>::{vsnprintf, printf};
 
@@ -23,7 +23,7 @@ export fn push(String+t mut * self, char cstr) -> bool
     self->len += 1;
     return true;
 }
-export fn append(String+t mut * self, char * cstr)
+export fn append_cstr(String+t mut * self, char * cstr)
 {
     usize mut inlen = as<usize>(strlen(cstr));
 
@@ -68,4 +68,14 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
 export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
 {
     return as<int>(strcmp(a,b)) == 0;
+}
+
+
+
+export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
+    usize alen = as<usize>(strlen(a));
+    if alen > self->len {
+        return false;
+    }
+    return as<int>(strncmp(self->mem,a,alen)) == 0;
 }
