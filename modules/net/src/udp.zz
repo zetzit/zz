@@ -28,9 +28,40 @@ export fn close(Socket mut *self)
     self->fd = 0;
 }
 
+export fn open(Socket mut *self, err::Err+et mut*e, address::Type addrtype)
+    where err::checked(*e)
+{
+    if self->fd != 0 {
+        close(self);
+    }
+
+    switch addrtype {
+        address::Type::Ipv6 => {
+            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET6, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
+        }
+        address::Type::Ipv4 => {
+            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
+        }
+    }
+
+    if self->fd < 0 {
+        err::fail_with_errno(e, "socket");
+        return;
+    }
+
+    unsafe {
+        int v = 1;
+        posix_socket::setsockopt(self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_REUSEADDR, (void*)&v, sizeof(int));
+    }
+}
+
 export fn bind(Socket mut *self, err::Err+et mut*e, address::Address *addr)
     where err::checked(*e)
 {
+    if self->fd != 0 {
+        close(self);
+    }
+
     switch addr->type {
         address::Type::Ipv6 => {
             self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET6, posix_socket::SOCK_DGRAM, IPPROTO_UDP));

@@ -25,6 +25,11 @@ export struct Address {
     Posix   posix;
 }
 
+export fn from_string(Address mut* to, string::String+st *s) -> bool
+{
+    static_attest(len(s->mem) >= s->len);
+    return from_str(to, s->mem, s->len);
+}
 export fn from_cstr(Address mut* to, char *s) -> bool
 {
     usize slen = as<usize>(strlen(s));
@@ -336,6 +341,41 @@ export fn get_port(Address *self) -> u16 {
         }
     }
 }
+
+export fn get_ip(Address *self) -> u8*
+{
+    switch self->type {
+        Type::Ipv4 => {
+            unsafe{
+                return (u8*)&((((self->posix).v4).sin_addr).s_addr);
+            }
+        }
+        Type::Ipv6 => {
+            unsafe {
+                return (u8*)&((((self->posix).v6).sin6_addr).s6_addr);
+            }
+        }
+    }
+}
+
+export fn set_ip(Address mut *self, Type t, u8*b)
+    where (t == Type::Ipv4 && len(b) >= 4) || (t == Type::Ipv6 && len(b) >= 16)
+{
+    self->type = t;
+    switch self->type {
+        Type::Ipv4 => {
+            unsafe{
+                memcpy((u8 mut*)&((((self->posix).v4).sin_addr).s_addr), b, 4);
+            }
+        }
+        Type::Ipv6 => {
+            unsafe {
+                memcpy((u8 mut*)&((((self->posix).v6).sin6_addr).s6_addr), b, 16);
+            }
+        }
+    }
+}
+
 
 static u8 hexmap[] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567

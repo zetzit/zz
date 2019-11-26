@@ -202,7 +202,7 @@ impl Symbolic {
             self.memory[sym].value = Value::Unconstrained(format!("c name {}", name))
         }
 
-        for (d,_,_) in &mut module.d {
+        for (d,_,defined_here) in &mut module.d {
             self.defs.insert(Name::from(&d.name), d.def.clone());
             match &mut d.def {
                 ast::Def::Theory{args, ret, attr} => {
@@ -293,11 +293,13 @@ impl Symbolic {
                     };
                     self.ssa_mark_safe(sym, &d.loc)?;
 
-                    self.execute_function(&d.name, args, body, callassert, calleffect)?;
-                    if !self.ssa.solve() {
-                        return Err(Error::new(format!("function is unprovable"), vec![
-                            (d.loc.clone(), format!("this function body is impossible to prove"))
-                        ]));
+                    if *defined_here {
+                        self.execute_function(&d.name, args, body, callassert, calleffect)?;
+                        if !self.ssa.solve() {
+                            return Err(Error::new(format!("function is unprovable"), vec![
+                                                  (d.loc.clone(), format!("this function body is impossible to prove"))
+                            ]));
+                        }
                     }
                 },
                 ast::Def::Static {tags, typed, expr, array, ..} => {

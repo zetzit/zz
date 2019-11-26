@@ -141,7 +141,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             (cf.name.clone(), cf)
         } else {
             if !silent {
-                pb.lock().unwrap().message(&format!("cached {} ", module.name));
+                //pb.lock().unwrap().message(&format!("cached {} ", module.name));
                 pb.lock().unwrap().inc();
             }
             let cf = emitter::CFile{
