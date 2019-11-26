@@ -128,7 +128,7 @@ export fn main() -> int {
         return 3;
     }
 
-    string::String+100 sout = {0};
+    string::String+100 mut sout = {0};
     address::to_string(&sout, &sa);
 
     printf("%.*s", (int)sout.len, sout.mem);

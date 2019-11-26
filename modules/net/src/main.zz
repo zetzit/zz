@@ -10,7 +10,7 @@ export fn main() -> int {
     err::Err+1000 mut e;
     err::new(&e);
 
-    string::String+100 sin = {0};
+    string::String+100 mut sin = {0};
     string::append_cstr(&sin, "[::1]:8083");
 
     address::Address mut sa = {0};
