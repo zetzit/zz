@@ -1,0 +1,45 @@
+using string;
+using <stdio.h>::{printf, stdin};
+
+
+test test1 {
+    stdin  =  "a:b:cccasdasd:asd:asd"
+    stdout == ">a<\n>b<\n>cccasdasd<\n>asd<\n>asd<\n"
+}
+
+test test2 {
+    stdin  =  ":b:cccasdasd:asd:asd"
+    stdout == "><\n>b<\n>cccasdasd<\n>asd<\n>asd<\n"
+}
+
+test test3 {
+    stdin  =  ""
+    stdout == ""
+}
+
+test test4 {
+    stdin  =  ":a"
+    stdout == "><\n>a<\n"
+}
+
+test test5 {
+    stdin  =  ":"
+    stdout == "><\n"
+}
+
+
+export fn main() -> int {
+
+    string::String+100 mut a = {0};
+    string::fgets(&a, stdin);
+
+
+    usize mut iterator = 0;
+    string::String+100 mut part = {0};
+    while (string::split(&a, ':', &iterator, &part)) {
+        printf(">%.*s<\n", (int)part.len, part.mem);
+        string::clear(&part);
+    }
+
+    return 0;
+}

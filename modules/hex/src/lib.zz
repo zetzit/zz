@@ -1,7 +1,7 @@
 using <string.h>::{memset};
 using <stdio.h>::{printf};
 
-static u8 hashmap[] = {
+static u8 map[] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567
     0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 89:;<=>?
     0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x00, // @ABCDEFG
@@ -29,7 +29,7 @@ export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usiz
         idx1 = (((u8)in[p1]) & 0x1f) ^ 0x10;
 
         unsafe {
-            out[pos/2] = hashmap[idx0] << 4 | hashmap[idx1];
+            out[pos/2] = map[idx0] << 4 | map[idx1];
         }
     }
     return pos/2;

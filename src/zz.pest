@@ -68,6 +68,8 @@ key_unsafe  = { "unsafe" }
 key_inline  = { "inline" }
 key_where   = { "where" }
 key_model   = { "model" }
+key_struct  = { "struct" }
+key_union   = { "union" }
 
 // type identifiers
 
@@ -122,11 +124,11 @@ ppendif     = ${ "#endif" ~ WHITESPACE+}
 
 testop      = { "==" | "=" | "!=" | "<" | ">" | ">=" | "<=" }
 testfield   = { ident ~ testop ~ expr }
-testcase    = { "test" ~ ident ~ "{" ~ testfield* ~ "}" }
+testcase    = { "test" ~ ident? ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
 struct_c    = _{"{" ~ (pp | struct_f )* ~ "}" }
-struct_d    = { (exported | key_shared )* ~ "struct" ~ ident ~ tail? ~ (key_packed)* ~ struct_c ~ ";"?}
+struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail? ~ (key_packed)* ~ struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
 

@@ -369,7 +369,7 @@ impl Symbolic {
                         d.loc.clone(), Tags::new()
                     )?;
                 },
-                ast::Def::Struct {fields, packed, tail } => {
+                ast::Def::Struct {fields, packed, tail, union } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed{

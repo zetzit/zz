@@ -484,13 +484,17 @@ impl Emitter {
 
 
     pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
-        let (fields, packed, tail) = match &ast.def {
-            ast::Def::Struct{fields, packed, tail} => (fields, packed, tail),
+        let (fields, packed, tail, union) = match &ast.def {
+            ast::Def::Struct{fields, packed, tail, union} => (fields, packed, tail, union),
             _ => unreachable!(),
         };
 
         self.emit_loc(&ast.loc);
-        write!(self.f, "typedef struct \n").unwrap();
+        if *union {
+            write!(self.f, "typedef union \n").unwrap();
+        } else {
+            write!(self.f, "typedef struct \n").unwrap();
+        }
 
 
         if *packed {

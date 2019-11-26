@@ -1,0 +1,14 @@
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+
+
+
+union A {
+    u8  a;
+    u64 b;
+}
+
+export fn main() -> int {
+    assert(sizeof(A) == 8);
+    return 0;
+}

@@ -4,32 +4,32 @@ using string;
 using address;
 using udp;
 using err;
+using time;
 
 export fn main() -> int {
     err::Err+1000 mut e;
     err::new(&e);
 
     string::String+100 sin = {0};
-    string::append_cstr(&sin, "127.0.0.1:8083");
+    string::append_cstr(&sin, "[::1]:8083");
 
     address::Address mut sa = {0};
-    address::from_cstr(&e, &sa, sin.mem);
-    err::abort(&e);
+    address::from_cstr(&sa, sin.mem);
 
     string::String+100 sout = {0};
     address::to_string(&sout, &sa);
 
-    printf(">%.*s<\n", sout.len, sout.mem);
+    printf(">%.*s<\n", (int)sout.len, sout.mem);
 
     udp::Socket mut sock = {0};
-
-    udp::open(&sock, &e);
-    err::abort(&e);
 
     udp::bind(&sock, &e, &sa);
     err::abort(&e);
 
     udp::sendto(&sock, &e, &sa, (u8*)"lulz", 4);
+    err::abort(&e);
+
+    udp::deadline(&sock, &e, time::from_seconds(1));
     err::abort(&e);
 
     string::String+100 srecv = {0};
@@ -39,9 +39,8 @@ export fn main() -> int {
 
     string::clear(&sout);
     address::to_string(&sout, &sa2);
-    printf(">%.*s<\n", sout.len, sout.mem);
-
-    printf(">%.*s<\n", srecv.len, srecv.mem);
+    printf(">%.*s<\n", (int)sout.len, sout.mem);
+    printf(">%.*s<\n", (int)srecv.len, srecv.mem);
 
     udp::close(&sock);
 

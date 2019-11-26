@@ -234,8 +234,8 @@ impl Emitter {
 
 
     pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
-        let (fields, packed, tail) = match &ast.def {
-            ast::Def::Struct{fields, packed, tail} => (fields, packed, tail),
+        let (fields, packed, tail, union) = match &ast.def {
+            ast::Def::Struct{fields, packed, tail, union} => (fields, packed, tail, union),
             _ => unreachable!(),
         };
         write!(self.f, "    pub static sizeof_{}: libc::size_t;\n", self.to_local_name(&Name::from(&ast.name))).unwrap();

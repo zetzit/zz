@@ -103,6 +103,7 @@ pub enum Def {
         fields:     Vec<Field>,
         packed:     bool,
         tail:       Tail,
+        union:      bool,
     },
     Enum {
         names:      Vec<(String, Option<u64>)>,

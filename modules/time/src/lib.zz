@@ -1,0 +1,13 @@
+export struct Duration {
+    u64 secs;
+    u64 usecs;
+}
+
+
+
+
+export fn from_seconds(u64 secs) -> Duration {
+    return Duration {
+        secs: secs
+    };
+}

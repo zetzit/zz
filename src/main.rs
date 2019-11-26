@@ -29,6 +29,7 @@ fn main() {
             .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
             .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
+            .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
         )
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
         .subcommand(SubCommand::with_name("test").about("execute tests/*.zz")
@@ -38,6 +39,7 @@ fn main() {
         .subcommand(
             SubCommand::with_name("run").about("build and run")
             .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
+            .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
             .arg(Arg::with_name("args").takes_value(true).multiple(true).required(false).index(1))
         )
@@ -183,8 +185,10 @@ fn main() {
 
         }
         ("run", Some(submatches)) => {
-            let stage = if submatches.is_present("release"){
+            let stage = if submatches.is_present("release") {
                 zz::make::Stage::release()
+            } else if submatches.is_present("debug") {
+                zz::make::Stage::debug()
             } else {
                 zz::make::Stage::test()
             };
@@ -308,8 +312,10 @@ fn main() {
             zz::build(false, true, submatches.value_of("variant").unwrap_or("default"), zz::make::Stage::test(), false)
         },
         ("build", Some(submatches)) => {
-            let stage = if submatches.is_present("release"){
+            let stage = if submatches.is_present("release") {
                 zz::make::Stage::release()
+            } else if submatches.is_present("debug") {
+                zz::make::Stage::debug()
             } else {
                 zz::make::Stage::test()
             };

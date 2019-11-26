@@ -1,32 +1,24 @@
 using address;
 using string;
 using err;
+using time;
 
 using <sys/socket.h> as posix_socket;
 using <arpa/inet.h>::{IPPROTO_UDP};
 using <unistd.h> as unistd;
 using <netinet/in.h>::{
-    (struct sockaddr_in)    as SockAddrIn,
+    (struct sockaddr_in6)   as SockAddrIn,
     (struct sockaddr)       as SockAddr,
+};
+
+using <sys/time.h>::{
+    (struct timeval) as Timeval
 };
 
 
 export struct Socket {
     int fd;
 }
-
-
-export fn open(Socket mut *self, err::Err+et mut*e)
-    where err::checked(*e)
-{
-    self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
-
-    if self->fd < 0 {
-        err::fail_with_errno(e, "socket");
-        return;
-    }
-}
-
 
 export fn close(Socket mut *self)
 {
@@ -39,13 +31,30 @@ export fn close(Socket mut *self)
 export fn bind(Socket mut *self, err::Err+et mut*e, address::Address *addr)
     where err::checked(*e)
 {
+    switch addr->type {
+        address::Type::Ipv6 => {
+            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET6, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
+        }
+        address::Type::Ipv4 => {
+            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
+        }
+    }
+
+    if self->fd < 0 {
+        err::fail_with_errno(e, "socket");
+        return;
+    }
+
+    unsafe {
+        int v = 1;
+        posix_socket::setsockopt(self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_REUSEADDR, (void*)&v, sizeof(int));
+    }
+
     int r = as<int>(posix_socket::bind(self->fd, as<SockAddr*>(&addr->posix), sizeof(SockAddrIn)));
     if r != 0 {
         err::fail_with_errno(e, "bind");
     }
 }
-
-
 
 export fn sendto(Socket mut *self, err::Err+et mut*e, address::Address *to, u8*msg, usize msglen)
     where err::checked(*e)
@@ -56,7 +65,6 @@ export fn sendto(Socket mut *self, err::Err+et mut*e, address::Address *to, u8*m
         err::fail_with_errno(e, "bind");
     }
 }
-
 
 export fn recv(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, address::Address mut*from)
     where err::checked(*e)
@@ -71,9 +79,27 @@ export fn recv(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, 
         as<SockAddr mut*>(&from->posix),
         &alen
     ));
+
+    unsafe {
+        if ((from->posix).v6).sin6_family  == posix_socket::AF_INET6 {
+            from->type = address::Type::Ipv6;
+        }
+    }
+
     if r < 1 {
         err::fail_with_errno(e, "recv");
         return;
     }
     buf->len += as<usize>(r);
+}
+
+export fn deadline(Socket mut *self, err::Err+et mut*e, time::Duration dur) {
+    Timeval v = Timeval {
+        tv_sec:     dur.secs,
+        tv_usec:    dur.usecs,
+    };
+
+    if (posix_socket::setsockopt (self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_RCVTIMEO, (char *)&v, sizeof(Timeval)) < 0) {
+        err::fail_with_errno(e, "setsockopt");
+    }
 }

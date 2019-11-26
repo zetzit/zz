@@ -5,21 +5,25 @@ using <stdlib.h>::{free};
 
 
 
-test empty {
+test {
     stdin  = ""
     stdout = ""
 }
 
-test test1 {
+test {
     stdin  = "76"
     stdout = {0x76}
 }
 
-test test2 {
+test {
     stdin  = "7612"
     stdout = {0x76, 0x12}
 }
 
+test {
+    stdin  = "EeEafF8e"
+    stdout = {0xee, 0xea, 0xff, 0x8e}
+}
 
 fn t(char *str) {
     u8 mut out[1024];

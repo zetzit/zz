@@ -29,7 +29,7 @@ impl Stage {
             optimize:   Some("03".to_string()),
             lto:        true,
             asan:       false,
-            fuzz:        false,
+            fuzz:       false,
         }
     }
     pub fn test() -> Self {
@@ -39,17 +39,17 @@ impl Stage {
             optimize:   None,
             lto:        false,
             asan:       true,
-            fuzz:        false,
+            fuzz:       false,
         }
     }
     pub fn debug() -> Self {
         Stage {
             name:       "debug".to_string(),
             debug:      true,
-            optimize:   None,
+            optimize:   Some("03".to_string()),
             lto:        false,
             asan:       false,
-            fuzz:        false,
+            fuzz:       false,
         }
     }
     pub fn fuzz() -> Self {
@@ -59,7 +59,7 @@ impl Stage {
             optimize:   None,
             lto:        false,
             asan:       true,
-            fuzz:        true,
+            fuzz:       true,
         }
     }
 }
@@ -104,9 +104,11 @@ impl Make {
             .or(std::env::var("CC"))
             .unwrap_or("clang".to_string());
 
+        let mut cxx = false;
         if let Some(std) = config.project.std {
             cflags.push(format!("-std={}", std));
             if std.contains("c++") {
+                cxx = true;
                 cc = std::env::var("TARGET_CXX")
                     .or(std::env::var("CXX"))
                     .unwrap_or("clang++".to_string());
@@ -208,6 +210,19 @@ impl Make {
             cflags.push("-m32".into());
             lflags.push("-m32".into());
         }
+
+
+        if !cxx {
+            cflags.push("-fomit-frame-pointer".into());
+            cflags.push("-fno-exceptions".into());
+            cflags.push("-fno-asynchronous-unwind-tables".into());
+            cflags.push("-fno-unwind-tables".into());
+            lflags.push("-fomit-frame-pointer".into());
+            lflags.push("-fno-exceptions".into());
+            lflags.push("-fno-asynchronous-unwind-tables".into());
+            lflags.push("-fno-unwind-tables".into());
+        }
+
 
         cflags.extend(user_cflags);
         lflags.extend(user_lflags);
@@ -312,6 +327,7 @@ impl Make {
             pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
             if step.is_dirty() {
+                debug!("{} {:?}", self.cc, step.args);
                 let status = Command::new(&self.cc)
                     .env("AFL_USE_ASAN", "1")
                     .args(&step.args)

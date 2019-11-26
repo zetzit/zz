@@ -170,15 +170,35 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
 
 
 
-struct Iterator {
-    String *self;
-    char    token;
+
+
+export fn split(String+tail *self, char token, usize mut *iterator, String+tail2 mut* other) -> bool
+{
+    static_attest(len(self->mem) >= self->len);
+
+    usize start = *iterator;
+
+    if *iterator >= self->len {
+        return false;
+    }
+
+    for (; *iterator < self->len; (*iterator)++) {
+        if (self->mem)[*iterator] == token {
+            break;
+        }
+    }
+
+    usize size = *iterator - start;
+    *iterator += 1;
+    if size == 0 {
+        return true;
+    }
+
+    substr(self, start, size, other);
+    return true;
 }
 
-export fn split(String+tail *self, char token) -> Iterator {
-    Iterator r = Iterator{
-        token:  token,
-        self:   self,
-    };
-    return r;
+
+export fn space(String+tail *self) -> usize {
+    return tail - self->len;
 }

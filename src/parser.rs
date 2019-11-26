@@ -305,16 +305,19 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
             Rule::testcase => {
                 let mut name   = None;
                 let mut fields = Vec::new();
-                let mut loc    = None;
+                let mut loc    = Location{
+                    file: n.to_string_lossy().into(),
+                    span: decl.as_span(),
+                };
 
                 let decl = decl.into_inner();
                 for part in PP::new(n,features.clone(), decl) {
                     match part.as_rule() {
                         Rule::ident => {
-                            loc  = Some(Location{
+                            loc  = Location{
                                 file: n.to_string_lossy().into(),
                                 span: part.as_span(),
-                            });
+                            };
                             name= Some(part.as_str().into());
                         },
                         Rule::testfield => {
@@ -328,11 +331,10 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
 
                     }
                 }
-
                 module.locals.push(Local{
-                    name: name.unwrap(),
+                    name: name.unwrap_or(format!("anonymous_test_case_{}", loc.line())),
                     vis: Visibility::Object,
-                    loc: loc.unwrap(),
+                    loc,
                     def: Def::Testcase {
                         fields,
                     }
@@ -349,6 +351,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut loc    = None;
                 let mut packed = false;
                 let mut tail   = Tail::None;
+                let mut union  = false;
 
                 for part in PP::new(n,features.clone(), decl) {
                     match part.as_rule() {
@@ -360,6 +363,12 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         }
                         Rule::key_shared => {
                             vis = Visibility::Shared;
+                        }
+                        Rule::key_struct => {
+                            union = false;
+                        }
+                        Rule::key_union => {
+                            union = true;
                         }
                         Rule::exported => {
                             vis = Visibility::Export;
@@ -424,6 +433,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         fields,
                         packed,
                         tail,
+                        union,
                     }
                 });
             }
