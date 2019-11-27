@@ -111,6 +111,7 @@ pub struct Symbolic {
     builtin:    HashMap<String, Symbol>,
     defs:       HashMap<Name, ast::Def>,
     current_function_name: String,
+    current_function_ret:  Option<Symbol>,
 }
 
 
@@ -294,7 +295,7 @@ impl Symbolic {
                     self.ssa_mark_safe(sym, &d.loc)?;
 
                     if *defined_here {
-                        self.execute_function(&d.name, args, body, callassert, calleffect)?;
+                        self.execute_function(&d.name, args, ret.as_ref(), body, callassert, calleffect)?;
                         if !self.ssa.solve() {
                             return Err(Error::new(format!("function is unprovable"), vec![
                                                   (d.loc.clone(), format!("this function body is impossible to prove"))
@@ -444,6 +445,7 @@ impl Symbolic {
         &mut self,
         name: &String,
         args: &Vec<ast::NamedArg>,
+        ret:  Option<&ast::AnonArg>,
         body: &mut ast::Block,
         callassert: &mut Vec<ast::Expression>,
         calleffect: &mut Vec<ast::Expression>,
@@ -547,6 +549,12 @@ impl Symbolic {
                     (callassert.loc().clone(), format!("there may be conflicting constrains"))
                 ]));
             }
+        }
+
+        if let Some(ret) = ret {
+            self.current_function_ret = Some(self.alloc(Name::from("return"), ret.typed.clone(), ret.typed.loc.clone(), ast::Tags::new())?);
+        } else {
+            self.current_function_ret = None;
         }
 
         self.execute_scope(&mut (body.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
@@ -660,6 +668,7 @@ impl Symbolic {
                             tags: Tags::new(),
                         });
                     }
+
                     let sym = self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone())?;
 
                     if let Some(array) = array {
@@ -833,7 +842,10 @@ impl Symbolic {
                 }
                 ast::Statement::Return{loc, expr} => {
                     if let Some(expr) = expr  {
-                        self.execute_expr(expr)?;
+                        let e = self.execute_expr(expr)?;
+                        if let Some(retsym) =  self.current_function_ret {
+                            self.copy(retsym, e, expr.loc());
+                        }
                     }
                     // stop. do not execute anything behind return
                     return Ok(ScopeReturn::Return(loc.clone()));
@@ -1719,8 +1731,34 @@ impl Symbolic {
                             self.borrow_away(*s);
                         }
 
+                        let return_sym = self.temporary(
+                            format!("return value of {}", self.memory[name_sym].name),
+                            ret.clone().unwrap_or(ast::Typed{
+                                t:      ast::Type::Other(Name::from("void")),
+                                loc:    loc.clone(),
+                                ptr:    Vec::new(),
+                                tail:   ast::Tail::None,
+                            }),
+                            loc.clone(),
+                            Tags::new(),
+                        )?;
+                        let value = Value::Unconstrained("return value".to_string());
+                        self.memory[return_sym].value = value;
+
                         for callsite_effect in &mut callsite_effect {
                             self.push("callsite_effect".to_string());
+
+                            let return_sym_inner = self.alloc(
+                                Name::from("return"),
+                                ret.clone().unwrap_or(ast::Typed{
+                                    t:      ast::Type::Other(Name::from("void")),
+                                    loc:    loc.clone(),
+                                    ptr:    Vec::new(),
+                                    tail:   ast::Tail::None,
+                                }),
+                                loc.clone(),
+                                Tags::new(),
+                            )?;
 
                             for (i, farg) in fargs.iter().enumerate() {
                                 let tmp = self.alloc(
@@ -1738,24 +1776,14 @@ impl Symbolic {
                                 ]));
                             }
 
+
+                            self.copy(return_sym, return_sym_inner, loc)?;
+
                             self.pop();
                         }
 
-                        let tmp = self.temporary(
-                            format!("return value of {}", self.memory[name_sym].name),
-                            ret.clone().unwrap_or(ast::Typed{
-                                t:      ast::Type::Other(Name::from("void")),
-                                loc:    loc.clone(),
-                                ptr:    Vec::new(),
-                                tail:   ast::Tail::None,
-                            }),
-                            loc.clone(),
-                            Tags::new(),
-                        )?;
-                        let value = Value::Unconstrained("return value".to_string());
-                        self.memory[tmp].value = value;
 
-                        Ok(tmp)
+                        Ok(return_sym)
                     },
                     Value::Unconstrained(s) => {
                         emit_debug(format!("call expression on {} is unprovable", s), &[
@@ -2479,6 +2507,7 @@ impl Symbolic {
             builtin: Default::default(),
             defs:    HashMap::new(),
             current_function_name: String::new(),
+            current_function_ret:  None,
         }
     }
 

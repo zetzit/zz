@@ -1,0 +1,5 @@
+using <stdio.h>::{printf};
+
+export fn main(a return) -> int {
+    return 0;
+}

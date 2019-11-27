@@ -89,6 +89,11 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
     return r;
 }
 
+export fn eq_cstr(String+tail* self, char * unsafe b) -> bool
+{
+    return as<int>(strcmp(self->mem,b)) == 0;
+}
+
 export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
 {
     return as<int>(strcmp(a,b)) == 0;

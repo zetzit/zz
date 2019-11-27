@@ -36,7 +36,6 @@ keyword    = {
     key_while    |
     key_if       |
     key_else     |
-    key_return   |
     key_mark     |
     key_break    |
     key_continue |

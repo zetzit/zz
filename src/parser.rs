@@ -1365,7 +1365,18 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
     let name_part = decl.pop().unwrap();
     let name = match name_part.as_rule() {
         Rule::ident => {
-            name_part.as_str().to_string()
+            let name = name_part.as_str().to_string();
+            if name == "return" {
+                let loc = Location{
+                    file: n.1.to_string_lossy().into(),
+                    span: name_part.as_span(),
+                };
+                emit_error("syntax error", &[
+                    (loc.clone(), "llegal use of keyword 'return'"),
+                ]);
+                std::process::exit(9);
+            }
+            name
         }
         _ => {
             let loc = Location{
@@ -1373,7 +1384,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
                 span: name_part.as_span(),
             };
             emit_error("syntax error", &[
-                       (loc.clone(), "expected a name")
+                (loc.clone(), "expected a name")
             ]);
             std::process::exit(9);
         }
@@ -1406,6 +1417,8 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
             e => panic!("unexpected rule {:?} in named_type ", e),
         }
     }
+
+
 
     TypedName {
         name,

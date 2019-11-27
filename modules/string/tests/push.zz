@@ -1,0 +1,14 @@
+using string;
+using <stdio.h>::{getline, printf, stdin};
+using <stdlib.h>::{free};
+
+
+export fn main() -> int {
+    string::String+50 mut s = {0};
+
+    for (uint mut i =0; i < 100; i++) {
+        string::push(&s, ' ');
+    }
+
+    return 0;
+}

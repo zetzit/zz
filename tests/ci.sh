@@ -21,7 +21,7 @@ done
 for i in $THIS/mustfail/*
 do
     cd $i
-    if ../../../target/release/zz run;  then
+    if ../../../target/release/zz check;  then
         echo "$i" passed, but it should not
         exit 1
     else

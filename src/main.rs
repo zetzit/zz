@@ -193,7 +193,7 @@ fn main() {
                 zz::make::Stage::test()
             };
             let variant = submatches.value_of("variant").unwrap_or("default");
-            zz::build(true, false, variant, stage.clone(), false);
+            zz::build(false, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
             std::env::set_current_dir(root).unwrap();
 
@@ -320,7 +320,7 @@ fn main() {
                 zz::make::Stage::test()
             };
 
-            zz::build(false, false, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
+            zz::build(true, false, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
         },
         ("", None) => {
             zz::build(false, false, "default", zz::make::Stage::test(), false);

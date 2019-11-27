@@ -1,0 +1,10 @@
+using <stdio.h>::{printf};
+
+
+export fn main() -> int {
+
+    if return {
+        
+    }
+    return 0;
+}

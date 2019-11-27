@@ -212,7 +212,7 @@ impl Make {
         }
 
 
-        if !cxx {
+        if !cxx && !stage.debug {
             cflags.push("-fomit-frame-pointer".into());
             cflags.push("-fno-exceptions".into());
             cflags.push("-fno-asynchronous-unwind-tables".into());

@@ -1,0 +1,33 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    int a;
+}
+
+fn dab() ->  A
+    model return.a == 2
+{
+    return A{
+        a: 2
+    };
+}
+
+fn bob() -> int
+    model return == 2
+{
+    return 2;
+}
+
+export fn main() -> int {
+
+    int b = bob();
+    static_assert(b == 2);
+
+
+    A a = dab();
+    static_assert(a.a == 2);
+
+    printf("hello return_model\n");
+    return 0;
+}
