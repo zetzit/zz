@@ -3,7 +3,7 @@ using identity::{some_helper};
 using aye;
 using err;
 
-thread_local f32 mut wee = 0.1;
+thread_local u8 mut wee = 1;
 atomic u32 mut bargh = 932;
 
 struct Bob {
@@ -15,7 +15,7 @@ static Bob mut stbob = Bob{
     a: 2,
 };
 
-pub fn gimme_wee(aye::bob * unsafe lol) -> f32 {
+pub fn gimme_wee(aye::bob * unsafe lol) -> u8 {
     bob += (u32)lol;
     return wee;
 }

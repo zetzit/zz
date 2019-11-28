@@ -123,11 +123,11 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
     static_attest(len(other->mem) >= tail2);
     static_attest(len(self->mem) >= tail);
 
-    if from >= self->len {
+    if self->len == 0 {
         return;
     }
 
-    if self->len == 0 {
+    if from >= self->len {
         return;
     }
 

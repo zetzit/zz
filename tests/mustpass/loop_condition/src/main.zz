@@ -1,0 +1,73 @@
+using <stdio.h>::{printf};
+
+
+
+inline fn alias(void * alias a) {}
+
+export fn main() -> int {
+
+
+    usize     no_changes_in_loop = 1;
+
+    usize mut changes_in_loop1 = 1;
+    usize mut changes_in_loop2 = 1;
+    usize mut changes_in_loop3 = 1;
+    usize mut changes_in_loop4 = 1;
+
+    for (usize mut i = 0; i < 3; i++) {
+        static_assert( i < 3 );
+
+        // this would not compile if ssa incorrectly believes i has a known value
+        if i == 0 {
+        }
+
+        changes_in_loop1++;
+        if changes_in_loop1 > 2 {
+        }
+
+        changes_in_loop2 += 1;
+        if changes_in_loop2 > 2 {
+        }
+
+
+        static_assert(no_changes_in_loop == 1);
+
+        int mut declared_in_loop = 3;
+        static_assert(declared_in_loop == 3);
+
+        if i == 0 {
+        }
+
+
+        int uninitialized;
+
+        if uninitialized == 2 {
+            continue;
+        }
+        static_assert(uninitialized != 2);
+
+
+        // this is a workaround until symbolic understands loop passes
+        // we just tell it the value is unknown because there's an alias
+        alias(&changes_in_loop3);
+
+        // change in previous iteration
+        if changes_in_loop3 == 1 {
+            changes_in_loop4 = 2;
+        }
+        changes_in_loop3 = 8;
+    }
+
+
+    if changes_in_loop1 == 2 {
+    }
+    if changes_in_loop2 == 2 {
+    }
+    if changes_in_loop3 == 2 {
+    }
+    if changes_in_loop4 == 2 {
+    }
+
+    printf("hello loop_condition\n");
+    return 0;
+}

@@ -1,0 +1,7 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+    uint i = 30;
+    static_assert(i > 3+1);
+    return 0;
+}

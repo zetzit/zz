@@ -18,7 +18,6 @@ pub struct Solver {
     syms:           HashMap<Symbol, (z3::FuncDecl<'static>, String)>,
     debug_line:     usize,
     pub debug:      RefCell<File>,
-    pub infinite:   bool,
     debug_indent:   String,
 }
 
@@ -131,10 +130,6 @@ impl Solver {
 
 
     pub fn assign(&mut self, lhs: TemporalSymbol, rhs: TemporalSymbol, t: Type) {
-        if self.infinite {
-            return;
-        }
-
 
         if t == Type::Bool {
 
@@ -276,9 +271,6 @@ impl Solver {
         signed: bool,
         )
     {
-        if self.infinite {
-            return;
-        }
         let d_lhs_n = &self.syms[&lhs.0].1.clone();
         let d_rhs_n = &self.syms[&rhs.0].1.clone();
 
@@ -487,9 +479,6 @@ impl Solver {
                      op:  crate::ast::PostfixOperator,
                      t:   Type,
     ) {
-        if self.infinite {
-            return;
-        }
 
         let size =  match  t {
             Type::Signed(v) | Type::Unsigned(v) => v,
@@ -525,9 +514,6 @@ impl Solver {
                      op:  crate::ast::PrefixOperator,
                      t:   Type,
     ) {
-        if self.infinite {
-            return;
-        }
 
         match  t {
             Type::Signed(size) | Type::Unsigned(size) => {
@@ -566,9 +552,6 @@ impl Solver {
     }
 
     pub fn constrain(&mut self, lhs: (Symbol, u64), compare: bool) -> bool {
-        if self.infinite {
-            return true;
-        }
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "; constrain. we know this to be true because of an if condition or callsite assert\n").unwrap();
         if compare {
@@ -589,14 +572,15 @@ impl Solver {
 
         write!(self.debug.borrow_mut(), "{}(check-sat); check after constrain\n", self.debug_indent).unwrap();
 
+        self.solve()
         //#[cfg(debug_assertions)]
         //{
         //    self.solve()
         //}
         //#[cfg(not(debug_assertions))]
-        {
-            true
-        }
+        //{
+        //    true
+        //}
     }
 
 
@@ -690,6 +674,7 @@ impl Solver {
 
         self.solver.push();
         if !self.solve() {
+            warn!("model broke earlier");
             return with(Assertion::Unsolveable, None);
         }
         let bv = self.solver.get_model().eval(&lhs_s, true);
@@ -709,6 +694,7 @@ impl Solver {
         } else {
             return with(Assertion::Unsolveable, None);
         };
+        let bv = bv.unwrap();
 
 
         self.solver.pop(1);
@@ -716,14 +702,82 @@ impl Solver {
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(push)\n").unwrap();
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(assert (not (= (_ bv{} 64) (S{} {}))))\n", val, self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "(assert (not (= (_ bv{} {}) (S{} {}))))\n", val, bv.get_size(),
+               self.syms[&lhs.0].1, lhs.1).unwrap();
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
-        self.solver.assert(&lhs_s._eq(&bv.unwrap()).not());
+        self.solver.assert(&lhs_s._eq(&bv).not());
+        let rr = match self.solve() {
+            false => {
+                self.solver.pop(1);
+                self.solver.push();
+                with(Assertion::Constrained(val), Some(ModelRef(self.solver.get_model())))
+            }
+            true => {
+                with(Assertion::Unconstrained(val), Some(ModelRef(self.solver.get_model())))
+            }
+        };
+        self.solver.pop(1);
+        rr
+    }
+
+    pub fn bool_value<R, F> (&self, lhs: (Symbol, u64), with: F) -> R
+        where F : Fn(Assertion<bool>, Option<ModelRef>) -> R,
+              R : Sized
+    {
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(push)\n").unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
+
+        let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
+
+
+        self.solver.push();
+        if !self.solve() {
+            warn!("model broke earlier");
+            return with(Assertion::Unsolveable, None);
+        }
+        let bv = self.solver.get_model().eval(&lhs_s, true);
+        let val = if let Some(bv) = &bv {
+            write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+            write!(self.debug.borrow_mut(), ";  = {:?}\n", bv).unwrap();
+            let bvstring = format!("{:?}", bv);
+            if bvstring.contains("true") {
+                true
+            } else if bvstring.contains("false") {
+                false
+            } else {
+                return with(Assertion::Unsolveable, None);
+            }
+        } else {
+            return with(Assertion::Unsolveable, None);
+        };
+        let bv = bv.unwrap();
+
+
+        self.solver.pop(1);
+        self.solver.push();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(push)\n").unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(assert (not (= {} (S{} {}))))\n", val,
+               self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
+        self.solver.assert(&lhs_s._eq(&bv).not());
         let rr = match self.solve() {
             false => {
                 self.solver.pop(1);
@@ -806,7 +860,6 @@ impl Solver {
             syms: HashMap::new(),
             debug_line: 0,
             debug,
-            infinite: false,
             debug_indent: String::new(),
         }
     }

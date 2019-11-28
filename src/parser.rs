@@ -1408,8 +1408,8 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
             Rule::tag_name => {
                 let mut part = part.into_inner();
                 let mut name  = part.next().unwrap().as_str().into();
-                if name == "mut" {
-                    name = "mutable".to_string();
+                if name == "mutable" {
+                    name = "mut".to_string();
                 }
                 let value = part.next().as_ref().map(|s|s.as_str().to_string()).unwrap_or(String::new());
                 tags.insert(name, value, loc);

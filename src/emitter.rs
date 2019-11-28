@@ -343,7 +343,7 @@ impl Emitter {
             _ => unreachable!(),
         };
 
-        if tags.contains_key("mutable") {
+        if tags.contains_key("mut") {
             write!(self.f, "static ").unwrap();
         } else {
             write!(self.f, "static const ").unwrap();
@@ -574,7 +574,7 @@ impl Emitter {
             write!(self.f, "{}", self.to_local_typed_name(&arg.typed)).unwrap();
 
             self.emit_pointer(&arg.typed.ptr);
-            if !arg.tags.contains_key("mutable") {
+            if !arg.tags.contains_key("mut") {
                 write!(self.f, " const ").unwrap();
             }
 
@@ -921,7 +921,7 @@ impl Emitter {
 
                 self.emit_pointer(&typed.ptr);
 
-                if !tags.contains_key("mutable") {
+                if !tags.contains_key("mut") {
                     write!(self.f, " const ").unwrap();
                 }
 
@@ -1016,7 +1016,7 @@ impl Emitter {
 
     fn emit_pointer(&mut self, v: &Vec<ast::Pointer>) {
         for ptr in v {
-            if !ptr.tags.contains_key("mutable") && !ptr.tags.contains_key("mut") {
+            if !ptr.tags.contains_key("mut") && !ptr.tags.contains_key("mut") {
                 write!(self.f, " const ").unwrap();
             }
             write!(self.f, "* ").unwrap();

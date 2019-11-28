@@ -147,7 +147,6 @@ export fn from_str_ipv6(Address mut* to, char * s, usize slen) -> bool
             j += 2 * (7 - at_part);
         } else {
             u8 * p = (u8*)(&parts[i]);
-            static_attest(len(p) == 2);
             unsafe {
                 ip[j]   = p[1];
                 ip[j+1] = p[0];

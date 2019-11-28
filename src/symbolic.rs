@@ -101,12 +101,16 @@ struct Storage {
     value:          Value,
     tags:           ast::Tags,
     temporal:       u64,
+    assignments:    HashMap<u64, ast::Location>,
+
+    //TODO not actually implemented
+    borrows:        Vec<(Symbol, ast::Location)>,
 }
 
 struct Scope{
     name:   String,
     locals: HashMap<Name, usize>,
-    trace:  Vec<TemporalSymbol>,
+    trace:  Vec<(TemporalSymbol, ast::Location)>,
 }
 
 pub struct Symbolic {
@@ -117,6 +121,7 @@ pub struct Symbolic {
     defs:       HashMap<Name, ast::Def>,
     current_function_name: String,
     current_function_ret:  Option<Symbol>,
+    in_loop: bool,
 }
 
 
@@ -571,7 +576,7 @@ impl Symbolic {
             }
             if !self.ssa.constrain((sym, self.memory[sym].temporal), true) {
                 return Err(Error::new(format!("callsite assert broke ssa solution"), vec![
-                    (callassert.loc().clone(), format!("there may be conflicting constrains"))
+                    (callassert.loc().clone(), format!("there may be conflicting constraints"))
                 ]));
             }
         }
@@ -624,22 +629,40 @@ impl Symbolic {
             return Ok((self.memory[a].typed.clone(), a,b));
         }
 
-        // if one is an unsigned literal, coerce it into the other type
+        // if one is an unsigned literal, cast it into the other type
         if self.memory[a].typed.t == ast::Type::ULiteral {
-            let tmp = self.literal(
-                here,
-                self.memory[a].value.clone(),
+            let tmp = self.temporary(
+                format!("implicit coercion of {}", self.memory[a].name),
                 self.memory[b].typed.clone(),
+                self.memory[a].declared.clone(),
+                Tags::new(),
             )?;
+
+            self.memory[tmp].value = self.memory[a].value.clone();
+            self.ssa.assign(
+                (tmp,   self.memory[tmp].temporal),
+                (a,     self.memory[a].temporal),
+                Self::smt_type(&self.memory[tmp].typed),
+            );
+
             return Ok((self.memory[b].typed.clone(), tmp, b));
         }
 
         if self.memory[b].typed.t == ast::Type::ULiteral {
-            let tmp = self.literal(
-                here,
-                self.memory[b].value.clone(),
+            let tmp = self.temporary(
+                format!("implicit coercion of {}", self.memory[b].name),
                 self.memory[a].typed.clone(),
+                self.memory[b].declared.clone(),
+                Tags::new(),
             )?;
+
+            self.memory[tmp].value = self.memory[b].value.clone();
+            self.ssa.assign(
+                (tmp,   self.memory[tmp].temporal),
+                (b,     self.memory[b].temporal),
+                Self::smt_type(&self.memory[tmp].typed),
+            );
+
             return Ok((self.memory[a].typed.clone(), a, tmp));
         }
 
@@ -772,33 +795,37 @@ impl Symbolic {
                             }
 
                             let sym = (sym, self.memory[sym].temporal);
-                            /*
-                            self.ssa.assert(sym, |a,model|match a {
-                                smt::Assertion::Unsolveable => {
-                                    Err(Error::new(format!("condition is not solveable"), vec![
-                                        (expr.loc().clone(), format!("there may be conflicting constraints"))
-                                    ]))
-                                }
-                                smt::Assertion::Unconstrained(_) => {Ok(())}
-                                smt::Assertion::Constrained(true) => {
-                                    let mut estack = vec![(expr.loc().clone(), format!("condition can never be false"))];
-                                    estack.extend(self.demonstrate(&model.as_ref().unwrap(), sym, 0));
-                                    emit_warn("unnecessary conditional", &estack);
-                                    Ok(())
-                                }
-                                smt::Assertion::Constrained(false) => {
-                                    let mut estack = vec![(expr.loc().clone(), format!("condition can never be true"))];
-                                    estack.extend(self.demonstrate(&model.as_ref().unwrap(), sym, 0));
-                                    emit_warn("unnecessary conditional", &estack);
-                                    Ok(())
-                                }
-                            })?;
-                            */
 
-                            self.cur().trace.push(sym);
-                            self.ssa.debug_loc(&expr.loc());
 
-                            Some((sym, expr.loc().clone()))
+
+                            let constrained_branch = self.ssa.bool_value(sym, |a,_model| match a {
+                                smt::Assertion::Constrained(_) => {
+                                    /* TODO this is wrong, because it may be different for a different parent branch 
+                                    let mut estack = Vec::new();
+                                    estack.push((expr.loc().clone(), format!("expression is statically provable")));
+                                    if let Some(model) = &model {
+                                        estack.extend(self.demonstrate(model, sym, 0));
+                                    }
+                                    Err(Error::new(format!("condition can never be {}", !val), estack))
+                                    */
+                                    true
+                                }
+                                _ => {
+                                    false
+                                }
+                            });
+
+
+                            if constrained_branch {
+                                // TODO we can't skip the branch, because there may still be expansions that need to be done
+                                // a medium term fix is moving expansion out of symbolic.
+                                // best thing we can do now is just not assert the branch as constrain to avoid conflicts
+                                None
+                            } else {
+                                self.cur().trace.push((sym, expr.loc().clone()));
+                                self.ssa.debug_loc(&expr.loc());
+                                Some((sym, expr.loc().clone()))
+                            }
                         } else {
                             None
                         };
@@ -814,9 +841,13 @@ impl Symbolic {
 
                         if let Some((sym, loc)) = &positive_constrain {
                             if !self.ssa.constrain(*sym, true) {
+
+
                                 return Err(Error::new(format!("positive condition breaks ssa"), vec![
                                     (loc.clone(), format!("there may be conflicting constraints"))
                                 ]));
+
+
                             }
                         }
 
@@ -830,7 +861,7 @@ impl Symbolic {
                                     (loc.clone(), format!("during execution of this branch"))
                                 ]));
                             }
-                            self.cur().trace.push(sym);
+                            self.cur().trace.push((sym, expr.loc().clone()));
                         }
 
                         let rere = self.execute_scope(&mut (body2.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
@@ -922,7 +953,11 @@ impl Symbolic {
                     let (newtype, lhs, rhs) = self.type_coersion(lhs, rhs, loc)?;
 
                     if let ast::AssignOperator::Eq = op {
-                        self.copy(lhs, rhs, loc)?;
+                        if self.in_loop {
+                            self.memory[lhs].temporal += 1;
+                        } else {
+                            self.copy(lhs, rhs, loc)?;
+                        }
                     } else {
                         let tmp = self.temporary("assign inter".to_string(),
                             newtype.clone(),
@@ -955,12 +990,18 @@ impl Symbolic {
                             newtype.t.signed(),
                          );
 
-                        self.copy(lhs, tmp, loc)?;
+                        if self.in_loop {
+                            self.memory[lhs].temporal += 1;
+                        } else {
+                            self.copy(lhs, tmp, loc)?;
+                        }
                     }
                 }
-                ast::Statement::Continue{..} => {
+                ast::Statement::Continue{loc} => {
+                    return Ok(ScopeReturn::Return(loc.clone()));
                 }
-                ast::Statement::Break{..} => {
+                ast::Statement::Break{loc} => {
+                    return Ok(ScopeReturn::Return(loc.clone()));
                 }
                 ast::Statement::Block(block) => {
                     self.push("block".to_string());
@@ -975,12 +1016,12 @@ impl Symbolic {
                     self.push("for loop".to_string());
                     self.ssa.push("for loop");
 
+                    let prev_loop = self.in_loop;
+                    self.in_loop = false;
                     self.execute_scope(&mut (e1.iter_mut().map(|v|&mut**v).collect::<Vec<&mut ast::Statement>>()))?;
+                    self.in_loop = true;
 
-                    let prev_inf = self.ssa.infinite;
-                    self.ssa.infinite = true;
                     self.execute_scope(&mut (e3.iter_mut().map(|v|&mut**v).collect::<Vec<&mut ast::Statement>>()))?;
-                    self.ssa.infinite = prev_inf;
 
                     if let Some(expr) = e2 {
                         let sym = self.execute_expr(expr)?;
@@ -990,7 +1031,7 @@ impl Symbolic {
                             ]));
                         }
                         let sym = (sym, self.memory[sym].temporal);
-                        self.cur().trace.push(sym.clone());
+                        self.cur().trace.push((sym.clone(), expr.loc().clone()));
                         if !self.ssa.constrain(sym, true) {
                             return Err(Error::new(format!("condition breaks ssa"), vec![
                                 (expr.loc().clone(), format!("there may be conflicting constraints"))
@@ -998,7 +1039,9 @@ impl Symbolic {
                         }
                     }
 
+
                     self.execute_scope(&mut (body.statements.iter_mut().map(|v|&mut*v).collect::<Vec<&mut ast::Statement>>()))?;
+                    self.in_loop = prev_loop;
                     self.ssa.pop("end of for loop");
                     self.pop();
                 }
@@ -1013,7 +1056,7 @@ impl Symbolic {
                         ]));
                     }
                     let sym = (sym, self.memory[sym].temporal);
-                    self.cur().trace.push(sym.clone());
+                    self.cur().trace.push((sym.clone(), expr.loc().clone()));
 
                     if !self.ssa.constrain(sym, true) {
                         return Err(Error::new(format!("condition breaks ssa"), vec![
@@ -1021,7 +1064,12 @@ impl Symbolic {
                         ]));
                     }
 
+                    let prev_loop = self.in_loop;
+                    self.in_loop = true;
+
                     self.execute_scope(&mut (body.statements.iter_mut().map(|v|&mut*v).collect::<Vec<&mut ast::Statement>>()))?;
+
+                    self.in_loop = prev_loop;
                     self.ssa.pop("end of while loop");
                     self.pop();
                 }
@@ -1330,6 +1378,12 @@ impl Symbolic {
                     ]))
                 }
 
+                if self.memory[rhs_sym].typed.t != ast::Type::USize && self.memory[rhs_sym].typed.t != ast::Type::ULiteral {
+                    return Err(Error::new(format!("array access with something not a usize"), vec![
+                        (rhs.loc().clone(), format!("array index must be of type usize"))
+                    ]))
+                }
+
                 let static_index = if let smt::Assertion::Constrained(i)  = self.ssa.value((rhs_sym, self.memory[rhs_sym].temporal), |a,_|a) {
                     Some(i as usize)
                 } else {
@@ -1558,8 +1612,6 @@ impl Symbolic {
                     }
                     Some("static_attest") => {
                         *emit = ast::EmitBehaviour::Skip;
-                        let prev_inf = self.ssa.infinite;
-                        self.ssa.infinite = false;
                         self.ssa.debug_loc(loc);
                         self.ssa.debug("static_attest");
                         if args.len() != 1 {
@@ -1575,7 +1627,7 @@ impl Symbolic {
                         }
                         if !self.ssa.constrain((sym, self.memory[sym].temporal), true) {
                             return Err(Error::new(format!("function is unprovable"), vec![
-                                (expr.loc().clone(), format!("static_attest leads to conflicting constrains"))
+                                (expr.loc().clone(), format!("static_attest leads to conflicting constraints"))
                             ]));
                         }
 
@@ -1585,7 +1637,6 @@ impl Symbolic {
                             ptr:    Vec::new(),
                             tail:   ast::Tail::None,
                         });
-                        self.ssa.infinite = prev_inf;
                         return r;
                     },
                     Some("static_assert") => {
@@ -1603,7 +1654,7 @@ impl Symbolic {
                                 (args[0].loc().clone(), format!("coercion to boolean is difficult to prove"))
                             ]));
                         }
-                        self.ssa.assert((sym, self.memory[sym].temporal) , |a,model|match a{
+                        self.ssa.assert((sym, self.memory[sym].temporal), |a,model|match a{
                             false => {
                                 let mut estack = vec![(loc.clone(),
                                     format!("you may need an if condition or callsite_assert to increase confidence"))];
@@ -1820,9 +1871,24 @@ impl Symbolic {
 
 
                         // TODO for now mark all pointer call args as untrackable in the callsite
-                        // this can be improved later, for example only mark mutable pointers
-                        for (s,_) in &syms {
-                            self.borrow_away(*s);
+                        // this should become a full borrow/aliasing checker
+                        for (i,(s,_)) in syms.iter().enumerate() {
+                            let mut borrow = false;
+                            if let Some(farg) = fargs.get(i) {
+                                if farg.tags.contains("mut") || farg.tags.contains("alias"){
+                                    borrow = true;
+                                }
+                                for ptr in &farg.typed.ptr {
+                                    if ptr.tags.contains("mut") || ptr.tags.contains("alias"){
+                                        borrow = true;
+                                    }
+                                }
+                            } else {
+                                borrow = true;
+                            }
+                            if borrow {
+                                self.borrow_away(*s);
+                            }
                         }
 
                         let return_sym = self.temporary(
@@ -1866,7 +1932,7 @@ impl Symbolic {
                             let casym = self.execute_expr(callsite_effect)?;
                             if !self.ssa.constrain((casym, self.memory[casym].temporal), true) {
                                 return Err(Error::new(format!("callsite effect would break SSA"), vec![
-                                    (expr.loc().clone(), format!("there might be conflicting constrains"))
+                                    (expr.loc().clone(), format!("there might be conflicting constraints"))
                                 ]));
                             }
 
@@ -1998,7 +2064,11 @@ impl Symbolic {
                 self.memory[lhs_sym].tags.clone(),
                 )?;
 
-                self.copy(tmp, lhs_sym, loc)?;
+                if self.in_loop {
+                    self.memory[tmp].temporal += 1;
+                } else {
+                    self.copy(tmp, lhs_sym, loc)?;
+                }
 
                 let value = Value::PostfixOp {
                     lhs:    (tmp, self.memory[tmp].temporal),
@@ -2007,6 +2077,11 @@ impl Symbolic {
                 self.memory[lhs_sym].value = value;
 
                 self.memory[lhs_sym].temporal += 1;
+                let tt = self.memory[lhs_sym].temporal;
+                self.memory[lhs_sym].assignments.insert(tt, expr.loc().clone());
+
+
+
                 self.ssa.postfix_op(
                     (lhs_sym, self.memory[lhs_sym].temporal),
                     (tmp, self.memory[tmp].temporal),
@@ -2276,6 +2351,8 @@ impl Symbolic {
             value:      Value::Uninitialized,
             tags,
             temporal:   0,
+            assignments: HashMap::new(),
+            borrows:    Vec::new(),
         });
         debug!("{} := {}", name, symbol);
         self.cur().locals.insert(name.clone(), symbol);
@@ -2382,6 +2459,8 @@ impl Symbolic {
             value:      Value::Uninitialized,
             tags,
             temporal:   0,
+            assignments: HashMap::new(),
+            borrows:    Vec::new(),
         });
         debug!("{} {} := {}", name, typed, symbol);
         self.ssa.declare(symbol, &format!("{}", name), t);
@@ -2410,6 +2489,8 @@ impl Symbolic {
             self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], tmp_safe_transfer);
         }
         self.memory[lhs].temporal += 1;
+        let tt = self.memory[lhs].temporal;
+        self.memory[lhs].assignments.insert(tt, used_here.clone());
 
 
 
@@ -2501,6 +2582,8 @@ impl Symbolic {
         }
 
         self.memory[lhs].value = self.memory[rhs].value.clone();
+
+
         self.ssa.assign(
             (lhs, self.memory[lhs].temporal),
             (rhs, self.memory[rhs].temporal),
@@ -2602,6 +2685,7 @@ impl Symbolic {
             defs:    HashMap::new(),
             current_function_name: String::new(),
             current_function_ret:  None,
+            in_loop: false,
         }
     }
 
@@ -2655,64 +2739,68 @@ impl Symbolic {
     fn demonstrate(&self, model: &smt::ModelRef, sym: TemporalSymbol, depth: usize) -> Vec<(ast::Location, String)> {
         let mut estack  = Vec::new();
 
-       match &self.memory[sym.0].value {
-           Value::InfixOp{lhs, rhs, op} => {
-               let overflow = self.ssa.infix_op_will_wrap(
-                   *lhs,
-                   *rhs,
-                   op.clone(),
-                   self.memory[sym.0].t.clone(),
-                   );
 
-               if let Some(v) = self.ssa.extract(model, sym) {
-                   let v = if self.memory[sym.0].t == smt::Type::Bool {
-                       if v > 0 { "true".to_string() } else { "false".to_string() }
-                   } else {
-                       format!("0x{:x}", v)
-                   };
+        let valloc = match self.memory[sym.0].assignments.get(&sym.1) {
+            Some(loc) => loc.clone(),
+            None => self.memory[sym.0].declared.clone(),
+        };
 
-                   if overflow {
-                       estack.push((self.memory[sym.0].declared.clone(),
-                       format!("for OVERFLOW of {} {{{}}} = {}", self.memory[sym.0].name, sym.1, v)));
-                   } else {
-                       estack.push((self.memory[sym.0].declared.clone(),
-                       format!("for {} {{{}}} = {}", self.memory[sym.0].name, sym.1, v)));
-                   }
-               }
+        match &self.memory[sym.0].value {
+            Value::InfixOp{lhs, rhs, op} => {
+                let overflow = self.ssa.infix_op_will_wrap(
+                    *lhs,
+                    *rhs,
+                    op.clone(),
+                    self.memory[sym.0].t.clone(),
+                );
 
-               if *lhs != sym {
-                   estack.extend(self.demonstrate(model, *lhs, depth + 1));
-               }
-               if *rhs != sym {
-                   estack.extend(self.demonstrate(model, *rhs, depth + 1));
-               }
+                if let Some(v) = self.ssa.extract(model, sym) {
+                    let v = if self.memory[sym.0].t == smt::Type::Bool {
+                        if v > 0 { "true".to_string() } else { "false".to_string() }
+                    } else {
+                        format!("0x{:x}", v)
+                    };
+
+                    if overflow {
+                        estack.push((valloc, format!("for OVERFLOW of {} {{{}}} = {}", self.memory[sym.0].name, sym.1, v)));
+                    } else {
+                        estack.push((valloc, format!("for {} {{{}}} = {}", self.memory[sym.0].name, sym.1, v)));
+                    }
+                }
+
+                if *lhs != sym {
+                    estack.extend(self.demonstrate(model, *lhs, depth + 1));
+                }
+                if *rhs != sym {
+                    estack.extend(self.demonstrate(model, *rhs, depth + 1));
+                }
             },
-            Value::Integer(_) => return estack,
+            //Value::Integer(_) => return estack,
             _ => {
                 if let Some(v) = self.ssa.extract(model, sym) {
-                    estack.push((self.memory[sym.0].declared.clone(),
-                    format!("for {} {{{}}} = 0x{:x}", self.memory[sym.0].name, sym.1, v)));
+                    estack.push((valloc, format!("for {} {{{}}} = 0x{:x}", self.memory[sym.0].name, sym.1, v)));
                 } else {
-                    estack.push((self.memory[sym.0].declared.clone(),
-                    format!("for {} {{{}}} = ??", self.memory[sym.0].temporal, sym.1)));
+                    estack.push((valloc, format!("for {} {{{}}} = ??", self.memory[sym.0].temporal, sym.1)));
                 }
             }
         };
 
 
         if depth == 0 {
-            for trace in &self.stack.last().unwrap().trace {
-                match self.ssa.extract(model, *trace) {
-                    Some(f) if f > 0 => {
-                        estack.push((self.memory[trace.0].declared.clone(), format!("reached because this branch condition was true")));
-                        estack.extend(self.demonstrate(model, *trace, depth + 1));
-                    },
-                    Some(_)  => {
-                        estack.push((self.memory[trace.0].declared.clone(), format!("reached because this branch condition was false")));
-                        estack.extend(self.demonstrate(model, *trace, depth + 1));
-                    },
-                    None => {}
-                };
+            for stack in self.stack.iter().rev() {
+                for (sym, loc) in &stack.trace {
+                    match self.ssa.extract(model, *sym) {
+                        Some(f) if f > 0 => {
+                            estack.push((loc.clone(), format!("reached because this branch condition was true")));
+                            estack.extend(self.demonstrate(model, *sym, depth + 1));
+                        },
+                        Some(_)  => {
+                            estack.push((loc.clone(), format!("reached because this branch condition was false")));
+                            estack.extend(self.demonstrate(model, *sym, depth + 1));
+                        },
+                        None => {}
+                    };
+                }
             }
         }
         estack

@@ -25,10 +25,10 @@ export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usiz
         p0 is bound<in>;
         p1 is bound<in>;
 
-        idx0 = (((u8)in[p0]) & 0x1f) ^ 0x10;
-        idx1 = (((u8)in[p1]) & 0x1f) ^ 0x10;
-
         unsafe {
+            idx0 = (((u8)in[p0]) & 0x1f) ^ 0x10;
+            idx1 = (((u8)in[p1]) & 0x1f) ^ 0x10;
+
             out[pos/2] = map[idx0] << 4 | map[idx1];
         }
     }

@@ -1,0 +1,16 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    usize a;
+}
+
+fn d(A mut *a) {
+    (a->a)+=2;
+    if (a->a) > 2 {
+    }
+}
+
+export fn main() -> int {
+    return 0;
+}

@@ -1,0 +1,11 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    int *a = {1,2, 3};
+    u8  i = 0;
+    int x = a[i];
+
+    printf("hello array_index_by_not_usize\n");
+    return 0;
+}

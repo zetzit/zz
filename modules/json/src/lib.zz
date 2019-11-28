@@ -75,20 +75,20 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
     where safe(de)
 
 {
+    if self->depth >= MAX_DEPTH {
+        err::fail(e, 12, "json structure too deep");
+        return;
+    }
+
     static_attest(self->depth < len(self->state));
     ParserStack mut * mut stack = &((self->state)[self->depth]);
+
     if stack->state != ParserState::Object && (stack->state != ParserState::PreVal || !stack->in_array) {
         err::fail(e, 12, "invalid parser state for next(), can only call when value is object or array");
     }
 
-    if self->depth >= MAX_DEPTH {
-        err::fail(e, 12, "json structure too deep");
-        return;
-    } else {
-        ((self->state)[self->depth]).de     = (deserialize_i)de;
-        ((self->state)[self->depth]).user   = user;
-    }
-
+    ((self->state)[self->depth]).de     = (deserialize_i)de;
+    ((self->state)[self->depth]).user   = user;
 }
 
 export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strlen)
@@ -140,20 +140,24 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                 '\n' => {
                     (self->line)++;
                     self->col = 0;
+                    /*
                     if state == ParserState::Key || state == ParserState::StringVal {
                         if !string::push(&(self->capture), ch) {
                             err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
                             return;
                         }
                     }
+                    */
                 }
                 '\t' | '\r' | ' ' => {
+                    /*
                     if state == ParserState::Key || state == ParserState::StringVal {
                         if !string::push(&(self->capture), ch) {
                             err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
                             return;
                         }
                     }
+                    */
                     if state == ParserState::IntVal {
                         advance(self, e, ch);
                     }

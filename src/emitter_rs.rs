@@ -295,7 +295,7 @@ impl Emitter {
     fn emit_pointer(&mut self, v: &Vec<ast::Pointer>) {
         for ptr in v {
             write!(self.f, "*").unwrap();
-            if ptr.tags.contains_key("mutable") || ptr.tags.contains_key("mut") {
+            if ptr.tags.contains_key("mut") || ptr.tags.contains_key("mut") {
                  write!(self.f, "mut ").unwrap();
             } else {
                 write!(self.f, "const ").unwrap();

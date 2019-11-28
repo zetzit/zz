@@ -20,7 +20,9 @@ fn from_str(bool whatever, int * i)
 
     static_attest(bob(*i));
 
-    if (whatever) {
+    bool somethingelse;
+
+    if (somethingelse) {
         doh(i);
     }
 

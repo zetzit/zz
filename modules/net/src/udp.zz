@@ -124,13 +124,15 @@ export fn recv(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, 
     buf->len += as<usize>(r);
 }
 
-export fn deadline(Socket mut *self, err::Err+et mut*e, time::Duration dur) {
+export fn deadline(Socket mut *self, err::Err+et mut*e, time::Duration dur)
+    where err::checked(*e)
+{
     Timeval v = Timeval {
         tv_sec:     dur.secs,
         tv_usec:    dur.usecs,
     };
 
-    if (posix_socket::setsockopt (self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_RCVTIMEO, (char *)&v, sizeof(Timeval)) < 0) {
+    if ((int)posix_socket::setsockopt (self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_RCVTIMEO, (char *)&v, sizeof(Timeval)) < 0) {
         err::fail_with_errno(e, "setsockopt");
     }
 }

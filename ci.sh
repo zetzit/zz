@@ -5,6 +5,9 @@ set -ex
 THIS=$PWD
 cargo build --release
 
+cd $THIS/tests
+./ci.sh
+
 for i in $THIS/examples/*
 do
     cd $i
@@ -20,6 +23,3 @@ do
     ../../target/release/zz test
 done
 
-
-cd $THIS/tests
-./ci.sh
