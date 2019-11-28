@@ -329,14 +329,18 @@ impl Solver {
             }
             crate::ast::InfixOperator::Divide    => {
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0)  (bvudiv (S{} {}) (S{} {}))))\n",
-                    self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
 
                 assert!(t != Type::Bool);
                 if signed {
                     self.solver.assert(&tmp_s.as_bv().unwrap()._eq(&lhs_s.as_bv().unwrap().bvsdiv(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0)  (bvsdiv (S{} {}) (S{} {}))))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 } else {
                     self.solver.assert(&tmp_s.as_bv().unwrap()._eq(&lhs_s.as_bv().unwrap().bvudiv(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0)  (bvudiv (S{} {}) (S{} {}))))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 }
             }
             crate::ast::InfixOperator::Bitxor => {
@@ -365,50 +369,67 @@ impl Solver {
             }
             crate::ast::InfixOperator::Moreeq => {
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvuge (S{} {}) (S{} {}))        ))\n",
-                    self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
 
                 assert!(t == Type::Bool);
                 if signed {
                     self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvsge(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvsge (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 } else {
                     self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvuge(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvuge (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 }
             }
             crate::ast::InfixOperator::Lesseq => {
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvule (S{} {}) (S{} {}))        ))\n",
-                    self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
 
                 assert!(t == Type::Bool);
                 if signed {
-                    self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvule(&rhs_s.as_bv().unwrap())));
-                } else {
                     self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvsle(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvsle (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
+                } else {
+                    self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvule(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvule (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 }
             }
             crate::ast::InfixOperator::Lessthan => {
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvult (S{} {}) (S{} {}))        ))\n",
-                    self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
 
                 assert!(t == Type::Bool);
                 if signed {
                     self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvslt(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvslt (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 } else {
                     self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvult(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvult (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 }
             }
             crate::ast::InfixOperator::Morethan => {
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvugt (S{} {}) (S{} {}))        ))\n",
-                    self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
 
                 assert!(t == Type::Bool);
                 if signed {
                     self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvsgt(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvsgt (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
+
                 } else {
                     self.solver.assert(&tmp_s.as_bool().unwrap()._eq(&lhs_s.as_bv().unwrap().bvugt(&rhs_s.as_bv().unwrap())));
+
+                    write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (bvugt (S{} {}) (S{} {}))        ))\n",
+                        self.syms[&tmp].1, d_lhs_n, lhs.1, d_rhs_n, rhs.1).unwrap();
                 }
             }
             crate::ast::InfixOperator::Shiftleft => {

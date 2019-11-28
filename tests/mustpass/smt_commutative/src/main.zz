@@ -1,0 +1,24 @@
+using <stdio.h>::{printf};
+
+
+
+
+export fn bob(int * unsafe i, usize y)
+    where len(i) >= y
+{
+    
+}
+
+
+export fn main() -> int {
+
+
+    int     *i;
+    usize   y;
+    static_attest(y <= len(i));
+
+    bob(i, y);
+
+    printf("hello smt_lesseq\n");
+    return 0;
+}
