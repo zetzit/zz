@@ -18,13 +18,13 @@ pub fn some_helper(Err mut* err, u32 mut* bob) -> u32 {
         (*bob) = as<u32>(math::add(horst(), foo));
         printf("bob %d\n", (*bob));
     }
-    return ADD_IMPL(32, wuast);
+    return 41;
 }
 
 fn horst() -> u32 {
     constant_conflict();
     printf("wee? %f\n", main::gimme_wee(0));
-    return ADD_IMPL(3, 3);
+    return 0;
 }
 
 const int conflict = 1;

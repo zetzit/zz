@@ -3,11 +3,21 @@ export struct Duration {
     u64 usecs;
 }
 
-
-
-
 export fn from_seconds(u64 secs) -> Duration {
     return Duration {
         secs: secs
     };
+}
+
+
+export fn longer_than(Duration *self, Duration *other) -> bool {
+    if self->secs == other->secs {
+        if self->usecs > other->usecs {
+            return true;
+        }
+        return false;
+    } else if self->secs > other->secs {
+        return true;
+    }
+    return false;
 }

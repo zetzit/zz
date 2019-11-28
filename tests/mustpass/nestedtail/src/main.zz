@@ -15,13 +15,13 @@ struct B+ {
 
 
 
-fn gimme_a(A+tail *self) -> uint
+fn gimme_a(A+tail *self) -> u8
     where tail > 99
 {
     return (self->a)[99];
 }
 
-fn gimme_b(B+tail *self) -> uint
+fn gimme_b(B+tail *self) -> u8
     where tail > 99
 {
     return gimme_a(&(self->a));

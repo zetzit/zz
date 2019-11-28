@@ -9,6 +9,7 @@ cargo build --release
 for i in $THIS/mustpass/*
 do
     cd $i
+    ../../../target/release/zz clean;
     if ../../../target/release/zz run;  then
         echo "$i" passed
     else
@@ -21,6 +22,7 @@ done
 for i in $THIS/mustfail/*
 do
     cd $i
+    ../../../target/release/zz clean;
     if ../../../target/release/zz check;  then
         echo "$i" passed, but it should not
         exit 1

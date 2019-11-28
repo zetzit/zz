@@ -88,7 +88,7 @@ export fn main() -> int {
         "deep": "nah"
     }"#;
 
-    json::push(&e, &parser, str, static(len(str)));
+    json::push(&parser, &e, str, static(len(str)));
     err::abort(&e);
 
     return 0;

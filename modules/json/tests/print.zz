@@ -120,7 +120,7 @@ export fn main() -> int {
             break;
         }
         static_attest(bin < len(buf));
-        json::push(&e, &parser, buf, bin);
+        json::push(&parser, &e, buf, bin);
         if err::check(&e) {
             err::eprint(&e);
             return 2;

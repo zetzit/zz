@@ -24,9 +24,11 @@ pub struct Module {
     pub typevariants:   HashMap<Name, HashSet<u64>>,
 }
 
+#[derive(Clone)]
 struct Local {
     decl_deps:          Vec<(Name, ast::Location)>,
     impl_deps:          Vec<(Name, ast::Location)>,
+    use_deps:           Vec<(Name, ast::Location)>,
     ast:                Option<ast::Local>,
     in_scope_here:      ast::Location,
 }
@@ -254,7 +256,8 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     flat.name       = md.name.clone();
     flat.sources    = md.sources.clone();
 
-    let mut collected = Locals::default();
+    let mut collected   = Locals::default();
+    let mut injected    : HashMap<Name, Vec<(Name, ast::Location)>> = Default::default();
     let mut incomming = Vec::new();
     let mut inlined_includes = HashMap::new();
     let mut thisobject  = HashSet::new();
@@ -294,8 +297,9 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             if name.0[1] == "ext" {
                 //TODO
                 collected.0.insert(name.clone(), Local{
-                    impl_deps: Vec::new(),
-                    decl_deps: Vec::new(),
+                    impl_deps:      Vec::new(),
+                    decl_deps:      Vec::new(),
+                    use_deps:       Vec::new(),
                     ast:  None,
                     in_scope_here: loc,
                 });
@@ -364,6 +368,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         collected.0.insert(name, Local{
                             impl_deps:      Vec::new(),
                             decl_deps:      Vec::new(),
+                            use_deps:       Vec::new(),
                             ast:            None,
                             in_scope_here:  loc.clone(),
                         });
@@ -381,9 +386,28 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     if let Some(ret) = ret {
                         decl_deps.extend(type_deps(cr, &ret.typed));
                     }
-                    for arg in args {
+
+                    for (i,arg) in args.into_iter().enumerate() {
                         decl_deps.extend(type_deps(cr, &arg.typed));
                         decl_deps.extend(tag_deps(cr, &arg.tags));
+
+                        if arg.name == "self" {
+                            if i != 0 {
+                                emit_error(format!("self arg must be first"), &[
+                                    (arg.loc.clone(), "self argument in wrong position"),
+                                ]);
+                                std::process::exit(9);
+
+                            }
+                            if let ast::Type::Other(name) = &arg.typed.t {
+
+                                let mut ns = module_name.clone();
+                                ns.push(local.name.clone());
+
+                                injected.entry(name.clone()).or_default()
+                                    .push((ns, arg.loc.clone()));
+                            }
+                        }
                     }
 
                     for expr in callassert {
@@ -453,6 +477,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             collected.0.insert(ns, Local{
                 decl_deps,
                 impl_deps,
+                use_deps:  Vec::new(),
                 ast: Some(ast),
                 in_scope_here: loc,
             });
@@ -522,8 +547,6 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     }
 
 
-
-
     let impl_in_thisobject = std::mem::replace(&mut thisobject, HashSet::new());
     // collect implementation dependencies into this object
     for name in &impl_in_thisobject {
@@ -534,6 +557,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         }
         for (dep,_) in &n.decl_deps {
             thisobject.insert(dep.clone());
+        }
+    }
+
+
+
+    // drag along injections
+    for (name, deps) in injected {
+        if let Some(local) = collected.0.get_mut(&name) {
+            local.use_deps.extend(deps);
         }
     }
 
@@ -555,7 +587,11 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         sort_visit(
             &mut sorted,
             &mut sorted_mark,
-            &mut collected.0 , &name,
+            &mut collected.0 ,
+            &name,
+            None,
+            false,
+            0,
             None,
         );
     }
@@ -619,19 +655,28 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 }
 
 fn sort_visit(
-        sorted: &mut Vec<(Name,Local)>,
-        sorted_mark: &mut HashSet<Name>,
-        unsorted: &mut HashMap<Name, Local>,
-        name: &Name,
-        here: Option<&ast::Location>,
-) {
+        sorted:             &mut Vec<(Name,Local)>,
+        sorted_mark:        &mut HashSet<Name>,
+        unsorted:           &mut HashMap<Name, Local>,
+        name:               &Name,
+        here:               Option<&ast::Location>,
+        allow_recursion:    bool,
+        depth:              usize,
+        mut use_deps:       Option<&mut Vec<(Name, ast::Location)>>
+)
+{
     if sorted_mark.contains(name) {
         return;
     }
 
+    debug!("  {} sort_visit: {} {}", " ".repeat(depth), name, if allow_recursion { "(rec)"} else {""});
+
     let n = match unsorted.remove(name) {
         Some(v) => v,
         None => {
+            if allow_recursion {
+                return;
+            }
             let mut estack = Vec::new();
             if let Some(here) = here {
                 estack.push((here.clone(), format!("type incomplete in this scope")));
@@ -650,19 +695,33 @@ fn sort_visit(
         },
     };
 
+
+    let mut use_deps_here = Vec::new();
+
+
     for (dep,loc) in &n.impl_deps {
         if dep == name {
             continue;
         }
-        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc));
+        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc), true, depth+1, Some(&mut use_deps_here));
     }
 
     for (dep,loc) in &n.decl_deps {
-        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc));
+        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc), false, depth+1, Some(&mut use_deps_here));
     }
 
+
     sorted_mark.insert(name.clone());
-    sorted.push((name.clone(), n));
+    sorted.push((name.clone(), n.clone()));
+
+    for (dep,loc) in &use_deps_here {
+        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc), true, depth+1, None);
+    }
+
+
+    if let Some(use_deps) = use_deps.as_mut() {
+        use_deps.extend(n.use_deps.clone());
+    }
 }
 
 fn decl_visit(
@@ -690,6 +749,9 @@ fn decl_visit(
         decl_visit(visited, unsorted, dep, thisobject, depth+1);
     }
 
+    for (dep,_) in &n.use_deps {
+        decl_visit(visited, unsorted, dep, thisobject, depth+1);
+    }
 }
 
 

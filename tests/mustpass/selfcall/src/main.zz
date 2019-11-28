@@ -1,0 +1,22 @@
+using <stdio.h>::{printf};
+
+
+
+struct A {
+    int a;
+}
+
+
+fn get(A *self) -> int {
+    return self->a;
+}
+
+export fn main() -> int {
+
+    A a  = A{
+        a: 1,
+    };
+
+    printf("hello selfcall %d\n", a.get());
+    return 0;
+}

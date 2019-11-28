@@ -91,7 +91,7 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
 
 }
 
-export fn push(err::Err+et mut *e, Parser+tail mut *self, char *str, usize strlen)
+export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strlen)
     where err::checked(*e)
     where len(str) >= strlen
 {
@@ -108,7 +108,7 @@ export fn push(err::Err+et mut *e, Parser+tail mut *self, char *str, usize strle
                 self->esc = true;
                 continue;
             } else if ch == '"' && !self->esc {
-                advance(e, self, ch);
+                advance(self, e, ch);
                 if err::check(e) {
                     return;
                 }
@@ -155,18 +155,18 @@ export fn push(err::Err+et mut *e, Parser+tail mut *self, char *str, usize strle
                         }
                     }
                     if state == ParserState::IntVal {
-                        advance(e, self, ch);
+                        advance(self, e, ch);
                     }
                 }
                 '{' | '[' | '}' | ']' | '"' | ':' | ',' => {
-                    advance(e, self, ch);
+                    advance(self, e, ch);
                     if err::check(e) {
                         return;
                     }
                 }
                 default => {
                     if state == ParserState::PreVal && ((ch >= '0' && ch <= '9') || ch == '-') {
-                        advance(e, self, ch);
+                        advance(self, e, ch);
                         static_attest(self->depth < len(self->state));
                         state = ((self->state)[self->depth]).state;
                         if err::check(e) {
@@ -191,7 +191,7 @@ export fn push(err::Err+et mut *e, Parser+tail mut *self, char *str, usize strle
     }
 }
 
-fn advance(err::Err+et mut *e, Parser+tail mut *self, char token)
+fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
     where err::checked(*e)
 {
     static_attest(self->depth < len(self->state));

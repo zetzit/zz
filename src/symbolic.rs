@@ -55,6 +55,10 @@ enum Value{
         callsite_assert: Vec<ast::Expression>,
         callsite_effect: Vec<ast::Expression>,
     },
+    SelfCall{
+        selfarg: Box<ast::Expression>,
+        name:    ast::Expression,
+    },
     Address(Symbol),
     Struct {
         members:  HashMap<String, Symbol>,
@@ -82,6 +86,7 @@ impl std::fmt::Display for Value {
             Value::Unconstrained(s) => write!(f, "unconstrained : {}", s),
             Value::Theory{..}       => write!(f, "theory"),
             Value::Function{..}     => write!(f, "function"),
+            Value::SelfCall{..}     => write!(f, "self call"),
         }
     }
 }
@@ -203,6 +208,8 @@ impl Symbolic {
             self.memory[sym].value = Value::Unconstrained(format!("c name {}", name))
         }
 
+
+        // declaration run
         for (d,_,defined_here) in &mut module.d {
             self.defs.insert(Name::from(&d.name), d.def.clone());
             match &mut d.def {
@@ -294,14 +301,6 @@ impl Symbolic {
                     };
                     self.ssa_mark_safe(sym, &d.loc)?;
 
-                    if *defined_here {
-                        self.execute_function(&d.name, args, ret.as_ref(), body, callassert, calleffect)?;
-                        if !self.ssa.solve() {
-                            return Err(Error::new(format!("function is unprovable"), vec![
-                                                  (d.loc.clone(), format!("this function body is impossible to prove"))
-                            ]));
-                        }
-                    }
                 },
                 ast::Def::Static {tags, typed, expr, array, ..} => {
 
@@ -438,6 +437,32 @@ impl Symbolic {
                 },
             }
         }
+
+
+        // definition run
+        for (d,_,defined_here) in &mut module.d {
+            self.defs.insert(Name::from(&d.name), d.def.clone());
+            match &mut d.def {
+                ast::Def::Theory{args, ret, attr} => {},
+                ast::Def::Function{args, body, vararg, ret, callassert, calleffect, ..} => {
+                    if *defined_here {
+                        self.execute_function(&d.name, args, ret.as_ref(), body, callassert, calleffect)?;
+                        if !self.ssa.solve() {
+                            return Err(Error::new(format!("function is unprovable"), vec![
+                                                  (d.loc.clone(), format!("this function body is impossible to prove"))
+                            ]));
+                        }
+                    }
+                },
+                _ => (),
+            }
+        }
+
+
+
+
+
+
         Ok(())
     }
 
@@ -844,7 +869,7 @@ impl Symbolic {
                     if let Some(expr) = expr  {
                         let e = self.execute_expr(expr)?;
                         if let Some(retsym) =  self.current_function_ret {
-                            self.copy(retsym, e, expr.loc());
+                            self.copy(retsym, e, expr.loc())?;
                         }
                     }
                     // stop. do not execute anything behind return
@@ -1124,9 +1149,11 @@ impl Symbolic {
 
         let field = match field  {
             Some(f) => f,
-            None => return Err(Error::new(format!("{} does not a have a field named {}", self.memory[lhs_sym].typed, rhs), vec![
-                (loc.clone(), format!("cannot access struct here"))
-            ])),
+            None => {
+                return Err(Error::new(format!("{} does not a have a field named {}", self.memory[lhs_sym].typed, rhs), vec![
+                    (loc.clone(), format!("cannot access struct here"))
+                ]));
+            }
         };
 
         match &self.memory[lhs_sym].value {
@@ -1240,7 +1267,58 @@ impl Symbolic {
                     lhs_sym = self.deref(lhs_sym, loc)?;
                 }
 
-                self.member_access(lhs_sym, rhs, loc)
+                match self.member_access(lhs_sym, rhs, loc) {
+                    Ok(v) => Ok(v),
+                    Err(e) => {
+                        if let ast::Type::Other(name) = &self.memory[lhs_sym].typed.t {
+                            let mut name = name.clone();
+                            name.pop();
+                            name.push(rhs.to_string());
+                            if let Ok(sym) = self.name(&name, loc) {
+                                if let Value::Function{..} = &self.memory[sym].value {
+                                    let tmp = self.temporary(format!("desugar of self call {}", name),
+                                        ast::Typed{
+                                            t:      ast::Type::USize,
+                                            ptr:    Vec::new(),
+                                            loc:    loc.clone(),
+                                            tail:   ast::Tail::None,
+                                        },
+                                        loc.clone(),
+                                        Tags::new(),
+                                    )?;
+
+
+                                    let loc = loc.clone();
+                                    let op  = op.clone();
+
+                                    let mut selfarg = lhs.clone();
+
+                                    if op == "." {
+                                        selfarg = Box::new(ast::Expression::UnaryPre{
+                                            loc:    loc.clone(),
+                                            op:     ast::PrefixOperator::AddressOf,
+                                            expr:   selfarg,
+                                        });
+                                    }
+
+
+                                    self.memory[tmp].value = Value::SelfCall {
+                                        name: ast::Expression::Name(ast::Typed{
+                                            t:      ast::Type::Other(name),
+                                            loc:    loc.clone(),
+                                            ptr:    Vec::new(),
+                                            tail:   ast::Tail::None,
+                                        }),
+                                        selfarg,
+                                    };
+                                    return Ok(tmp);
+                                }
+                            }
+                        }
+                        return Err(e)
+                    }
+                }
+
             },
             ast::Expression::ArrayAccess {lhs, rhs, loc} => {
                 let lhs_sym = self.execute_expr(lhs)?;
@@ -1659,6 +1737,22 @@ impl Symbolic {
 
                         Ok(tmp)
                     },
+
+                    Value::SelfCall{selfarg, name} => {
+
+                        let mut args = args.clone();
+                        args.insert(0, selfarg.clone());
+
+                        *expr = ast::Expression::Call {
+                            loc: loc.clone(),
+                            name: Box::new(name.clone()),
+                            args,
+                            expanded: *expanded,
+                            emit: emit.clone(),
+                        };
+
+                        return self.execute_expr(expr);
+                    }
                     Value::Function{args: fargs, ret, vararg, callsite_assert, callsite_effect} => {
 
                         // borrochecker stupidity
