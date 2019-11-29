@@ -167,9 +167,9 @@ impl Solver {
         if lhs_size < rhs_size {
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
             write!(self.debug.borrow_mut(), "(assert (= (S{} {}) ((_ extract {} {}) (S{} {}))))\n",
-            self.syms[&lhs.0].1, lhs.1, rhs_size - 1, rhs_size - lhs_size, self.syms[&rhs.0].1, rhs.1).unwrap();
+            self.syms[&lhs.0].1, lhs.1, lhs_size - 1, 0, self.syms[&rhs.0].1, rhs.1).unwrap();
 
-            self.solver.assert(&lhs_s._eq(&rhs_s.extract(rhs_size -1, rhs_size - lhs_size)));
+            self.solver.assert(&lhs_s._eq(&rhs_s.extract(lhs_size -1, 0)));
         } else if lhs_size > rhs_size {
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
             write!(self.debug.borrow_mut(), "(assert (= (S{} {}) ((_ zero_extend {}) (S{} {}))))\n",
@@ -492,7 +492,7 @@ impl Solver {
             crate::ast::PostfixOperator::Increment  => format!("(bvadd (S{} {}) (_ bv1 {}))", d_from_n, from.1, size),
             crate::ast::PostfixOperator::Decrement  => format!("(bvsub (S{} {}) (_ bv1 {}))", d_from_n, from.1, size),
         };
-                write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(assert (= (S{} {}) {} ))\n", d_to_n,  to.1, debug_op).unwrap();
 
         let from= self.syms[&from.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, from.1))]);
@@ -509,43 +509,49 @@ impl Solver {
     }
 
     pub fn prefix_op(&mut self,
-                     tmp: Symbol,
-                     lhs: TemporalSymbol,
-                     op:  crate::ast::PrefixOperator,
-                     t:   Type,
+        to:  TemporalSymbol,
+        from:TemporalSymbol,
+        op:  crate::ast::PrefixOperator,
+        t:   Type,
     ) {
 
         match  t {
             Type::Signed(size) | Type::Unsigned(size) => {
-                let d_lhs_n = &self.syms[&lhs.0].1;
+                let d_from_n = &self.syms[&from.0].1;
                 let debug_op = match op {
-                    crate::ast::PrefixOperator::Boolnot     => format!("(not (= (S{} {})))",   d_lhs_n, lhs.1),
-                    crate::ast::PrefixOperator::Bitnot      => format!("(bvxnor (S{} {}) #x{})", d_lhs_n, lhs.1, "ff".repeat(size as usize/8)),
+                    crate::ast::PrefixOperator::Boolnot    => format!("(not (= (S{} {})))",   d_from_n, from.1),
+                    crate::ast::PrefixOperator::Bitnot     => format!("(bvxnor (S{} {}) #x{})", d_from_n, from.1, "ff".repeat(size as usize/8)),
+                    crate::ast::PrefixOperator::Increment  => format!("(bvadd (S{} {}) (_ bv1 {}))", d_from_n, from.1, size),
+                    crate::ast::PrefixOperator::Decrement  => format!("(bvsub (S{} {}) (_ bv1 {}))", d_from_n, from.1, size),
                     _ => unreachable!(),
                 };
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) {} ))\n", self.syms[&tmp].1, debug_op).unwrap();
+                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) {} ))\n", self.syms[&from.0].1, debug_op).unwrap();
 
 
-                let lhs = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]);
+                let from = self.syms[&from.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, from.1))]);
 
                 let btrue   = ast::BV::from_u64(&self.ctx, std::u64::MAX, size);
+                let bone = ast::BV::from_u64(&self.ctx, 1, size);
 
                 let e = match op {
-                    crate::ast::PrefixOperator::Boolnot     => ast::Dynamic::from_ast(&lhs.as_bool().unwrap().not()),
-                    crate::ast::PrefixOperator::Bitnot      => ast::Dynamic::from_ast(&lhs.as_bv().unwrap().bvxnor(&btrue)),
+                    crate::ast::PrefixOperator::Boolnot    => ast::Dynamic::from_ast(&from.as_bool().unwrap().not()),
+                    crate::ast::PrefixOperator::Bitnot     => ast::Dynamic::from_ast(&from.as_bv().unwrap().bvxnor(&btrue)),
+                    crate::ast::PrefixOperator::Increment  => ast::Dynamic::from_ast(&from.as_bv().unwrap().bvadd(&bone)),
+                    crate::ast::PrefixOperator::Decrement  => ast::Dynamic::from_ast(&from.as_bv().unwrap().bvsub(&bone)),
                     _ => unreachable!(),
                 };
-                let tmp = self.syms[&tmp].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, 0))]);
+                let tmp = self.syms[&to.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, to.1))]);
                 self.solver.assert(&tmp._eq(&e));
             }
             Type::Bool => {
+                assert!(op == crate::ast::PrefixOperator::Boolnot);
                 write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-                write!(self.debug.borrow_mut(), "(assert (=  (S{} 0) (not (= (S{} {})))))\n",
-                    self.syms[&tmp].1, &self.syms[&lhs.0].1, lhs.1).unwrap();
-                let lhs = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]);
-                let tmp = self.syms[&tmp].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, 0))]);
-                self.solver.assert(&tmp._eq(&ast::Dynamic::from_ast(&lhs.as_bool().unwrap().not())));
+                write!(self.debug.borrow_mut(), "(assert (=  (S{} {}) (not (= (S{} {})))))\n",
+                    self.syms[&to.0].1, to.1, &self.syms[&from.0].1, from.1).unwrap();
+                let from = self.syms[&from.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, from.1))]);
+                let to   = self.syms[&to.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, to.1))]);
+                self.solver.assert(&to._eq(&ast::Dynamic::from_ast(&from.as_bool().unwrap().not())));
             }
         }
         self.checkpoint();
@@ -715,7 +721,11 @@ impl Solver {
             false => {
                 self.solver.pop(1);
                 self.solver.push();
-                with(Assertion::Constrained(val), Some(ModelRef(self.solver.get_model())))
+                if self.solve() {
+                    with(Assertion::Constrained(val), Some(ModelRef(self.solver.get_model())))
+                } else {
+                    with(Assertion::Constrained(val), None)
+                }
             }
             true => {
                 with(Assertion::Unconstrained(val), Some(ModelRef(self.solver.get_model())))
@@ -782,7 +792,11 @@ impl Solver {
             false => {
                 self.solver.pop(1);
                 self.solver.push();
-                with(Assertion::Constrained(val), Some(ModelRef(self.solver.get_model())))
+                if self.solve() {
+                    with(Assertion::Constrained(val), Some(ModelRef(self.solver.get_model())))
+                } else {
+                    with(Assertion::Constrained(val), None)
+                }
             }
             true => {
                 with(Assertion::Unconstrained(val), Some(ModelRef(self.solver.get_model())))

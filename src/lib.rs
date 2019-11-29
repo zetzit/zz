@@ -25,7 +25,24 @@ use std::path::Path;
 use name::Name;
 use std::collections::HashSet;
 use std::collections::HashMap;
-use std::sync::atomic::{Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+
+pub struct Error {
+    message:    String,
+    details:    Vec<(ast::Location, String)>,
+}
+
+impl Error {
+    pub fn new(message: String, details:    Vec<(ast::Location, String)>) -> Self {
+        Self{
+            message,
+            details,
+        }
+    }
+}
+
+static ABORT: AtomicBool = AtomicBool::new(false);
 
 
 
@@ -125,7 +142,9 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             if !silent {
                 pb.lock().unwrap().message(&format!("emitting {} ", module.name));
             }
-            let symbolic = symbolic::execute(&mut module);
+
+            symbolic::execute(&mut module)?;
+
             let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
             let header  = header.emit();
 
@@ -138,7 +157,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             if !silent {
                 pb.lock().unwrap().inc();
             }
-            (cf.name.clone(), cf)
+            Ok((cf.name.clone(), cf))
         } else {
             if !silent {
                 //pb.lock().unwrap().message(&format!("cached {} ", module.name));
@@ -150,15 +169,33 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
                 sources:    module.sources,
                 deps:       module.deps
             };
-            (cf.name.clone(), cf)
+            Ok((cf.name.clone(), cf))
         }
 
     };
-    let cfiles : HashMap<Name, emitter::CFile> = if slow {
+    let mut cfiles_r : Vec<Result<(Name, emitter::CFile), Error>> = if slow {
         flat.into_iter().map(iterf).collect()
     } else {
         flat.into_par_iter().map(iterf).collect()
     };
+
+    let mut cfiles = HashMap::new();
+    for r in cfiles_r {
+        match r {
+            Ok(v) => {
+                cfiles.insert(v.0, v.1);
+            }
+            Err(e) => {
+                parser::emit_error(e.message.clone(), &e.details);
+                ABORT.store(true, Ordering::Relaxed);
+            }
+        }
+    };
+
+
+    if ABORT.load(Ordering::Relaxed) {
+        std::process::exit(9);
+    }
 
     if !silent {
         pb.lock().unwrap().finish_print("done emitting");

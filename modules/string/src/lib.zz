@@ -1,4 +1,4 @@
-using <string.h>::{strlen, memcpy, memset, strcmp, strncmp};
+using <string.h> as c_string;
 using <stdio.h> as stdio;
 using <stdarg.h>::{va_list, va_start, va_end};
 using <stdio.h>::{vsnprintf, printf, FILE};
@@ -9,7 +9,7 @@ export struct String+ {
 }
 
 export fn clear(String+tail mut * self) {
-    memset(self->mem, 0, tail);
+    c_string::memset(self->mem, 0, tail);
     self->len = 0;
 }
 
@@ -25,7 +25,6 @@ export fn push(String+t mut * self, char cstr) -> bool
     return true;
 }
 
-
 export fn pop(String+t mut * self) -> bool {
     if self->len == 0 {
         return false;
@@ -37,16 +36,35 @@ export fn pop(String+t mut * self) -> bool {
 }
 
 export fn append_cstr(String+t mut * self, char * cstr)
+    where nullterm(cstr)
+    model nullterm(self->mem)
 {
-    usize mut inlen = as<usize>(strlen(cstr));
+    usize mut inlen = strlen(cstr);
 
     if inlen + self->len > t - 1 {
         inlen = t - 1 - self->len;
     }
 
-    memcpy(self->mem + self->len, cstr, inlen);
+    c_string::memcpy(self->mem + self->len, cstr, inlen);
     self->len += inlen;
+
+    static_attest(nullterm(self->mem))
 }
+
+export fn append(String+t mut * self, String+t2 * other)
+{
+    usize mut inlen = other->len;
+
+    if inlen + self->len > t - 1 {
+        inlen = t - 1 - self->len;
+    }
+
+    c_string::memcpy(self->mem + self->len, other->mem, inlen);
+    self->len += inlen;
+
+    static_attest(nullterm(self->mem))
+}
+
 
 export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
     where len(bytes) >= inlen
@@ -55,7 +73,7 @@ export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
         inlen = t - 1 - self->len;
     }
 
-    memcpy(self->mem + self->len, bytes, inlen);
+    c_string::memcpy(self->mem + self->len, bytes, inlen);
     self->len += inlen;
 }
 
@@ -90,21 +108,24 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
 }
 
 export fn eq_cstr(String+tail* self, char * unsafe b) -> bool
+    where nullterm(b)
 {
-    return as<int>(strcmp(self->mem,b)) == 0;
+    return as<int>(c_string::strcmp(self->mem,b)) == 0;
 }
 
 export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
+    where a == 0 || nullterm(a)
+    where b == 0 || nullterm(b)
 {
-    return as<int>(strcmp(a,b)) == 0;
+    return as<int>(c_string::strcmp(a,b)) == 0;
 }
 
 export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
-    usize alen = as<usize>(strlen(a));
+    usize alen = as<usize>(c_string::strlen(a));
     if alen > self->len {
         return false;
     }
-    return as<int>(strncmp(self->mem,a,alen)) == 0;
+    return as<int>(c_string::strncmp(self->mem,a,alen)) == 0;
 }
 
 export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool {
@@ -112,7 +133,11 @@ export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool {
     if rr == 0 {
         return false;
     }
-    self->len += as<usize>(strlen(self->mem + self->len));
+
+    char * extmem = self->mem + self->len;
+    static_attest(safe(extmem));
+    static_attest(nullterm(extmem));
+    self->len += strlen(extmem);
     return true;
 }
 
@@ -168,7 +193,7 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
         return;
     }
 
-    memcpy(other->mem + other->len, self->mem + from, size);
+    c_string::memcpy(other->mem + other->len, self->mem + from, size);
     (other->mem)[size + other->len] = 0;
     other->len += size;
 }
@@ -206,4 +231,13 @@ export fn split(String+tail *self, char token, usize mut *iterator, String+tail2
 
 export fn space(String+tail *self) -> usize {
     return tail - self->len;
+}
+
+export fn strlen(char *s) -> usize
+    where nullterm(s)
+    model return == len(s)
+{
+    usize l = (usize)c_string::strlen(s);
+    static_attest(l == len(s));
+    return l;
 }

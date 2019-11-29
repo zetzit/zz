@@ -1,0 +1,32 @@
+using io;
+using io::unix;
+
+using <stdio.h>::{perror};
+
+export fn main() -> int {
+
+    io::Io i = unix::stdin();
+    unix::make_async(i.ctx);
+
+    unix::Async mut p;
+    unix::async_new(&p);
+
+    for (;;) {
+        u8 mut buf[1000];
+        usize mut l = 1000;
+        switch i.read(i.ctx, 0, buf, &l) {
+            io::Result::Ready => {}
+            io::Result::Later => {
+                perror("later");
+                unix::wait(&p);
+            }
+            io::Result::Error => {
+                perror("io error");
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+

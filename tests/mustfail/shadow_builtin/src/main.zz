@@ -1,0 +1,10 @@
+using <stdio.h>::{printf};
+
+export fn main(int len, char **argv)-> int {
+
+    int a[3];
+    int b = len(a);
+
+    printf("hello call_of_int\n");
+    return 0;
+}

@@ -1,0 +1,63 @@
+using time;
+using string;
+
+using <stdio.h>::{printf};
+
+export struct Async {
+    time::Duration  timeout;
+    bool            has_timeout;
+}
+
+export enum Result {
+    Ready,
+    Later,
+    Error,
+}
+
+export fntype read_fn  (Context ctx, Async mut* unsafe async, u8 mut* to, usize mut* len) -> Result;
+export fntype write_fn (Context ctx, Async mut* unsafe async, u8 mut* to, usize mut* len) -> Result;
+export fntype close_fn (Context ctx  Async mut* unsafe async);
+
+
+export union Context {
+    int         fd;
+    void*       handle;
+    u8          ctx[8];
+}
+
+export struct Io {
+    read_fn     read_impl;
+    write_fn    write_impl;
+    close_fn    close_impl;
+    Context     ctx;
+}
+
+
+
+export fn read(Io mut* self, void mut* unsafe async, string::String+st mut* str) -> Result
+    where st > 1
+{
+    if self->read_impl != 0 {
+        static_attest(safe(self->read_impl));
+
+        usize mut l = st - str->len - 1;
+        Result rr = self->read_impl(self->ctx, async, as<u8 mut*>(str->mem + str->len), &l);
+        str->len += l;
+        static_attest(len(str->mem) > str->len);
+        (str->mem)[str->len] = 0;
+        return rr;
+    } else {
+        return Result::Error;
+    }
+}
+
+
+export fn timeout(Async mut* self , time::Duration t2) {
+    if !self->has_timeout || (self->timeout).longer_than(&t2) {
+        self->timeout = t2;
+        self->has_timeout = true;
+    }
+}
+
+
+

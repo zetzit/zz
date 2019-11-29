@@ -5,24 +5,7 @@ use std::collections::HashMap;
 use super::parser::{self, emit_error, emit_warn, emit_debug};
 use ast::Tags;
 use crate::smt::{Solver, self};
-
-
-pub enum Error {
-    Error {
-        message:    String,
-        details:    Vec<(ast::Location, String)>,
-    },
-}
-
-impl Error {
-    pub fn new(message: String, details:    Vec<(ast::Location, String)>) -> Self {
-        Self::Error {
-            message,
-            details,
-        }
-    }
-}
-
+use super::Error;
 
 pub type Symbol = usize;
 pub type TemporalSymbol = (Symbol, u64);
@@ -36,7 +19,7 @@ enum Value{
         op:     ast::PostfixOperator,
     },
     PrefixOp {
-        lhs:    TemporalSymbol,
+        rhs:    TemporalSymbol,
         op:     ast::PrefixOperator,
     },
     InfixOp {
@@ -196,6 +179,36 @@ impl Symbolic {
         self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "safe", smt::Type::Bool);
         self.builtin.insert("safe".to_string(), sym);
 
+        // built in nullterm theory
+        let sym = self.alloc(Name::from("nullterm"), ast::Typed{
+            t:      ast::Type::Other(Name::from("theory")),
+            ptr:    Vec::new(),
+            loc:    ast::Location::builtin(),
+            tail:   ast::Tail::None,
+        },
+        ast::Location::builtin(), Tags::new()
+        )?;
+        self.memory[sym].value = Value::Theory{args: vec![ast::NamedArg{
+            typed: ast::Typed{
+                t:      ast::Type::Other("::ext::<stddef.h>::char".into()),
+                ptr:    vec![ast::Pointer{
+                    tags: ast::Tags::new(),
+                    loc:  ast::Location::builtin(),
+                }],
+                loc:    ast::Location::builtin(),
+                tail:   ast::Tail::None,
+            },
+            name:   "cstr".to_string(),
+            tags:   ast::Tags::new(),
+            loc:    ast::Location::builtin(),
+        }], ret: ast::Typed{
+            t:      ast::Type::Bool,
+            ptr:    Vec::new(),
+            loc:    ast::Location::builtin(),
+            tail:   ast::Tail::None,
+        }};
+        self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "nullterm", smt::Type::Bool);
+        self.builtin.insert("nullterm".to_string(), sym);
 
 
 
@@ -799,7 +812,11 @@ impl Symbolic {
 
 
                             let constrained_branch = self.ssa.bool_value(sym, |a,_model| match a {
-                                smt::Assertion::Constrained(_) => {
+                                smt::Assertion::Constrained(val) => {
+                                    emit_warn("constrained branch condition", &[
+                                        (expr.loc().clone(), format!("expression is always {}. \
+                                                                     this may be a false positive due to branch memory limit", val))
+                                    ]);
                                     /* TODO this is wrong, because it may be different for a different parent branch 
                                     let mut estack = Vec::new();
                                     estack.push((expr.loc().clone(), format!("expression is statically provable")));
@@ -841,13 +858,9 @@ impl Symbolic {
 
                         if let Some((sym, loc)) = &positive_constrain {
                             if !self.ssa.constrain(*sym, true) {
-
-
                                 return Err(Error::new(format!("positive condition breaks ssa"), vec![
                                     (loc.clone(), format!("there may be conflicting constraints"))
                                 ]));
-
-
                             }
                         }
 
@@ -1495,6 +1508,7 @@ impl Symbolic {
                     len:    v.len(),
                 };
                 self.ssa_mark_safe(tmp, loc)?;
+                self.ssa_mark_nullterm(tmp, loc)?;
                 Ok(tmp)
             }
             ast::Expression::LiteralChar{ loc, v } => {
@@ -1857,7 +1871,9 @@ impl Symbolic {
                                         (loc.clone(),format!("in this callsite")),
                                         (callsite_assert.loc().clone(), format!("function call requires these conditions")),
                                     ];
-                                    estack.extend(self.demonstrate(model.as_ref().unwrap(), (casym, self.memory[casym].temporal), 0));
+                                    if let Some(model) = &model {
+                                        estack.extend(self.demonstrate(model, (casym, self.memory[casym].temporal), 0));
+                                    }
                                     Err(Error::new(format!("unproven callsite assert for {}", self.memory[casym].name), estack))
                                 }
                                 true => {
@@ -2123,41 +2139,74 @@ impl Symbolic {
                         self.ssa_mark_safe(tmp, loc)?;
                         Ok(tmp)
                     }
-                    _ => {
-                        let lhs_sym = self.execute_expr(expr)?;
+                    crate::ast::PrefixOperator::Boolnot | crate::ast::PrefixOperator::Bitnot => {
+                        let rhs_sym = self.execute_expr(expr)?;
+
+
+                        if *op == crate::ast::PrefixOperator::Boolnot {
+                            if self.memory[rhs_sym].t != smt::Type::Bool {
+                                return Err(Error::new(format!("expected boolean, got {}", self.memory[rhs_sym].typed), vec![
+                                    (expr.loc().clone(), format!("coercion to boolean is difficult to prove"))
+                                ]));
+                            }
+                        } else if *op == crate::ast::PrefixOperator::Bitnot {
+                            if self.memory[rhs_sym].t == smt::Type::Bool {
+                                return Err(Error::new(format!("expected integer , got {}", self.memory[rhs_sym].typed), vec![
+                                    (expr.loc().clone(), format!("invalid operand on boolean"))
+                                ]));
+                            }
+                        }
                         let tmp = self.temporary(
                             format!("unary expression"),
-                            self.memory[lhs_sym].typed.clone(),
+                            self.memory[rhs_sym].typed.clone(),
                             loc.clone(),
                             Tags::new(),
-                        )?;
-
-
-                        if op == &crate::ast::PrefixOperator::Boolnot && self.memory[lhs_sym].t != smt::Type::Bool {
-                            return Err(Error::new(format!("expected boolean, got {}", self.memory[lhs_sym].typed), vec![
-                                (expr.loc().clone(), format!("coercion to boolean is difficult to prove"))
-                            ]));
-                        }
-
-                        if op == &crate::ast::PrefixOperator::Bitnot && self.memory[lhs_sym].t == smt::Type::Bool {
-                            return Err(Error::new(format!("expected integer, got {}", self.memory[lhs_sym].typed), vec![
-                                (expr.loc().clone(), format!("coercion from boolean is difficult to prove"))
-                            ]));
-                        }
-
+                            )?;
                         let value = Value::PrefixOp {
-                            lhs:    (lhs_sym, self.memory[lhs_sym].temporal),
+                            rhs:    (rhs_sym, self.memory[rhs_sym].temporal),
                             op:     op.clone(),
                         };
                         self.memory[tmp].value = value;
 
                         self.ssa.prefix_op(
-                            tmp,
-                            (lhs_sym, self.memory[lhs_sym].temporal),
+                            (tmp, self.memory[tmp].temporal),
+                            (rhs_sym, self.memory[rhs_sym].temporal),
                             op.clone(),
-                            self.memory[lhs_sym].t.clone(),
-                            );
+                            self.memory[rhs_sym].t.clone(),
+                        );
+
                         Ok(tmp)
+                    }
+                    crate::ast::PrefixOperator::Increment | crate::ast::PrefixOperator::Decrement => {
+                        let rhs_sym = self.execute_expr(expr)?;
+                        if self.memory[rhs_sym].t == smt::Type::Bool {
+                            return Err(Error::new(format!("expected integer, got {}", self.memory[rhs_sym].typed), vec![
+                                (expr.loc().clone(), format!("invalid operand on boolean"))
+                            ]));
+                        }
+                        let tmp = self.temporary(
+                            format!("copy of {} before unary", self.memory[rhs_sym].name),
+                            self.memory[rhs_sym].typed.clone(),
+                            loc.clone(),
+                            Tags::new(),
+                        )?;
+                        self.copy(tmp, rhs_sym, loc)?;
+
+
+                        let value = Value::PrefixOp {
+                            rhs:    (rhs_sym, self.memory[rhs_sym].temporal),
+                            op:     op.clone(),
+                        };
+                        self.memory[rhs_sym].value = value;
+                        self.ssa.prefix_op(
+                            (rhs_sym, self.memory[rhs_sym].temporal + 1),
+                            (rhs_sym, self.memory[rhs_sym].temporal),
+                            op.clone(),
+                            self.memory[rhs_sym].t.clone(),
+                        );
+
+                        Ok(tmp)
+
                     }
                 }
             }
@@ -2334,6 +2383,18 @@ impl Symbolic {
     fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, tags: ast::Tags) -> Result<Symbol, Error> {
         self.ssa.debug_loc(&loc);
 
+        match format!("{}", name).as_str() {
+            "len" | "theory" | "safe" => {
+                if self.stack.len() > 1 {
+                    return Err(Error::new(format!("redeclaration of builtin theory '{}'", name), vec![
+                        (loc.clone(), "this declaration would shadow a builtin".to_string()),
+                    ]));
+                }
+            },
+            _ => {
+            }
+        }
+
         if let Some(prev) = self.cur().locals.get(&name).cloned() {
             return Err(Error::new(format!("redeclation of local name '{}'", name), vec![
                 (loc.clone(), "this declaration would shadow a previous name".to_string()),
@@ -2471,7 +2532,7 @@ impl Symbolic {
     //                  cpy here   from here
     fn copy(&mut self, lhs: Symbol, rhs: Symbol, used_here: &ast::Location) -> Result<(), Error> {
 
-        // transfer safe mark
+        // transfer theories of pointers
         if self.memory[rhs].t == smt::Type::Unsigned(64) && self.memory[lhs].t == smt::Type::Unsigned(64) {
             let tmp_safe_transfer = self.temporary(
                 format!("safe({}) == safe({})", self.memory[rhs].name, self.memory[lhs].name),
@@ -2487,7 +2548,23 @@ impl Symbolic {
             let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
             self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp_safe_transfer);
             self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], tmp_safe_transfer);
+
+            let tmp_nullterm_transfer = self.temporary(
+                format!("nullterm({}) == nullterm({})", self.memory[rhs].name, self.memory[lhs].name),
+                ast::Typed{
+                    t:      ast::Type::Bool,
+                    ptr:    Vec::new(),
+                    loc:    used_here.clone(),
+                    tail:   ast::Tail::None,
+                },
+                used_here.clone(),
+                Tags::new(),
+                )?;
+            let theosym = self.builtin.get("nullterm").expect("ICE: nullterm theory not built in");
+            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp_nullterm_transfer);
+            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], tmp_nullterm_transfer);
         }
+
         self.memory[lhs].temporal += 1;
         let tt = self.memory[lhs].temporal;
         self.memory[lhs].assignments.insert(tt, used_here.clone());
@@ -2615,6 +2692,27 @@ impl Symbolic {
             Tags::new(),
         )?;
         let thsym = self.builtin.get("safe").expect("ICE: safe theory not built in");
+        self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], tmp);
+        self.ssa.literal(tmp, 1, smt::Type::Bool);
+        Ok(())
+    }
+
+    fn ssa_mark_nullterm(&mut self, sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
+        if self.memory[sym].t != smt::Type::Unsigned(64) {
+            panic!("ICE: nullterm on non pointer");
+        }
+        let tmp = self.temporary(
+            format!("true"),
+            ast::Typed{
+                t:      ast::Type::Bool,
+                ptr:    Vec::new(),
+                loc:    loc.clone(),
+                tail:   ast::Tail::None,
+            },
+            loc.clone(),
+            Tags::new(),
+        )?;
+        let thsym = self.builtin.get("nullterm").expect("ICE: nullterm theory not built in");
         self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], tmp);
         self.ssa.literal(tmp, 1, smt::Type::Bool);
         Ok(())
@@ -2820,21 +2918,8 @@ impl Symbolic {
 }
 
 
-pub fn execute(module: &mut flatten::Module) -> Symbolic {
+pub fn execute(module: &mut flatten::Module) -> Result<Symbolic, Error> {
     let mut sym = Symbolic::new(&module.name);
-    match sym.execute_module(module) {
-        Err(Error::Error{message, details}) => {
-            use std::io::Write;
-            emit_error(message.clone(), &details);
-
-
-            write!(sym.ssa.debug.borrow_mut(), "; ERR {}", message).unwrap();
-            sym.ssa.debug.borrow_mut().flush().unwrap();
-            std::process::exit(9);
-        },
-        Ok(()) => {
-        }
-    }
-
-    sym
+    sym.execute_module(module)?;
+    Ok(sym)
 }

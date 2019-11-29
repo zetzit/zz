@@ -25,6 +25,7 @@ export fn main() -> int {
             break;
         }
         static_attest(safe(line));
+        static_attest(nullterm(line));
         string::append_cstr(&s, line);
         free(line);
     }

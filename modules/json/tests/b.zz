@@ -30,6 +30,8 @@ fn deserialize_charge(err::Err+et mut *e, json::Parser+pt mut* p, int mut *into,
 
 fn deserialize_engine(err::Err+et mut *e, json::Parser+pt mut* p, Engine mut *into, char *k, json::Value v)
     where err::checked(*e)
+    where nullterm(k)
+    where nullterm(v.string)
 {
     printf("engine.>%s< == >%s< %d\n", k, v.string, v.integer);
     if string::cstr_eq("fuel", k) && v.t == json::ValueType::String {
@@ -50,6 +52,7 @@ fn deserialize_engine(err::Err+et mut *e, json::Parser+pt mut* p, Engine mut *in
 
 fn deserialize_vehicle(err::Err+et mut *e, json::Parser+pt mut* p, Vehicle mut *into, char *k, json::Value v)
     where err::checked(*e)
+    where nullterm(k)
 {
     printf("vehicle.>%s< == >%s< %d\n", k, v.string, v.integer);
 

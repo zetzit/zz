@@ -1,0 +1,10 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    u8 a = 128;
+    static_assert(a != 12);
+    static_assert(a == 128);
+
+    return 0;
+}

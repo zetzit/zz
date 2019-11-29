@@ -1,0 +1,45 @@
+using io;
+using io::unix;
+using time;
+using string;
+
+using <stdio.h>::{perror, printf};
+
+export fn main() -> int {
+    io::Io mut i = unix::stdin();
+    unix::make_async(i.ctx);
+
+    unix::Async+10 mut async;
+    unix::new(&async);
+
+    for (;;) {
+        string::String+2 buf = {0};
+        switch i.read(&async, &buf) {
+            io::Result::Ready => {
+                printf(">%s<\n", buf.mem);
+            }
+            io::Result::Later => {
+
+                io::timeout((io::Async mut*)&async, time::from_seconds(2));
+
+                switch async.wait() {
+                    unix::Result::Ready => {
+                    }
+                    unix::Result::Error => {
+                        perror("poll error");
+                        return 1;
+                    }
+                    unix::Result::Timeout => {
+                        printf("timeout\n");
+                    }
+                }
+            }
+            io::Result::Error => {
+                perror("io error");
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+

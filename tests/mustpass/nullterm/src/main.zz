@@ -1,0 +1,24 @@
+using <stdio.h>::{printf};
+
+
+
+
+fn bob( char *a)
+    where (nullterm(a))
+{
+    
+}
+
+export fn main() -> int {
+    char * b ="hello nullterm\n";
+    static_assert(nullterm(b));
+
+    char *c = b;
+    static_assert(nullterm(b));
+
+
+    bob(c);
+    bob("yoo");
+
+    return 0;
+}

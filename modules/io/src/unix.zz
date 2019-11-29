@@ -1,0 +1,125 @@
+using io;
+
+using <unistd.h> as unistd;
+using <string.h>::{memset};
+using <errno.h>::{errno, EAGAIN};
+using <poll.h>::{
+    poll,
+    (struct pollfd) as pollfd_t,
+    POLLIN,
+};
+using <stdio.h>::{STDIN_FILENO};
+using <limits.h>::{INT_MAX};
+
+
+export struct Async+ {
+    io::Async   base;
+    usize       count;
+    usize       tail;
+    pollfd_t    fds[];
+}
+
+export fn new(Async+tail mut *self) {
+    self->count     = 0;
+    self->tail      = tail;
+    memset(self->fds, 0, (usize)sizeof(pollfd_t) * tail);
+}
+
+pub fn wake_fd(Async mut* self, int fd, int events) -> bool {
+    if self->count + 1 >= self->tail {
+        return false;
+    }
+    unsafe{
+        ((self->fds)[self->count]).fd       = fd;
+        ((self->fds)[self->count]).events   = events;
+    }
+    self->count += 1;
+    return true;
+}
+
+
+export enum Result {
+    Ready,
+    Timeout,
+    Error,
+}
+
+export fn wait(Async+tail mut* self) -> Result {
+
+    int mut timeout = -1;
+    if (self->base).has_timeout {
+        timeout  = as<int>(((self->base).timeout).usecs / 1000);
+        timeout += as<int>(((self->base).timeout).secs * 1000);
+
+        //overflow
+        if timeout < 0 {
+            timeout = (int)INT_MAX;
+        }
+    }
+
+    int rr = (int)poll(self->fds, self->count, timeout);
+    new(self);
+
+    if rr < 0 {
+        return Result::Error;
+    } else if rr == 0 {
+        return Result::Timeout;
+    } else {
+        return Result::Ready;
+    }
+
+}
+
+
+
+export fn unix(int fd) -> io::Io
+    model(safe(return.read_impl))
+{
+    io::Context ctx = io::Context{
+        fd:   fd,
+    };
+
+    return io::Io {
+        read_impl:  impl_unix_read,
+        ctx:        ctx,
+    };
+}
+
+export fn stdin() -> io::Io
+    model(safe(return.read_impl))
+{
+    return unix(as<int>(STDIN_FILENO));
+}
+
+
+using <fcntl.h>::{fcntl, F_GETFL, O_NONBLOCK, F_SETFL};
+
+export fn make_async(io::Context ctx) -> bool {
+    int mut flags = (int)fcntl(ctx.fd, F_GETFL, 0);
+    if (flags == -1) {
+        return false;
+    }
+    flags = flags | (int)O_NONBLOCK;
+
+    return ((int)fcntl(ctx.fd, F_SETFL, flags) == 0);
+}
+
+
+
+fn impl_unix_read(io::Context ctx, io::Async mut* unsafe async, u8 mut* to, usize mut *l) -> io::Result {
+    isize rr = (isize)unistd::read(ctx.fd, to, *l);
+    if rr < 0 {
+        if (int)errno == (int)EAGAIN {
+            if async != 0 {
+                static_attest(safe(async));
+                if wake_fd((Async mut*)async, ctx.fd, (int)POLLIN) {
+                    return io::Result::Later;
+                }
+            }
+        }
+        return io::Result::Error;
+    }
+    *l= (usize)rr;
+    return io::Result::Ready;
+}
+

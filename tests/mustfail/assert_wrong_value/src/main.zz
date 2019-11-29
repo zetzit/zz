@@ -1,0 +1,10 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    u32 a = 9;
+    static_assert(a == 123);
+
+
+    return 0;
+}

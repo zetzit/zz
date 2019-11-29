@@ -23,3 +23,5 @@ do
     ../../target/release/zz test
 done
 
+echo
+echo all passed

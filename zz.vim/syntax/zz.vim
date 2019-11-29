@@ -16,7 +16,7 @@ syn keyword zzImport            using
 syn keyword zzVisibility        export pub
 syn keyword zzKeywords          mut as
 syn keyword zzDanger            unsafe
-syn keyword zzOperator          len safe static_attest
+syn keyword zzOperator          len safe static_attest static_assert nullterm
 syn keyword zzSSA1              where
 syn keyword zzSSA2              model
 
