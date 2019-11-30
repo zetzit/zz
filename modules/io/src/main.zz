@@ -2,40 +2,61 @@ using io;
 using io::unix;
 using time;
 using string;
+using err;
 
 using <stdio.h>::{perror, printf};
 
+
 export fn main() -> int {
-    io::Io mut i = unix::stdin();
-    unix::make_async(i.ctx);
+    err::Err+1000 mut e ={0};
+    err::check(&e);
 
     unix::Async+10 mut async;
     unix::new(&async);
 
+    io::Io mut i = unix::stdin();
+    unix::make_async(&i, (io::Async mut*)&async);
+
+    io::Io mut t = io::timeout((io::Async mut*)&async, &e, time::from_seconds(3));
+    err::abort(&e);
+
     for (;;) {
-        string::String+2 buf = {0};
-        switch i.read(&async, &buf) {
+        string::String+20 mut buf2 = {0};
+        switch t.read(&e, &buf2) {
+            io::Result::Ready => {
+                err::abort(&e);
+
+                printf("timeout\n");
+
+                t.close();
+                t = io::timeout((io::Async mut*)&async, &e, time::from_seconds(1));
+                err::abort(&e);
+
+                t.wake(&e, io::Wake::Read);
+                err::abort(&e);
+            }
+            default => {}
+        }
+        err::abort(&e);
+
+        string::String+2 mut buf = {0};
+        switch i.read(&e, &buf) {
             io::Result::Ready => {
                 printf(">%s<\n", buf.mem);
             }
-            io::Result::Later => {
-
-                io::timeout((io::Async mut*)&async, time::from_seconds(2));
-
-                switch async.wait() {
-                    unix::Result::Ready => {
-                    }
-                    unix::Result::Error => {
-                        perror("poll error");
-                        return 1;
-                    }
-                    unix::Result::Timeout => {
-                        printf("timeout\n");
-                    }
-                }
+            io::Result::Later => {}
+            io::Result::Error | io::Result::Eof => {
+                err::abort(&e);
+                return 0;
             }
-            io::Result::Error => {
-                perror("io error");
+        }
+
+
+        switch async.wait() {
+            unix::Result::Ready => {
+            }
+            unix::Result::Error => {
+                perror("poll error");
                 return 1;
             }
         }

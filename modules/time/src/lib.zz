@@ -1,18 +1,67 @@
-export struct Duration {
-    u64 secs;
-    u64 usecs;
+using <stdint.h>::{UINT64_MAX};
+
+/* remember
+
+1s = 1000     milliseconds/ms
+1s = 1000 000 microseconds/us
+1s = 1000 000 000 nanoseconds/ns
+
+1ms = 1000000 ns
+
+*/
+
+export struct Time {
+    u64     secs;
+    u64     nano;
+    bool    finite;
 }
 
-export fn from_seconds(u64 secs) -> Duration {
-    return Duration {
-        secs: secs
+export fn infinite() -> Time {
+    return Time {
+        finite: false,
+    };
+}
+
+export fn from_seconds(u64 secs) -> Time {
+    return Time {
+        secs:   secs,
+        finite: true,
+    };
+}
+
+export fn to_millis(Time *self) -> u64 {
+    if self->secs > (u64)UINT64_MAX/1000 {
+        return (u64)UINT64_MAX;
+    }
+    u64 mut r = self->secs * 1000;
+    if r + (self->nano / 1000000) < r {
+        return (u64)UINT64_MAX;
+    }
+    r += self->nano / 1000000;
+    return r;
+}
+
+export fn from_millis(u64 millis) -> Time {
+    return Time {
+        secs:  (millis / 1000),
+        nano:  ((millis % 1000) * 1000000),
+        finite: true,
     };
 }
 
 
-export fn longer_than(Duration *self, Duration *other) -> bool {
+export fn more_than(Time *self, Time *other) -> bool {
+
+    if !self->finite {
+        if !other->finite {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
     if self->secs == other->secs {
-        if self->usecs > other->usecs {
+        if self->nano > other->nano {
             return true;
         }
         return false;
@@ -20,4 +69,25 @@ export fn longer_than(Duration *self, Duration *other) -> bool {
         return true;
     }
     return false;
+}
+
+
+
+
+
+/// monotonic system clock
+
+using <time.h>::{clock_gettime, (struct timespec) as timespec_t, CLOCK_MONOTONIC};
+export fn system() -> Time {
+    timespec_t mut tt;
+    int r = (int)clock_gettime(CLOCK_MONOTONIC, &tt);
+
+    Time mut tr = {0};
+    if r == 0 {
+        @{{
+            tr.secs  = tt.tv_sec;
+            tr.nano  = tt.tv_nsec;
+        }}@
+    }
+    return tr;
 }

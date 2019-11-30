@@ -76,10 +76,7 @@ fn type_deps(cr: &mut Collector, typed: &ast::Typed) -> Vec<(Name, ast::Location
 
 fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, ast::Location)> {
     match stm {
-        ast::Statement::Mark{lhs, .. } => {
-            expr_deps(cr, lhs)
-        },
-        ast::Statement::Goto{..} |  ast::Statement::Label{..} => {
+        ast::Statement::Mark{..} | ast::Statement::Label{..} => {
             Vec::new()
         },
         ast::Statement::Block(b2) => {
@@ -405,7 +402,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                                 ns.push(local.name.clone());
 
                                 injected.entry(name.clone()).or_default()
-                                    .push((ns, arg.loc.clone()));
+                                    .push((ns, local.loc.clone()));
                             }
                         }
                     }
@@ -565,6 +562,13 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     // drag along injections
     for (name, deps) in injected {
         if let Some(local) = collected.0.get_mut(&name) {
+            if let Some(ast) = &mut local.ast {
+                if let ast::Def::Struct{impls,..} = &mut ast.def {
+                    for dep in &deps {
+                        impls.insert((dep.0).0.last().unwrap().clone(), dep.clone());
+                    }
+                }
+            }
             local.use_deps.extend(deps);
         }
     }
@@ -669,7 +673,7 @@ fn sort_visit(
         return;
     }
 
-    debug!("  {} sort_visit: {} {}", " ".repeat(depth), name, if allow_recursion { "(rec)"} else {""});
+    debug!("  {} sort_visit: {} {}", " ".repeat(depth), name, if allow_recursion { "(recursion ok)"} else {""});
 
     let n = match unsorted.remove(name) {
         Some(v) => v,

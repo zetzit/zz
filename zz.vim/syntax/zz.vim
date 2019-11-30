@@ -15,6 +15,7 @@ syn keyword zzStructure	        enum struct fn const trait test theory assert fn
 syn keyword zzImport            using
 syn keyword zzVisibility        export pub
 syn keyword zzKeywords          mut as
+syn keyword zzSelf              self
 syn keyword zzDanger            unsafe
 syn keyword zzOperator          len safe static_attest static_assert nullterm
 syn keyword zzSSA1              where
@@ -36,6 +37,7 @@ hi def link zzOperator          cOperator
 hi def link zzSSA1              Structure
 hi def link zzSSA2              cString
 hi def link zzString            cString
+hi def link zzSelf              Constant
 
 let b:current_syntax = "zz"
 

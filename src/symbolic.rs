@@ -32,6 +32,7 @@ enum Value{
         ret:    ast::Typed,
     },
     Function {
+        loc:    ast::Location,
         args:   Vec<ast::NamedArg>,
         vararg: bool,
         ret:    Option<ast::Typed>,
@@ -276,41 +277,8 @@ impl Symbolic {
                     d.loc.clone(), Tags::new()
                     )?;
 
-                    // safe is implicit unless the arg is marked unsafe
-                    for farg in args.iter() {
-                        if farg.typed.ptr.len() > 0 {
-                            if !farg.tags.contains("unsafe") {
-                                let loc = farg.typed.ptr[0].loc.clone();
-                                let ast_safe = ast::Expression::Name(ast::Typed{
-                                    t:      ast::Type::Other(Name::from("safe")),
-                                    ptr:    Vec::new(),
-                                    loc:    loc.clone(),
-                                    tail:   ast::Tail::None,
-                                });
-                                let ast_argname = ast::Expression::Name(ast::Typed{
-                                    t:      ast::Type::Other(Name::from(&farg.name)),
-                                    ptr:    Vec::new(),
-                                    loc:    loc.clone(),
-                                    tail:   ast::Tail::None,
-                                });
-                                let ast_call = ast::Expression::Call{
-                                    loc:    loc.clone(),
-                                    name:   Box::new(ast_safe),
-                                    args:   vec![Box::new(ast_argname)],
-                                    expanded:   true,
-                                    emit:       ast::EmitBehaviour::Default,
-                                };
-                                callassert.insert(0, ast_call.clone());
-
-
-                                //TODO this is very confusing, see tests/mustpass/callsite_safe_effect
-                                //calleffect.insert(0, ast_call);
-                            }
-                        }
-                    }
-
-
                     self.memory[sym].value = Value::Function {
+                        loc:    d.loc.clone(),
                         args:   args.clone(),
                         vararg: *vararg,
                         ret:    ret.as_ref().map(|r|r.typed.clone()),
@@ -377,7 +345,7 @@ impl Symbolic {
                     let esym = self.execute_expr(expr)?;
                     self.copy(sym, esym, &d.loc)?;
                 },
-                ast::Def::Fntype {ret,args,attr,vararg} => {
+                ast::Def::Fntype {ret,args,attr,vararg,..} => {
                     let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed{
@@ -389,7 +357,7 @@ impl Symbolic {
                         d.loc.clone(), Tags::new()
                     )?;
                 },
-                ast::Def::Struct {fields, packed, tail, union } => {
+                ast::Def::Struct {fields, packed, tail, union, impls} => {
                     let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed{
@@ -505,7 +473,14 @@ impl Symbolic {
             self.memory[sym].value = Value::Unconstrained(format!("passed by value as {}", argname));
 
             if args[i].tags.contains("tail") {
-                let prev = prev.expect("ICE: tail tag without previous arg");
+                let prev = match prev {
+                    Some(v) => v,
+                    None => {
+                        return Err(Error::new(format!("tail tag without previous arg"), vec![
+                            (args[i].loc.clone(), format!("something went wrong here"))
+                        ]));
+                    }
+                };
 
                 if self.memory[sym].typed.t != ast::Type::USize {
                     return Err(Error::new(format!("ICE: tail binding not emitted as usize"), vec![
@@ -600,7 +575,7 @@ impl Symbolic {
             self.current_function_ret = None;
         }
 
-        self.execute_scope(&mut (body.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+        self.execute_scope(&mut body.statements)?;
 
         for callsite_effect in calleffect {
             let casym = self.execute_expr(callsite_effect)?;
@@ -712,14 +687,14 @@ impl Symbolic {
     }
 
 
-    fn execute_scope(&mut self, body: &mut [&mut ast::Statement]) -> Result<ScopeReturn, Error> {
+    fn execute_scope(&mut self, body: &mut Vec<Box<ast::Statement>>) -> Result<ScopeReturn, Error> {
         for i in 0..body.len() {
             let (body, rest) = body.split_at_mut(i + 1);
 
             // this gets modified in place. must not do that for each branch
-            let mut rest = rest.iter().map(|stm|(*stm).clone()).collect::<Vec<ast::Statement>>();
+            let mut rest = rest.iter().map(|stm|(*stm).clone()).collect::<Vec<Box<ast::Statement>>>();
 
-            match &mut body[i] {
+            match body[i].as_mut() {
                 ast::Statement::Var{loc, typed, tags, name, array, assign} => {
 
                     let mut typed = typed.clone();
@@ -877,7 +852,7 @@ impl Symbolic {
                             self.cur().trace.push((sym, expr.loc().clone()));
                         }
 
-                        let rere = self.execute_scope(&mut (body2.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+                        let rere = self.execute_scope(&mut body2.statements)?;
                         // this currently only detects the simplest case where the if body returns without further nesting
                         if let ScopeReturn::Return(_) = rere {
                             self.ssa.pop("no rest because branch returned function");
@@ -885,7 +860,7 @@ impl Symbolic {
                         } else {
                             self.ssa.pop("end of possitive branch at / rest following after positive branch");
                             self.ssa.debug_loc(&branchloc);
-                            self.execute_scope(&mut (rest.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+                            self.execute_scope(&mut rest)?;
                             self.ssa.pop("end of branch at / rest following after negative branch");
                         }
                         self.ssa.debug_loc(&branchloc);
@@ -921,10 +896,6 @@ impl Symbolic {
                 }
                 ast::Statement::Label{..} => {
                 },
-                ast::Statement::Goto{..} => {
-                    //TODO ... this is going to be impossible
-                    unimplemented!();
-                },
                 ast::Statement::Mark{..} => {
                 },
                 ast::Statement::Switch{expr, cases, default, ..} => {
@@ -939,7 +910,7 @@ impl Symbolic {
                             self.push("case".into());
                             self.ssa.push("case");
                             self.execute_expr(expr)?;
-                            self.execute_scope(&mut (body.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+                            self.execute_scope(&mut body.statements)?;
                             self.ssa.pop("end of case");
                             self.pop();
                             self.memory = freeze;
@@ -951,7 +922,7 @@ impl Symbolic {
                         let freeze = self.memory.clone();
                         self.push("case".into());
                         self.ssa.push("case");
-                        self.execute_scope(&mut (default.statements.iter_mut().map(|v|v).collect::<Vec<&mut ast::Statement>>()))?;
+                        self.execute_scope(&mut default.statements)?;
                         self.ssa.pop("end of case");
                         self.pop();
                         self.memory = freeze;
@@ -1020,7 +991,7 @@ impl Symbolic {
                     self.push("block".to_string());
                     self.ssa.push("block");
 
-                    self.execute_scope(&mut (block.statements.iter_mut().map(|v|&mut*v).collect::<Vec<&mut ast::Statement>>()))?;
+                    self.execute_scope(&mut block.statements)?;
 
                     self.pop();
                     self.ssa.pop("end of block");
@@ -1031,10 +1002,10 @@ impl Symbolic {
 
                     let prev_loop = self.in_loop;
                     self.in_loop = false;
-                    self.execute_scope(&mut (e1.iter_mut().map(|v|&mut**v).collect::<Vec<&mut ast::Statement>>()))?;
+                    self.execute_scope(e1)?;
                     self.in_loop = true;
 
-                    self.execute_scope(&mut (e3.iter_mut().map(|v|&mut**v).collect::<Vec<&mut ast::Statement>>()))?;
+                    self.execute_scope(e3)?;
 
                     if let Some(expr) = e2 {
                         let sym = self.execute_expr(expr)?;
@@ -1053,7 +1024,7 @@ impl Symbolic {
                     }
 
 
-                    self.execute_scope(&mut (body.statements.iter_mut().map(|v|&mut*v).collect::<Vec<&mut ast::Statement>>()))?;
+                    self.execute_scope(&mut body.statements)?;
                     self.in_loop = prev_loop;
                     self.ssa.pop("end of for loop");
                     self.pop();
@@ -1080,7 +1051,7 @@ impl Symbolic {
                     let prev_loop = self.in_loop;
                     self.in_loop = true;
 
-                    self.execute_scope(&mut (body.statements.iter_mut().map(|v|&mut*v).collect::<Vec<&mut ast::Statement>>()))?;
+                    self.execute_scope(&mut body.statements)?;
 
                     self.in_loop = prev_loop;
                     self.ssa.pop("end of while loop");
@@ -1136,7 +1107,15 @@ impl Symbolic {
                 let genarg = Box::new(lit);
                 called.push(genarg);
             } else if let Some(_) = defined[i].tags.get("tail") {
-                let mut prev = called.get_mut(i-1).expect("ICE: tail tag without previous arg");
+                let mut prev = match called.get_mut(i-1) {
+                    Some(v) => v,
+                    None => {
+                        return Err(Error::new(format!("tail tag without previous arg"), vec![
+                            (callloc.clone(), format!("something went wrong here"))
+                        ]));
+                    }
+                };
+
                 let callptr = self.execute_expr(&mut prev)?;
 
                 let prev_loc = prev.loc().clone();
@@ -1740,9 +1719,10 @@ impl Symbolic {
                 match &self.memory[name_sym].value.clone() {
                     Value::Unconstrained(_) | Value::Uninitialized => {
                         if let ast::Type::Other(n) = &self.memory[name_sym].typed.t {
-                            if let Some(ast::Def::Fntype {ret,args,attr,vararg}) = self.defs.get(&n).cloned() {
+                            if let Some(ast::Def::Fntype {ret,args,attr,vararg,nameloc}) = self.defs.get(&n).cloned() {
                                 self.deref(name_sym, loc)?;
                                 self.memory[name_sym].value = Value::Function {
+                                    loc: nameloc,
                                     args,
                                     vararg: vararg,
                                     ret:    ret.as_ref().map(|r|r.typed.clone()),
@@ -1818,11 +1798,12 @@ impl Symbolic {
 
                         return self.execute_expr(expr);
                     }
-                    Value::Function{args: fargs, ret, vararg, callsite_assert, callsite_effect} => {
+                    Value::Function{args: fargs, ret, vararg, callsite_assert, callsite_effect, loc: functionlloc} => {
 
                         // borrochecker stupidity
                         let mut callsite_effect = callsite_effect.clone();
                         let vararg = *vararg;
+                        let functionlloc = functionlloc.clone();
 
                         let ret = ret.clone();
                         let fargs = fargs.clone();
@@ -1870,6 +1851,7 @@ impl Symbolic {
                                     let mut estack = vec![
                                         (loc.clone(),format!("in this callsite")),
                                         (callsite_assert.loc().clone(), format!("function call requires these conditions")),
+                                        (functionlloc.clone(), format!("for this function")),
                                     ];
                                     if let Some(model) = &model {
                                         estack.extend(self.demonstrate(model, (casym, self.memory[casym].temporal), 0));
@@ -2383,20 +2365,8 @@ impl Symbolic {
     fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, tags: ast::Tags) -> Result<Symbol, Error> {
         self.ssa.debug_loc(&loc);
 
-        match format!("{}", name).as_str() {
-            "len" | "theory" | "safe" => {
-                if self.stack.len() > 1 {
-                    return Err(Error::new(format!("redeclaration of builtin theory '{}'", name), vec![
-                        (loc.clone(), "this declaration would shadow a builtin".to_string()),
-                    ]));
-                }
-            },
-            _ => {
-            }
-        }
-
         if let Some(prev) = self.cur().locals.get(&name).cloned() {
-            return Err(Error::new(format!("redeclation of local name '{}'", name), vec![
+            return Err(Error::new(format!("ICE: redeclation of local name '{}' should have failed in expand", name), vec![
                 (loc.clone(), "this declaration would shadow a previous name".to_string()),
                 (self.memory[prev].declared.clone(), "previous declaration".to_string())
             ]));

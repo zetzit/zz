@@ -120,6 +120,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                     file: n.to_string_lossy().into(),
                     span: decl.as_span(),
                 };
+                let mut nameloc = loc.clone();
                 let declrule = decl.as_rule().clone();
                 let decl = decl.into_inner();
                 let mut name = String::new();
@@ -141,6 +142,10 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             vis = Visibility::Export;
                         }
                         Rule::ident => {
+                            nameloc = Location{
+                                file: n.to_string_lossy().into(),
+                                span: part.as_span(),
+                            };
                             name = part.as_str().into();
                         }
                         Rule::ret_arg => {
@@ -200,6 +205,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             vis,
                             loc,
                             def:Def::Function{
+                                nameloc,
                                 ret,
                                 attr,
                                 args,
@@ -228,6 +234,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             vis,
                             loc,
                             def:Def::Fntype{
+                                nameloc,
                                 ret,
                                 attr,
                                 args,
@@ -434,6 +441,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         packed,
                         tail,
                         union,
+                        impls: HashMap::new(),
                     }
                 });
             }
@@ -962,7 +970,7 @@ pub(crate) fn parse_statement(
     n: (&'static str, &Path),
     features: HashMap<String, bool>,
     stm: pest::iterators::Pair<'static, Rule>,
-    into: &mut Vec<Statement>,
+    into: &mut Vec<Box<Statement>>,
     current_if_statement: &mut Option<usize>,
 ) {
 
@@ -984,41 +992,33 @@ pub(crate) fn parse_statement(
             let key   = part.next().unwrap().as_str().into();
             let value = part.next().map(|s|s.as_str().into()).unwrap_or(String::new());
 
-            into.push(Statement::Mark{
+            into.push(Box::new(Statement::Mark{
                 loc,
                 lhs,
                 key,
                 value,
-            });
+            }));
         },
         Rule::label => {
             let mut stm = stm.into_inner();
             let label   = stm.next().unwrap().as_str().to_string();
-            into.push(Statement::Label{
+            into.push(Box::new(Statement::Label{
                 loc,
                 label,
-            });
+            }));
         },
         Rule::continue_stm => {
-            into.push(Statement::Continue{
+            into.push(Box::new(Statement::Continue{
                 loc,
-            });
+            }));
         },
         Rule::break_stm => {
-            into.push(Statement::Break{
+            into.push(Box::new(Statement::Break{
                 loc,
-            });
-        },
-        Rule::goto_stm => {
-            let mut stm = stm.into_inner();
-            let label   = stm.next().unwrap().as_str().to_string();
-            into.push(Statement::Goto{
-                loc,
-                label,
-            });
+            }));
         },
         Rule::block => {
-            into.push(Statement::Block(Box::new(parse_block(n, features, stm))));
+            into.push(Box::new(Statement::Block(Box::new(parse_block(n, features, stm)))))
         },
         Rule::return_stm  => {
             let mut stm = stm.into_inner();
@@ -1032,17 +1032,17 @@ pub(crate) fn parse_statement(
             } else {
                 None
             };
-            into.push(Statement::Return{
+            into.push(Box::new(Statement::Return{
                 expr,
                 loc: loc.clone(),
-            });
+            }));
         },
         Rule::expr => {
             let expr = parse_expr(n, stm);
-            into.push(Statement::Expr{
+            into.push(Box::new(Statement::Expr{
                 expr,
                 loc: loc.clone(),
-            });
+            }));
         }
         Rule::while_stm => {
             let mut stm = stm.into_inner();
@@ -1050,10 +1050,10 @@ pub(crate) fn parse_statement(
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
             let body    = parse_block(n, features, part);
-            into.push(Statement::While {
+            into.push(Box::new(Statement::While {
                 expr,
                 body,
-            });
+            }));
         }
         Rule::if_stm => {
             let mut stm = stm.into_inner();
@@ -1062,9 +1062,9 @@ pub(crate) fn parse_statement(
             let part    = stm.next().unwrap();
             let body    = parse_block(n, features, part);
             *current_if_statement = Some(into.len());
-            into.push(Statement::If{
+            into.push(Box::new(Statement::If{
                 branches: vec![(loc.clone(), Some(expr), body)],
-            });
+            }));
         }
         Rule::elseif_stm => {
             let mut stm = stm.into_inner();
@@ -1080,7 +1080,7 @@ pub(crate) fn parse_statement(
                     std::process::exit(9);
                 }
                 Some(c) => {
-                    if let Statement::If{ref mut branches} = into[c] {
+                    if let Statement::If{ref mut branches} = *into[c] {
                         branches.push((loc.clone(), Some(expr), body));
                     }
                 }
@@ -1098,7 +1098,7 @@ pub(crate) fn parse_statement(
                     std::process::exit(9);
                 }
                 Some(c) => {
-                    if let Statement::If{ref mut branches} = into[c] {
+                    if let Statement::If{ref mut branches} = *into[c] {
                         branches.push((loc.clone(), None, body));
                     }
                 }
@@ -1128,29 +1128,25 @@ pub(crate) fn parse_statement(
                     },
                     _ if cur == 1 => {
                         let mut cif = None;
-                        let mut vr = Vec::new();
-                        parse_statement(n, features.clone(), part, &mut vr, &mut cif);
-                        expr1.push(Box::new(vr.remove(0)));
+                        parse_statement(n, features.clone(), part, &mut expr1, &mut cif);
                     },
                     _ if cur == 2 => {
                         expr2 = Some(parse_expr(n, part));
                     },
                     _ if cur == 3 => {
                         let mut cif = None;
-                        let mut vr = Vec::new();
-                        parse_statement(n, features.clone(), part, &mut vr, &mut cif);
-                        expr3.push(Box::new(vr.remove(0)));
+                        parse_statement(n, features.clone(), part, &mut expr3, &mut cif);
                     },
                     e => panic!("unexpected rule {:?} in for ", e),
                 }
             }
 
-            into.push(Statement::For{
+            into.push(Box::new(Statement::For{
                 e1:     expr1,
                 e2:     expr2,
                 e3:     expr3,
                 body:   block.unwrap(),
-            });
+            }));
         }
         Rule::vardecl => {
             let stm = stm.into_inner();
@@ -1179,14 +1175,14 @@ pub(crate) fn parse_statement(
 
             let TypedName{typed, name, tags} = typed.unwrap();
 
-            into.push(Statement::Var{
+            into.push(Box::new(Statement::Var{
                 loc: loc.clone(),
                 typed,
                 name,
                 tags,
                 array,
                 assign,
-            })
+            }))
         }
         Rule::assign => {
             let stm = stm.into_inner();
@@ -1221,12 +1217,12 @@ pub(crate) fn parse_statement(
                 }
             }
 
-            into.push(Statement::Assign{
+            into.push(Box::new(Statement::Assign{
                 loc:    loc.clone(),
                 lhs:    lhs.unwrap(),
                 rhs:    rhs.unwrap(),
                 op:     op.unwrap(),
-            })
+            }))
         }
         Rule::switch_stm => {
             let mut stm  = stm.into_inner();
@@ -1258,15 +1254,15 @@ pub(crate) fn parse_statement(
                 }
             }
 
-            into.push(Statement::Switch {
+            into.push(Box::new(Statement::Switch {
                 default,
                 loc,
                 expr,
                 cases,
-            })
+            }))
         },
         Rule::unsafe_block => {
-            into.push(Statement::Unsafe(Box::new(parse_block(n, features, stm.into_inner().next().unwrap()))));
+            into.push(Box::new(Statement::Unsafe(Box::new(parse_block(n, features, stm.into_inner().next().unwrap())))));
         },
         Rule::cblock => {
             let stm = stm.into_inner().next().unwrap();
@@ -1274,10 +1270,10 @@ pub(crate) fn parse_statement(
                 file: n.1.to_string_lossy().into(),
                 span: stm.as_span(),
             };
-            into.push(Statement::CBlock{
+            into.push(Box::new(Statement::CBlock{
                 loc,
                 lit: stm.as_str().to_string()
-            });
+            }));
         },
         e => panic!("unexpected rule {:?} in block", e),
     }
@@ -1306,6 +1302,7 @@ pub(crate) fn parse_block(
     Block{
         statements,
         end,
+        expanded: false,
     }
 }
 

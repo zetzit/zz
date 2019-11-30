@@ -1,6 +1,6 @@
 [project]
 version = "0.1.0"
-name = "io"
+name = "drop"
 cincludes = []
 cobjects = []
 pkgconfig = []
@@ -11,6 +11,3 @@ lflags = []
 default = []
 
 [dependencies]
-time = "1"
-string = "1"
-err = "1"

@@ -485,7 +485,7 @@ impl Emitter {
 
     pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
         let (fields, packed, tail, union) = match &ast.def {
-            ast::Def::Struct{fields, packed, tail, union} => (fields, packed, tail, union),
+            ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
         };
 
@@ -584,7 +584,7 @@ impl Emitter {
 
     pub fn emit_fntype(&mut self, ast: &ast::Local) {
         let (ret, args, vararg, attr) = match &ast.def {
-            ast::Def::Fntype{ret, args, vararg, attr} => (ret, args, *vararg, attr),
+            ast::Def::Fntype{ret, args, vararg, attr,..} => (ret, args, *vararg, attr),
             _ => unreachable!(),
         };
 
@@ -800,11 +800,6 @@ impl Emitter {
                 write!(self.f, "break").unwrap();
                 true
             },
-            ast::Statement::Goto{loc, label} => {
-                self.emit_loc(&loc);
-                write!(self.f, "goto {}", label).unwrap();
-                true
-            }
             ast::Statement::Label{loc, label} => {
                 self.emit_loc(&loc);
                 write!(self.f, "{}:", label).unwrap();

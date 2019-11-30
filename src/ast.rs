@@ -80,6 +80,7 @@ pub enum Def {
         expr:       Expression,
     },
     Function {
+        nameloc:    Location,
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
         attr:       Vec<(String, Location)>,
@@ -94,6 +95,7 @@ pub enum Def {
         attr:       Vec<(String, Location)>,
     },
     Fntype {
+        nameloc:    Location,
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
         attr:       Vec<(String, Location)>,
@@ -104,6 +106,7 @@ pub enum Def {
         packed:     bool,
         tail:       Tail,
         union:      bool,
+        impls:      HashMap<String, (Name, Location)>,
     },
     Enum {
         names:      Vec<(String, Option<u64>)>,
@@ -531,10 +534,6 @@ pub enum Statement {
         loc:        Location,
         label:      String
     },
-    Goto{
-        loc:        Location,
-        label:      String
-    },
     Assign {
         loc:        Location,
         lhs:        Expression,
@@ -593,7 +592,8 @@ pub enum Statement {
 #[derive(Clone, Debug)]
 pub struct Block {
     pub end:        Location,
-    pub statements: Vec<Statement>,
+    pub statements: Vec<Box<Statement>>,
+    pub expanded:   bool,
 }
 
 

@@ -1,0 +1,24 @@
+using <stdio.h>::{printf};
+using <stdlib.h>::{exit};
+
+struct A {
+    int a;
+}
+
+
+struct B {
+    A a;
+}
+
+fn drop(A mut * self)
+{
+    printf("drop\n");
+    exit(0);
+}
+
+export fn main() -> int {
+
+    B mut b = {0};
+
+    return 1;
+}

@@ -1,0 +1,18 @@
+using time;
+using <assert.h>::{assert};
+using <stdio.h>::{printf};
+
+pub fn main() -> int {
+
+
+    time::Time t1 = time::from_seconds(2);
+    assert(t1.to_millis() == 2000);
+
+    time::Time t2 = time::from_millis(2001);
+    assert(t2.to_millis() == 2001);
+
+    time::Time t3 = time::system();
+    printf("%lu\n", t3.to_millis());
+
+    return 0;
+}

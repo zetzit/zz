@@ -43,8 +43,7 @@ keyword    = {
     key_default  |
     key_switch   |
     key_where    |
-    key_model    |
-    key_goto
+    key_model
 }
 
 exported    = { "export" }
@@ -59,7 +58,6 @@ key_else    = { "else" }
 key_return  = { "return" }
 key_continue= { "continue" }
 key_mark    = { "is" }
-key_goto    = { "goto" }
 key_switch  = { "switch" }
 key_break   = { "break" }
 key_default = { "default" }
@@ -238,7 +236,6 @@ else_stm    = { "else" ~  block }
 return_stm  = { key_return ~ expr_stm? }
 continue_stm  = { key_continue }
 break_stm   = { key_break }
-goto_stm    = { "goto" ~ ident }
 label       = ${ ident ~ ":"}
 mark_stm    = ${ lhs ~ WHITESPACE+ ~ "is" ~ WHITESPACE+ ~ tag_name }
 unsafe_block = {"unsafe" ~ block }
@@ -255,7 +252,6 @@ expr_stm = _{
 
 term_statement = _{
     mark_stm   |
-    goto_stm   |
     return_stm |
     break_stm  |
     continue_stm |

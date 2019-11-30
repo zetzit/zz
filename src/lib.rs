@@ -18,6 +18,7 @@ pub mod abs;
 pub mod name;
 pub mod pp;
 pub mod symbolic;
+pub mod expand;
 pub mod smt;
 pub mod z3;
 
@@ -134,15 +135,14 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
     let iterf =  |mut module|{
 
-        //only do symbolic execution if any source file is newer than the c file
-
-
+        //only emit if any source file is newer than the c file
         let (_, outname) = emitter::outname(&project.project, &stage, &module, false);
         if module.is_newer_than(&outname) {
             if !silent {
                 pb.lock().unwrap().message(&format!("emitting {} ", module.name));
             }
 
+            expand::expand(&mut module)?;
             symbolic::execute(&mut module)?;
 
             let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
