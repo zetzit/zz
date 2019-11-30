@@ -16,7 +16,7 @@ export fn main() -> int {
     address::Address mut sa = {0};
     address::from_cstr(&sa, sin.mem);
 
-    string::String+100 sout = {0};
+    string::String+100 mut sout = {0};
     address::to_string(&sout, &sa);
 
     printf(">%.*s<\n", (int)sout.len, sout.mem);
@@ -32,7 +32,7 @@ export fn main() -> int {
     udp::deadline(&sock, &e, time::from_seconds(1));
     err::abort(&e);
 
-    string::String+100 srecv = {0};
+    string::String+100 mut srecv = {0};
     address::Address mut sa2 = {0};
     udp::recv(&sock, &e, &srecv, &sa2);
     err::abort(&e);

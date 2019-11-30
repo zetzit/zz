@@ -53,7 +53,7 @@ export struct Parser+ {
     usize           depth;
 
     usize           keylen;
-    String+         capture;
+    String+         mut capture;
 }
 
 export fn new(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void mut * unsafe user)

@@ -10,8 +10,8 @@ theory checked(Err * self) -> bool;
 
 export struct Err+ {
     u8      mut error;
-    char    description[255];
-    String+ locations;
+    char    mut description[255];
+    String+ mut locations;
 };
 
 

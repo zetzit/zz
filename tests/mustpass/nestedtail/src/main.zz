@@ -31,6 +31,6 @@ export fn main() -> int {
     B+100 mut b;
     memset(&b, 12, sizeof(b));
 
-    printf("hello nestedtail %zu %u\n", sizeof(b), gimme_a(&b));
+    printf("hello nestedtail %zu %u\n", sizeof(b), gimme_b(&b));
     return 0;
 }

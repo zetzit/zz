@@ -526,7 +526,7 @@ impl Symbolic {
                     format!("*{}", self.memory[prev].name),
                     nutype.clone(),
                     args[i].loc.clone(),
-                    Tags::new(),
+                    self.memory[prev].tags.clone(),
                 )?;
                 self.memory[prev].value = Value::Address(sym2);
 
@@ -623,7 +623,7 @@ impl Symbolic {
                 format!("implicit coercion of {}", self.memory[a].name),
                 self.memory[b].typed.clone(),
                 self.memory[a].declared.clone(),
-                Tags::new(),
+                self.memory[b].tags.clone(),
             )?;
 
             self.memory[tmp].value = self.memory[a].value.clone();
@@ -641,7 +641,7 @@ impl Symbolic {
                 format!("implicit coercion of {}", self.memory[b].name),
                 self.memory[a].typed.clone(),
                 self.memory[b].declared.clone(),
-                Tags::new(),
+                self.memory[a].tags.clone(),
             )?;
 
             self.memory[tmp].value = self.memory[b].value.clone();
@@ -661,7 +661,7 @@ impl Symbolic {
                 format!("implicit cast of {}", self.memory[b].name),
                 self.memory[a].typed.clone(),
                 here.clone(),
-                Tags::new(),
+                self.memory[a].tags.clone(),
             )?;
 
             self.memory[tmp].value = self.memory[b].value.clone();
@@ -946,7 +946,7 @@ impl Symbolic {
                         let tmp = self.temporary("assign inter".to_string(),
                             newtype.clone(),
                             loc.clone(),
-                            Tags::new(),
+                            self.memory[lhs].tags.clone(),
                         )?;
 
                         let infix = match op {
@@ -1119,8 +1119,14 @@ impl Symbolic {
                 let callptr = self.execute_expr(&mut prev)?;
 
                 let prev_loc = prev.loc().clone();
+                let mut into_type = self.memory[callptr].typed.clone();
+
+                if into_type.tail != ast::Tail::None {
+                    into_type.tail = ast::Tail::Dynamic;
+                }
+
                 *prev = Box::new(ast::Expression::Cast {
-                    into: defined[i-1].typed.clone(),
+                    into: into_type,
                     expr: prev.clone(),
                     loc:  defined[i].loc.clone(),
                 });
@@ -1259,7 +1265,7 @@ impl Symbolic {
             format!("{}.{}", self.memory[lhs_sym].name, rhs),
             fieldtyped,
             loc.clone(),
-            Tags::new(),
+            field.1.tags.clone(),
         )?;
 
 
@@ -1452,7 +1458,7 @@ impl Symbolic {
                     format!("array member {}[{}]", self.memory[lhs_sym].name, self.memory[rhs_sym].name),
                     newtype,
                     loc.clone(),
-                    Tags::new(),
+                    self.memory[lhs_sym].tags.clone(),
                 )?;
                 self.memory[tmp].value = Value::Unconstrained("array content".to_string());
 
@@ -2100,14 +2106,14 @@ impl Symbolic {
                         let lhs_sym = self.execute_expr(expr)?;
                         let mut typed =  self.memory[lhs_sym].typed.clone();
                         typed.ptr.push(ast::Pointer{
-                            tags :  ast::Tags::new(),
+                            tags:   self.memory[lhs_sym].tags.clone(),
                             loc:    loc.clone(),
                         });
                         let tmp = self.temporary(
                             format!("address of {}", self.memory[lhs_sym].name),
                             typed,
                             loc.clone(),
-                            Tags::new(),
+                            ast::Tags::new(),
                         )?;
                         self.memory[tmp].value = Value::Address(lhs_sym);
                         self.len_into_ssa(tmp, loc, 1)?;
@@ -2142,7 +2148,7 @@ impl Symbolic {
                             format!("unary expression"),
                             self.memory[rhs_sym].typed.clone(),
                             loc.clone(),
-                            Tags::new(),
+                            self.memory[rhs_sym].tags.clone(),
                             )?;
                         let value = Value::PrefixOp {
                             rhs:    (rhs_sym, self.memory[rhs_sym].temporal),
@@ -2273,13 +2279,19 @@ impl Symbolic {
         }
 
         let mut nutype = self.memory[lhs_sym].typed.clone();
-        nutype.ptr.pop();
+        let popped_tags = match nutype.ptr.pop() {
+            Some(v) => v.tags.clone(),
+            None => {
+                // this can happen when we deref an fntype
+                Tags::new()
+            }
+        };
 
         let member = self.temporary(
             format!("*{}", self.memory[lhs_sym].name),
             nutype,
             loc.clone(),
-            Tags::new(),
+            popped_tags,
         )?;
 
 
@@ -2580,7 +2592,7 @@ impl Symbolic {
                                    format!("array member {}[{}]", self.memory[lhs].name, i),
                                    typed,
                                    self.memory[lhs].declared.clone(),
-                                   Tags::new(),
+                                   self.memory[lhs].tags.clone(),
                                    )?;
                                self.memory[tmp].value = Value::Integer(0);
                                prev.insert(i, tmp);
