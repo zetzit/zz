@@ -24,6 +24,7 @@ fn main() {
     let matches = App::new("Drunk Octopus")
         .version(clap::crate_version!())
         .setting(clap::AppSettings::UnifiedHelpMessage)
+        .arg(Arg::with_name("smt-timeout").takes_value(true).required(false).long("smt-timeout"))
         .subcommand(SubCommand::with_name("check").about("check the current project"))
         .subcommand(SubCommand::with_name("build").about("build the current project")
             .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
@@ -47,6 +48,10 @@ fn main() {
             .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
         )
         .get_matches();
+
+    if let Some(t) = matches.value_of("smt-timeout") {
+        zz::smt::TIMEOUT.store(t.parse().unwrap(), Ordering::Relaxed);
+    }
 
     match matches.subcommand() {
         ("init", Some(_submatches)) => {

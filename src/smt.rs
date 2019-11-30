@@ -4,6 +4,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::cell::{RefCell, RefMut};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+pub static TIMEOUT: AtomicUsize = AtomicUsize::new(1000);
 
 pub enum Assertion<T> {
     Constrained(T),
@@ -858,7 +861,7 @@ impl Solver {
         //Config::set_global_param_value(":model.partial", "true");
         let mut config  = Config::new();
         //config.set_model_generation(true);
-        config.set_timeout_msec(1000);
+        config.set_timeout_msec(TIMEOUT.load(Ordering::Relaxed) as u64);
         let ctx     = Box::leak(Box::new(Context::new(&config)));
         let solver  = z3::Solver::new(ctx);
 

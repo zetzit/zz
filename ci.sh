@@ -11,16 +11,16 @@ cd $THIS/tests
 for i in $THIS/examples/*
 do
     cd $i
-    ../../target/release/zz clean
-    ../../target/release/zz run
-    ../../target/release/zz test
+    ../../target/release/zz --smt-timeout=10000 clean
+    ../../target/release/zz --smt-timeout=10000 run
+    ../../target/release/zz --smt-timeout=10000 test
 done
 
 for i in $THIS/modules/*
 do
     cd $i
-    ../../target/release/zz clean
-    ../../target/release/zz test
+    ../../target/release/zz --smt-timeout=10000 clean
+    ../../target/release/zz --smt-timeout=10000 test
 done
 
 echo
