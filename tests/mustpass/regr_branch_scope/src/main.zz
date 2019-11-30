@@ -1,0 +1,12 @@
+using <stdio.h>::{printf};
+
+export fn main(int argc) -> int {
+
+    if (argc == 0) {
+        int x = 0;
+    } else {
+        int x = 0;
+    }
+
+    return 0;
+}

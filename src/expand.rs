@@ -303,7 +303,9 @@ impl Stack {
                 ast::Statement::If{branches}        => {
                     self.push("if".to_string());
                     for (loc, expr, block) in branches {
+                        self.push("branch".to_string());
                         self.expand_scope(&mut block.statements)?;
+                        self.pop();
                     }
                     self.pop();
                 }
