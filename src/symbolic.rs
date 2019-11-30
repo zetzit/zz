@@ -2000,8 +2000,6 @@ impl Symbolic {
                     }
                 }
                 */
-
-
                 let signed  = newtype.t.signed();
                 if op.returns_boolean() {
                     newtype = ast::Typed{
@@ -2024,6 +2022,99 @@ impl Symbolic {
                     loc.clone(),
                     Tags::new(),
                 )?;
+
+
+                // pointer arithmetic
+                if newtype.ptr.len() > 0 {
+                    self.ssa.debug("begin pointer arithmetic");
+                    let len_of_lhs = self.temporary(format!("len({})", self.memory[lhs_sym].name),
+                        ast::Typed{
+                            t:      ast::Type::USize,
+                            ptr:    Vec::new(),
+                            loc:    loc.clone(),
+                            tail:   ast::Tail::None,
+                        },
+                        loc.clone(),
+                        Tags::new(),
+                    )?;
+                    let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
+                    self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], len_of_lhs);
+
+
+
+                    let len_assert = self.temporary(format!("{} < len({})", self.memory[rhs_sym].name, self.memory[lhs_sym].name),
+                        ast::Typed{
+                            t:      ast::Type::Bool,
+                            ptr:    Vec::new(),
+                            loc:    loc.clone(),
+                            tail:   ast::Tail::None,
+                        },
+                        loc.clone(),
+                        Tags::new(),
+                    )?;
+                    self.memory[len_assert].value = Value::InfixOp {
+                        lhs:    (rhs_sym, self.memory[rhs_sym].temporal),
+                        rhs:    (len_of_lhs, self.memory[len_of_lhs].temporal),
+                        op:     ast::InfixOperator::Lessthan,
+                    };
+                    self.ssa.infix_op(
+                        len_assert,
+                        (rhs_sym, self.memory[rhs_sym].temporal),
+                        (len_of_lhs, 0),
+                        ast::InfixOperator::Lessthan,
+                        smt::Type::Bool,
+                        false,
+                    );
+                    self.ssa.debug("assert that length less than index is true");
+                    self.ssa.assert((len_assert, self.memory[len_assert].temporal), |a, model| match a {
+                        false => {
+                            let mut estack = Vec::new();
+                            estack.extend(self.demonstrate(model.as_ref().unwrap(), (len_assert, self.memory[len_assert].temporal), 0));
+                            Err(Error::new(format!("possible out of bounds pointer arithmetic"), estack))
+                        }
+                        true => {
+                            Ok(())
+                        }
+                    })?;
+                    self.ssa_mark_safe(tmp, loc)?;
+
+                    let len_of_opresult = self.temporary(format!("len({})", self.memory[lhs_sym].name),
+                        ast::Typed{
+                            t:      ast::Type::USize,
+                            ptr:    Vec::new(),
+                            loc:    loc.clone(),
+                            tail:   ast::Tail::None,
+                        },
+                        loc.clone(),
+                        Tags::new(),
+                    )?;
+                    let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
+                    self.ssa.invocation(*lensym, vec![(tmp, self.memory[tmp].temporal)], len_of_opresult);
+
+
+                    let opposite_op =  match op {
+                        ast::InfixOperator::Add      => ast::InfixOperator::Subtract,
+
+                        //TODO need to check for wrap
+                        //ast::InfixOperator::Subtract => ast::InfixOperator::Add,
+                        _ => {
+                            return Err(Error::new(format!("unprovable pointer arithmetic"), vec![
+                                (expr.loc().clone(), format!("only + is possible"))
+                            ]));
+                        }
+                    };
+
+                    self.ssa.infix_op(
+                        len_of_opresult,
+                        (len_of_lhs, self.memory[len_of_lhs].temporal),
+                        (rhs_sym, self.memory[rhs_sym].temporal),
+                        opposite_op,
+                        self.memory[tmp].t.clone(),
+                        signed,
+                    );
+                }
+
+
 
                 let value = Value::InfixOp {
                     lhs:    (lhs_sym, self.memory[lhs_sym].temporal),

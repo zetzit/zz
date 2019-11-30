@@ -1,0 +1,19 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    int a[] = {1,2,3,4};
+    static_assert(safe(a));
+    static_assert(len(a) == 4);
+
+    int *b = a;
+    static_assert(safe(b));
+    static_assert(len(b) == 4);
+
+    int *c = a + 1;
+    static_assert(safe(c));
+    static_assert(len(c) == 3);
+    printf("%zu\n", static(len(c)));
+
+    return 0;
+}
