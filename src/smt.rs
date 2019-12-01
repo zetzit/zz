@@ -6,7 +6,7 @@ use std::io::Write;
 use std::cell::{RefCell, RefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub static TIMEOUT: AtomicUsize = AtomicUsize::new(1000);
+pub static TIMEOUT: AtomicUsize = AtomicUsize::new(5000);
 
 pub enum Assertion<T> {
     Constrained(T),
@@ -19,9 +19,12 @@ pub struct Solver {
     ctx:            &'static Context,
     solver:         z3::Solver<'static>,
     syms:           HashMap<Symbol, (z3::FuncDecl<'static>, String)>,
-    debug_line:     usize,
+    debug_loc:      crate::ast::Location,
     pub debug:      RefCell<File>,
     debug_indent:   String,
+
+
+    branches:       Vec<Vec<(z3::ast::Bool<'static>, String)>>,
 }
 
 
@@ -36,6 +39,30 @@ pub enum Type {
 pub struct ModelRef(Model<'static>);
 
 impl Solver {
+
+
+    pub fn branch(&mut self) {
+        self.branches.push(Vec::new());
+    }
+
+    pub fn unbranch(&mut self, returned: bool) {
+        if returned {
+            if let Some((branch_capi, branch_debug)) = self.build_branch_bundle() {
+                let branch_capi = branch_capi.not();
+                let branch_debug = format!("(not {})", branch_debug);
+
+                write!(self.debug.borrow_mut(), "; branch returned. the rest of the function only happens \
+                   if the condition leading to return never happened\n").unwrap();
+                write!(self.debug.borrow_mut(), "{}; {}\n", self.debug_indent, branch_debug).unwrap();
+
+                self.branches.pop();
+                self.branches.first_mut().unwrap().push((branch_capi, branch_debug));
+
+                return;
+            }
+        }
+        self.branches.pop();
+    }
 
     pub fn theory(&mut self, sym: Symbol, args: Vec<Type>, name: &str, t: Type) {
         let lname = format!("{}_{}", sym, name.replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
@@ -131,6 +158,97 @@ impl Solver {
         self.checkpoint();
     }
 
+
+    //TODO could be faster by preparing the joins
+    fn build_branch_bundle(&self) -> Option<(z3::ast::Bool<'static>, String)> {
+        let mut debug = Vec::new();
+        let mut capi  = Vec::new();
+        for branch in &self.branches {
+            for (branch_capi, branch_debug) in branch {
+                debug.push(branch_debug.clone());
+                capi.push(branch_capi);
+            }
+        }
+
+        if capi.len() == 0 {
+            return None;
+        }
+
+        Some((
+            ast::Bool::from_bool(&self.ctx, true).and(&capi),
+            format!("( and {} )", debug.join(" "))
+        ))
+    }
+
+
+    /// an assign that happens depending on branch conditions
+    /// LHS2 = if (branch) { rhs } else { LHS1 }
+    pub fn assign_maybe(&mut self, lhs: Symbol, current: u64, new: u64, rhs: TemporalSymbol, t: Type) {
+        let (branch_capi, branch_debug) = match self.build_branch_bundle() {
+            Some(v) => v,
+            None => (ast::Bool::from_bool(&self.ctx, true), " true ".to_string()),
+        };
+
+
+        if t == Type::Bool {
+
+
+            let lhs_1 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, current))]).as_bool().unwrap();
+            let lhs_2 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, new))]).as_bool().unwrap();
+            let rhs_s = self.syms[&rhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs.1))]);
+
+
+            let rhs_s = match rhs_s.as_bool() {
+                Some(b) => b,
+                None => {
+                    let rhs_s = rhs_s.as_bv().unwrap();
+                    let bone = ast::BV::from_u64(&self.ctx, 1, rhs_s.get_size());
+                    rhs_s.bvuge(&bone)
+                }
+            };
+
+            write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+
+            write!(self.debug.borrow_mut(), "(assert (= (S{} {}) (ite {}\n      (S{} {}) (S{} {}))   ))\n",
+                self.syms[&lhs].1, new, branch_debug,  self.syms[&rhs.0].1, rhs.1, self.syms[&lhs].1, current).unwrap();
+
+            self.solver.assert(&lhs_2._eq(&branch_capi.ite(&rhs_s, &lhs_1)));
+
+            return;
+        }
+
+
+        let lhs_1 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, current))]).as_bv().unwrap();
+        let lhs_2 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, new))]).as_bv().unwrap();
+        let rhs_s = self.syms[&rhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs.1))]).as_bv().unwrap();
+
+        let lhs_size = lhs_1.get_size();
+        let rhs_size = rhs_s.get_size();
+
+        let (debug, capi) = if lhs_size < rhs_size {
+            (
+                format!("((_ extract {} {}) (S{} {}))", lhs_size - 1, 0, self.syms[&rhs.0].1, rhs.1),
+                rhs_s.extract(lhs_size -1, 0)
+            )
+        } else if lhs_size > rhs_size {
+            (
+                format!("((zero_extend {}) (S{} {}))", lhs_size - rhs_size, self.syms[&rhs.0].1, rhs.1),
+                rhs_s.zero_ext(lhs_size - rhs_size),
+            )
+        } else {
+            (
+                format!("(S{} {})", self.syms[&rhs.0].1, rhs.1),
+                rhs_s
+            )
+        };
+
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "(assert (= (S{} {}) (ite {} {} (S{} {}))   ))\n",
+            self.syms[&lhs].1, new, branch_debug, debug, self.syms[&lhs].1, current).unwrap();
+        self.solver.assert(&lhs_2._eq(&branch_capi.ite(&capi, &lhs_1)));
+
+        self.checkpoint();
+    }
 
     pub fn assign(&mut self, lhs: TemporalSymbol, rhs: TemporalSymbol, t: Type) {
 
@@ -560,9 +678,29 @@ impl Solver {
         self.checkpoint();
     }
 
-    pub fn constrain(&mut self, lhs: (Symbol, u64), compare: bool) -> bool {
+    pub fn constrain_branch(&mut self, lhs: (Symbol, u64), positive: bool) {
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "; constrain. we know this to be true because of an if condition or callsite assert\n").unwrap();
+        let debug = if positive {
+            write!(self.debug.borrow_mut(), "; branch constrain. this condition is true because we entered a branch\n").unwrap();
+            format!("(S{} {})", self.syms[&lhs.0].1, lhs.1)
+        } else {
+            write!(self.debug.borrow_mut(), "; branch constrain. this condition is false because we're in an else\n").unwrap();
+            format!("(not (S{} {}))", self.syms[&lhs.0].1, lhs.1)
+        };
+        write!(self.debug.borrow_mut(), "{}; {}\n", self.debug_indent, debug).unwrap();
+
+
+        let lhs = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
+        if positive {
+            self.branches.last_mut().unwrap().push((lhs, debug));
+        } else {
+            self.branches.last_mut().unwrap().push((lhs.not(), debug));
+        };
+    }
+
+    pub fn attest(&mut self, lhs: (Symbol, u64), compare: bool) -> bool {
+        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "; attest. where/model clauses or manual attestation\n").unwrap();
         if compare {
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
             write!(self.debug.borrow_mut(), "(assert (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
@@ -632,17 +770,33 @@ impl Solver {
               R : Sized,
     {
 
+        let (branch_capi, branch_debug) = match self.build_branch_bundle() {
+            Some(v) => v,
+            None => (ast::Bool::from_bool(&self.ctx, true), " true ".to_string()),
+        };
+
+
 
         let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
 
         write!(self.debug.borrow_mut(), "{}(echo \"\")\n", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "{} (echo \"vvv assert (as negative)\")\n", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{} (assert (not (S{} {})))\n", self.debug_indent, self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{} (assert (and {} (not (S{} {}))))\n", self.debug_indent,
+            branch_debug, self.syms[&lhs.0].1, lhs.1).unwrap();
         write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
 
         self.solver.push();
-        self.solver.assert(&lhs_s.not());
+
+
+        // asserts are false if
+        //  - we reached it due to branch flow
+        //  - the opposite of the assert condition is solveable
+        // assert(a) ->   !solveable(assert(branch && !a));
+
+        self.solver.assert(&branch_capi.and(&[&lhs_s.not()]));
+
+
         let rs = self.solver.check();
 
         let r = match rs {
@@ -654,7 +808,8 @@ impl Solver {
                 write!(self.debug.borrow_mut(), "{}(echo \"unsat / pass \")\n", self.debug_indent).unwrap();
                 with(true, None)
             }
-            _ => {
+            SatResult::Unknown  => {
+                warn!("sat solver took too long. you can increase timeout with --smt-timeout=10000");
                 write!(self.debug.borrow_mut(), "{} (echo \"unsolveable\")\n", self.debug_indent).unwrap();
                 with(false, None)
             }
@@ -671,11 +826,11 @@ impl Solver {
     {
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(push)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (check-sat)\n").unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
 
         let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bv().unwrap();
@@ -710,14 +865,14 @@ impl Solver {
         self.solver.push();
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(push)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(assert (not (= (_ bv{} {}) (S{} {}))))\n", val, bv.get_size(),
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (assert (not (= (_ bv{} {}) (S{} {}))))\n", val, bv.get_size(),
                self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (check-sat)\n").unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
         self.solver.assert(&lhs_s._eq(&bv).not());
         let rr = match self.solve() {
@@ -744,11 +899,11 @@ impl Solver {
     {
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(push)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (check-sat)\n").unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
 
         let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
@@ -780,15 +935,15 @@ impl Solver {
         self.solver.pop(1);
         self.solver.push();
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(push)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(assert (not (= {} (S{} {}))))\n", val,
+        write!(self.debug.borrow_mut(), " (push)\n").unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (assert (not (= {} (S{} {}))))\n", val,
                self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(check-sat)\n").unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
-        write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (check-sat)\n").unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), " (get-value (S{} {}))\n", self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), " {}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
         self.solver.assert(&lhs_s._eq(&bv).not());
         let rr = match self.solve() {
@@ -826,7 +981,11 @@ impl Solver {
 
     pub fn solve(&self) -> bool {
         match self.solver.check() {
-            SatResult::Unsat | SatResult::Unknown => {
+            SatResult::Unknown => {
+                warn!("sat solver took too long. you can increase timeout with --smt-timeout=10000");
+                false
+            }
+            SatResult::Unsat => {
                 false
             }
             SatResult::Sat => {
@@ -850,11 +1009,13 @@ impl Solver {
         write!(self.debug.borrow_mut(), "; {}\n", m).unwrap();
     }
     pub fn debug_loc(&mut self, loc: &crate::ast::Location) {
-        //if self.debug_line != loc.line() {
-            self.debug_line = loc.line();
-            write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-            write!(self.debug.borrow_mut(), "; at {}:{}\n", loc.file, self.debug_line).unwrap();
-        //}
+        if &self.debug_loc != loc {
+            self.debug_loc = loc.clone();
+
+            let code = loc.span.as_str().replace("\n", &format!("\n{}; ", self.debug_indent));
+            write!(self.debug.borrow_mut(), "{}; : {}:{}\n", self.debug_indent, loc.file, loc.line()).unwrap();
+            write!(self.debug.borrow_mut(), "{}; {}\n", self.debug_indent, code).unwrap();
+        }
     }
 
     pub fn new(module_name: String) -> Self {
@@ -875,9 +1036,10 @@ impl Solver {
             ctx,
             solver,
             syms: HashMap::new(),
-            debug_line: 0,
+            debug_loc: super::ast::Location::builtin(),
             debug,
             debug_indent: String::new(),
+            branches: Vec::new(),
         }
     }
 

@@ -8,7 +8,9 @@ struct A {
 
 export fn main() -> int {
 
-    A a;
+    A a = A{
+        b: 1,
+    };
     u8 *x = a.a + a.b;
 
     return 0;

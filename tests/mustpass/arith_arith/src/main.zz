@@ -1,0 +1,20 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+
+    int a[100] = {1,2,3};
+    static_assert(len(a) == 100);
+
+    int *b = a;
+    static_assert(len(b) == 100);
+
+    int y = *b;
+
+    int *c = b + 10;
+    static_assert(len(c) == 90);
+
+    int x = *c;
+
+    return 0;
+}

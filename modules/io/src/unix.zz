@@ -45,19 +45,19 @@ pub fn wake_fd(Async mut* self, int fd, int events) -> bool {
 }
 
 
-fn impl_unix_wake(io::Context ctx, err::Err+et mut*e, io::Wake w)
+fn impl_unix_wake(io::Context mut*ctx, err::Err+et mut*e, io::Wake w)
     where err::checked(*e)
 {
-    if ctx.async == 0 {
+    if ctx->async == 0 {
         err::fail(e,1, "not an async io");
         return;
     }
 
-    Async mut* self = (Async mut*)ctx.async;
+    Async mut* self = (Async mut*)ctx->async;
     static_attest(safe(self));
 
-    if ctx.fd != 0 {
-        if !wake_fd(self, ctx.fd, (int)POLLIN) {
+    if ctx->fd != 0 {
+        if !wake_fd(self, ctx->fd, (int)POLLIN) {
             err::fail(e,1, "too many fds");
             return;
         }
@@ -65,21 +65,14 @@ fn impl_unix_wake(io::Context ctx, err::Err+et mut*e, io::Wake w)
 }
 
 
-export enum Result {
-    Ready,
-    Timeout,
-    Error,
-}
-
-export fn wait(Async+tail mut* self) -> Result {
+export fn wait(Async+tail mut* self, err::Err+et mut*e)
+    where err::checked(*e)
+{
     int rr = (int)poll(self->fds, self->count, self->timeout);
     new(self);
     if rr < 0 {
-        return Result::Error;
-    } else if rr == 0 {
-        return Result::Timeout;
-    } else {
-        return Result::Ready;
+        err::fail_with_errno(e, "poll");
+        return;
     }
 }
 
@@ -92,6 +85,7 @@ export fn unix(int fd) -> io::Io
 
     return io::Io {
         read_impl:  impl_unix_read,
+        write_impl: impl_unix_write,
         close_impl: impl_unix_close,
         wake_impl:  impl_unix_wake,
         ctx:        ctx,
@@ -106,7 +100,7 @@ export fn stdin() -> io::Io
 
 using <fcntl.h>::{fcntl, F_GETFL, O_NONBLOCK, F_SETFL};
 
-export fn make_async(io::Io mut *i, io::Async mut* unsafe async) -> bool {
+export fn make_read_async(io::Io mut *i, io::Async mut* unsafe async) -> bool {
 
     (i->ctx).async = async;
 
@@ -121,12 +115,12 @@ export fn make_async(io::Io mut *i, io::Async mut* unsafe async) -> bool {
 
 
 
-fn impl_unix_read(io::Context ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) -> io::Result
+fn impl_unix_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) -> io::Result
     where err::checked(*e)
 {
-    if ctx.async != 0 {
-        static_attest(safe(ctx.async));
-        if !wake_fd((Async mut*)ctx.async, ctx.fd, (int)POLLIN) {
+    if ctx->async != 0 {
+        static_attest(safe(ctx->async));
+        if !wake_fd((Async mut*)ctx->async, ctx->fd, (int)POLLIN) {
             err::fail(e,1, "too many fds");
             return io::Result::Error;
         }
@@ -137,7 +131,7 @@ fn impl_unix_read(io::Context ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) 
         return io::Result::Error;
     }
 
-    isize rr = (isize)unistd::read(ctx.fd, to, *l);
+    isize rr = (isize)unistd::read(ctx->fd, to, *l);
     if rr < 0 {
         if (int)errno == (int)EAGAIN {
             return io::Result::Later;
@@ -151,9 +145,30 @@ fn impl_unix_read(io::Context ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) 
     return io::Result::Ready;
 }
 
-fn impl_unix_close(io::Context ctx)
+fn impl_unix_write(io::Context mut*ctx, err::Err+et mut*e, u8 * to, usize mut *l) -> io::Result
+    where err::checked(*e)
 {
-    unistd::close(ctx.fd);
+    for (;;) {
+        isize rr = (isize)unistd::write(ctx->fd, to, *l);
+        if rr < 0 {
+            if (int)errno == (int)EAGAIN {
+                continue;
+            }
+            err::fail_with_errno(e, "read");
+            return io::Result::Error;
+        }
+        *l= (usize)rr;
+        return io::Result::Ready;
+    }
+}
+
+fn impl_unix_close(io::Context mut* ctx)
+{
+    if ctx->fd == 0 {
+        return;
+    }
+    unistd::close(ctx->fd);
+    ctx->fd = 0;
 }
 
 
@@ -172,27 +187,28 @@ fn impl_make_timeout(Async mut *async, err::Err+et mut*e, time::Time t2) -> io::
     return io::Io {
         read_impl:  impl_timeout_read,
         wake_impl:  impl_timer_wake,
+        close_impl: impl_timer_close,
         ctx:        ctx,
     };
 }
 
-fn impl_timeout_read(io::Context ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) -> io::Result
+fn impl_timeout_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) -> io::Result
     where err::checked(*e)
 {
     *l = 0;
 
-    if ctx.time == 0 {
+    if ctx->time == 0 {
         return io::Result::Eof;
     }
 
     time::Time now  = time::system();
     u64 mut now_m = now.to_millis();
-    if now_m > ctx.time {
+    if now_m > ctx->time {
         return io::Result::Ready;
     } else {
-        Async mut* self = (Async mut*)ctx.async;
+        Async mut* self = (Async mut*)ctx->async;
         static_attest(safe(self));
-        u64 remains = ctx.time - now_m;
+        u64 remains = ctx->time - now_m;
         if self->timeout < 0 || (u64)self->timeout > remains {
             self->timeout = (int)remains;
         }
@@ -202,25 +218,29 @@ fn impl_timeout_read(io::Context ctx, err::Err+et mut*e, u8 mut* to, usize mut *
 }
 
 
-fn impl_timer_wake(io::Context ctx, err::Err+et mut*e, io::Wake w)
+fn impl_timer_wake(io::Context mut*ctx, err::Err+et mut*e, io::Wake w)
     where err::checked(*e)
 {
-    if ctx.async == 0 {
+    if ctx->async == 0 {
         err::fail(e,1, "not an async io");
         return;
     }
 
-    Async mut* self = (Async mut*)ctx.async;
+    Async mut* self = (Async mut*)ctx->async;
     static_attest(safe(self));
 
-    if ctx.time != 0 {
+    if ctx->time != 0 {
         time::Time now  = time::system();
         u64 mut now_m = now.to_millis();
-        u64 remains = ctx.time - now_m;
+        u64 remains = ctx->time - now_m;
         if self->timeout < 0 || (u64)self->timeout > remains {
             self->timeout = (int)remains;
         }
     }
+}
+
+fn impl_timer_close(io::Context mut*ctx) {
+    ctx->time = 0;
 }
 
 

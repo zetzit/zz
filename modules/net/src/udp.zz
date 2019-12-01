@@ -102,6 +102,8 @@ export fn recv(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, 
 {
     uint mut alen = (uint)sizeof(SockAddrIn);
 
+    static_attest(len(buf->mem) > buf->len);
+
     int r = as<int>(posix_socket::recvfrom(
         self->fd,
         buf->mem + buf->len,

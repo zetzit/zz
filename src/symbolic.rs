@@ -105,6 +105,7 @@ pub struct Symbolic {
     defs:       HashMap<Name, ast::Def>,
     current_function_name: String,
     current_function_ret:  Option<Symbol>,
+    current_function_model: Vec<ast::Expression>,
     in_loop: bool,
 }
 
@@ -464,7 +465,9 @@ impl Symbolic {
 
         self.push(format!("function {}", name));
         self.ssa.push(&format!("\n\n;start of function {}", name));
-        self.current_function_name = name.clone();
+        self.ssa.branch();
+        self.current_function_name  = name.clone();
+        self.current_function_model = calleffect.clone();
 
         let mut prev : Option<Symbol> =  None;
         for i in 0..args.len() {
@@ -562,7 +565,7 @@ impl Symbolic {
                     (callassert.loc().clone(), format!("coercion to boolean is not well defined"))
                 ]));
             }
-            if !self.ssa.constrain((sym, self.memory[sym].temporal), true) {
+            if !self.ssa.attest((sym, self.memory[sym].temporal), true) {
                 return Err(Error::new(format!("callsite assert broke ssa solution"), vec![
                     (callassert.loc().clone(), format!("there may be conflicting constraints"))
                 ]));
@@ -577,14 +580,33 @@ impl Symbolic {
 
         self.execute_scope(&mut body.statements)?;
 
-        for callsite_effect in calleffect {
+        self.check_function_model(&body.end)?;
+
+
+        self.ssa.pop(&format!("end of function {}\n\n", name));
+        self.ssa.unbranch(false);
+        self.pop();
+        Ok(())
+    }
+
+
+    fn check_function_model(&mut self, end: &ast::Location) -> Result<(), Error> {
+        for callsite_effect in &mut self.current_function_model.clone() {
             let casym = self.execute_expr(callsite_effect)?;
+            if self.memory[casym].t != smt::Type::Bool {
+                return Err(Error::new(format!("expected boolean, got {}", self.memory[casym].typed), vec![
+                    (callsite_effect.loc().clone(), format!("model expression must be boolean"))
+                ]));
+            }
             self.ssa.assert((casym, self.memory[casym].temporal), |a,model| match a {
                 false  => {
                     let mut estack = vec![
-                        (callsite_effect.loc().clone(), format!("function must behave like this model")),
+                        (callsite_effect.loc().clone(), format!("function does not behave like this model")),
+                        (end.clone(), format!("when returning here")),
                     ];
-                    estack.extend(self.demonstrate(model.as_ref().unwrap(), (casym, self.memory[casym].temporal), 0));
+                    if let Some(model) = &model {
+                        estack.extend(self.demonstrate(model, (casym, self.memory[casym].temporal), 0));
+                    }
                     Err(Error::new(format!("unproven model"), estack))
                 }
                 true => {
@@ -593,9 +615,8 @@ impl Symbolic {
             })?;
         };
 
-        self.ssa.pop(&format!("end of function {}\n\n", name));
-        self.pop();
         Ok(())
+
     }
 
 
@@ -691,9 +712,6 @@ impl Symbolic {
         for i in 0..body.len() {
             let (body, rest) = body.split_at_mut(i + 1);
 
-            // this gets modified in place. must not do that for each branch
-            let mut rest = rest.iter().map(|stm|(*stm).clone()).collect::<Vec<Box<ast::Statement>>>();
-
             match body[i].as_mut() {
                 ast::Statement::Var{loc, typed, tags, name, array, assign} => {
 
@@ -748,51 +766,52 @@ impl Symbolic {
                     let mut negative_stack : Vec<(ast::Location, ast::Expression)> = Vec::new();
 
 
+
+
+
                     // create branch expansions
                     let freeze = self.memory.clone();
                     self.push("branch".to_string());
-
                     for (loc, expr, body2) in branches {
                         expanded.push((negative_stack.clone(), expr.clone(), loc.clone(), body2));
                         if let Some(expr) = expr {
-
-
                             // we have to execute all conditionals once, because there might be translations
+                            // TODO this should be in expand, not there
                             self.ssa.push("dummy execution");
                             self.execute_expr(expr)?;
                             self.ssa.pop("end of dummy");
-
-
                             negative_stack.push((loc.clone(), expr.clone()));
                         }
                     }
-
                     self.pop();
                     self.memory = freeze;
+
+
+
+
 
                     // execute each expansion with all negative preconditions
                     for (mut negative, mut positive, branchloc, body2) in expanded {
 
                         let positive_constrain = if let Some(expr) = &mut positive {
-                            let sym = self.execute_expr(expr)?;
 
+                            let sym = self.execute_expr(expr)?;
                             if self.memory[sym].typed.t != ast::Type::Bool {
                                 return Err(Error::new(format!("expected boolean, got {}", self.memory[sym].typed), vec![
                                     (expr.loc().clone(), format!("coercion to boolean is difficult to prove"))
                                 ]));
                             }
-
                             let sym = (sym, self.memory[sym].temporal);
 
 
-
-                            let constrained_branch = self.ssa.bool_value(sym, |a,_model| match a {
+                            self.ssa.bool_value(sym, |a,_model| match a {
                                 smt::Assertion::Constrained(val) => {
-                                    emit_warn("constrained branch condition", &[
-                                        (expr.loc().clone(), format!("expression is always {}. \
-                                                                     this may be a false positive due to branch memory limit", val))
+                                    emit_warn("unnecessary branch condition", &[
+                                        (expr.loc().clone(), format!("expression is always {}", val))
                                     ]);
-                                    /* TODO this is wrong, because it may be different for a different parent branch 
+                                    /* TODO this is wrong, because it may be different for a different parent branch.
+                                     *  i guess we need to include branches in bool_value
+                                     *
                                     let mut estack = Vec::new();
                                     estack.push((expr.loc().clone(), format!("expression is statically provable")));
                                     if let Some(model) = &model {
@@ -800,83 +819,41 @@ impl Symbolic {
                                     }
                                     Err(Error::new(format!("condition can never be {}", !val), estack))
                                     */
-                                    true
                                 }
-                                _ => {
-                                    false
-                                }
+                                _ => {}
                             });
-
-
-                            if constrained_branch {
-                                // TODO we can't skip the branch, because there may still be expansions that need to be done
-                                // a medium term fix is moving expansion out of symbolic.
-                                // best thing we can do now is just not assert the branch as constrain to avoid conflicts
-                                None
-                            } else {
-                                self.cur().trace.push((sym, expr.loc().clone()));
-                                self.ssa.debug_loc(&expr.loc());
-                                Some((sym, expr.loc().clone()))
-                            }
+                            self.cur().trace.push((sym, expr.loc().clone()));
+                            self.ssa.debug_loc(&expr.loc());
+                            Some((sym, expr.loc().clone()))
                         } else {
                             None
                         };
 
-                        let freeze = self.memory.clone();
                         self.push("branch".to_string());
-
-                        // exexute a branch including the conditional body
-                        self.ssa.push("branch at");
                         self.ssa.debug_loc(&branchloc);
-                        self.ssa.push("positive branch at");
-                        self.ssa.debug_loc(&branchloc);
+                        self.ssa.branch();
 
                         if let Some((sym, loc)) = &positive_constrain {
-                            if !self.ssa.constrain(*sym, true) {
-                                return Err(Error::new(format!("positive condition breaks ssa"), vec![
-                                    (loc.clone(), format!("there may be conflicting constraints"))
-                                ]));
-                            }
+                            self.ssa.constrain_branch(*sym, true);
                         }
 
                         // all previous expressions are therefor false
                         for (loc, expr) in &mut negative {
                             let sym = self.execute_expr(expr)?;
                             let sym = (sym, self.memory[sym].temporal);
-                            if !self.ssa.constrain(sym, false) {
-                                return Err(Error::new(format!("negative condition breaks ssa"), vec![
-                                    (expr.loc().clone(), format!("there may be conflicting constraints")),
-                                    (loc.clone(), format!("during execution of this branch"))
-                                ]));
-                            }
+                            self.ssa.constrain_branch(sym, false);
                             self.cur().trace.push((sym, expr.loc().clone()));
                         }
 
                         let rere = self.execute_scope(&mut body2.statements)?;
-                        // this currently only detects the simplest case where the if body returns without further nesting
+                        self.ssa.debug("end branch");
+
                         if let ScopeReturn::Return(_) = rere {
-                            self.ssa.pop("no rest because branch returned function");
-                            self.ssa.pop("end of branch");
+                            self.ssa.unbranch(true);
                         } else {
-                            self.ssa.pop("end of possitive branch at / rest following after positive branch");
-                            self.ssa.debug_loc(&branchloc);
-                            self.execute_scope(&mut rest)?;
-                            self.ssa.pop("end of branch at / rest following after negative branch");
+                            self.ssa.unbranch(false);
                         }
-                        self.ssa.debug_loc(&branchloc);
-
                         self.pop();
-                        self.memory = freeze;
-
-                        if let ScopeReturn::Return(_) = rere {
-                            if let Some((sym, loc)) = positive_constrain {
-                                if !self.ssa.constrain(sym, false) {
-                                    return Err(Error::new(format!("positive condition breaks ssa"), vec![
-                                        (loc.clone(), format!("there may be conflicting constraints"))
-                                    ]));
-                                }
-                            }
-                        }
                     }
 
                     // continue execution as if no condition was met
@@ -891,6 +868,7 @@ impl Symbolic {
                             self.copy(retsym, e, expr.loc())?;
                         }
                     }
+                    self.check_function_model(loc)?;
                     // stop. do not execute anything behind return
                     return Ok(ScopeReturn::Return(loc.clone()));
                 }
@@ -1016,7 +994,7 @@ impl Symbolic {
                         }
                         let sym = (sym, self.memory[sym].temporal);
                         self.cur().trace.push((sym.clone(), expr.loc().clone()));
-                        if !self.ssa.constrain(sym, true) {
+                        if !self.ssa.attest(sym, true) {
                             return Err(Error::new(format!("condition breaks ssa"), vec![
                                 (expr.loc().clone(), format!("there may be conflicting constraints"))
                             ]));
@@ -1042,7 +1020,7 @@ impl Symbolic {
                     let sym = (sym, self.memory[sym].temporal);
                     self.cur().trace.push((sym.clone(), expr.loc().clone()));
 
-                    if !self.ssa.constrain(sym, true) {
+                    if !self.ssa.attest(sym, true) {
                         return Err(Error::new(format!("condition breaks ssa"), vec![
                             (expr.loc().clone(), format!("there may be conflicting constraints"))
                         ]));
@@ -1624,7 +1602,7 @@ impl Symbolic {
                                 (args[0].loc().clone(), format!("argument must be boolean"))
                             ]));
                         }
-                        if !self.ssa.constrain((sym, self.memory[sym].temporal), true) {
+                        if !self.ssa.attest((sym, self.memory[sym].temporal), true) {
                             return Err(Error::new(format!("function is unprovable"), vec![
                                 (expr.loc().clone(), format!("static_attest leads to conflicting constraints"))
                             ]));
@@ -1657,7 +1635,9 @@ impl Symbolic {
                             false => {
                                 let mut estack = vec![(loc.clone(),
                                     format!("you may need an if condition or callsite_assert to increase confidence"))];
-                                estack.extend(self.demonstrate(model.as_ref().unwrap(), (sym, self.memory[sym].temporal), 0));
+                                if let Some(model) = &model {
+                                    estack.extend(self.demonstrate(model, (sym, self.memory[sym].temporal), 0));
+                                }
                                 Err(Error::new(format!("theory is unproven"), estack))
                             }
                             true => {
@@ -1934,7 +1914,7 @@ impl Symbolic {
                                 self.copy(tmp, syms[i].0, args[i].loc())?;
                             }
                             let casym = self.execute_expr(callsite_effect)?;
-                            if !self.ssa.constrain((casym, self.memory[casym].temporal), true) {
+                            if !self.ssa.attest((casym, self.memory[casym].temporal), true) {
                                 return Err(Error::new(format!("callsite effect would break SSA"), vec![
                                     (expr.loc().clone(), format!("there might be conflicting constraints"))
                                 ]));
@@ -2112,6 +2092,23 @@ impl Symbolic {
                         self.memory[tmp].t.clone(),
                         signed,
                     );
+
+
+                    let mut value = Value::Unconstrained("pointer arithmetic".into());
+                    if let Value::Array{..} = &self.memory[lhs_sym].value {
+                        if let Some(nuval) = self.ssa.value((len_of_opresult, self.memory[len_of_opresult].temporal), |a,_|match a{
+                            smt::Assertion::Constrained(val) => {
+                                let mut nuarray = HashMap::new();
+                                Some(Value::Array{len: val as usize, array: nuarray})
+                            }
+                            _ => None,
+                        }) {
+                            value = nuval;
+                        }
+                    };
+                    self.memory[tmp].value = value;
+
+                    return Ok(tmp);
                 }
 
 
@@ -2734,8 +2731,10 @@ impl Symbolic {
         self.memory[lhs].value = self.memory[rhs].value.clone();
 
 
-        self.ssa.assign(
-            (lhs, self.memory[lhs].temporal),
+        self.ssa.assign_maybe(
+            lhs,
+            self.memory[lhs].temporal - 1,
+            self.memory[lhs].temporal,
             (rhs, self.memory[rhs].temporal),
             Self::smt_type(&newtype),
         );
@@ -2856,6 +2855,7 @@ impl Symbolic {
             defs:    HashMap::new(),
             current_function_name: String::new(),
             current_function_ret:  None,
+            current_function_model: Vec::new(),
             in_loop: false,
         }
     }
@@ -2916,6 +2916,11 @@ impl Symbolic {
             None => self.memory[sym.0].declared.clone(),
         };
 
+        if depth > 5 {
+            estack.push((valloc, "this expression is too complex to drill down further".to_string()));
+            return estack;
+        }
+
         match &self.memory[sym.0].value {
             Value::InfixOp{lhs, rhs, op} => {
                 let overflow = self.ssa.infix_op_will_wrap(
@@ -2933,9 +2938,9 @@ impl Symbolic {
                     };
 
                     if overflow {
-                        estack.push((valloc, format!("for OVERFLOW of {} {{{}}} = {}", self.memory[sym.0].name, sym.1, v)));
+                        estack.push((valloc, format!("for OVERFLOW of {} |{}| = {}", self.memory[sym.0].name, sym.1, v)));
                     } else {
-                        estack.push((valloc, format!("for {} {{{}}} = {}", self.memory[sym.0].name, sym.1, v)));
+                        estack.push((valloc, format!("for {} |{}| = {}", self.memory[sym.0].name, sym.1, v)));
                     }
                 }
 
@@ -2949,9 +2954,9 @@ impl Symbolic {
             //Value::Integer(_) => return estack,
             _ => {
                 if let Some(v) = self.ssa.extract(model, sym) {
-                    estack.push((valloc, format!("for {} {{{}}} = 0x{:x}", self.memory[sym.0].name, sym.1, v)));
+                    estack.push((valloc, format!("for {} |{}| = 0x{:x}", self.memory[sym.0].name, sym.1, v)));
                 } else {
-                    estack.push((valloc, format!("for {} {{{}}} = ??", self.memory[sym.0].temporal, sym.1)));
+                    estack.push((valloc, format!("for {} |{}| = ??", self.memory[sym.0].temporal, sym.1)));
                 }
             }
         };

@@ -31,17 +31,19 @@ export  fn check(
 ) -> bool
     model checked(*self)
 {
-    static_attest(checked(*self));
     if (self->error != 0) {
         backtrace(self, file, scope, line);
+        static_attest(checked(*self));
         return true;
     }
     return false;
 }
 
 
-fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line) {
+fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line)
+{
     if tail > 0 {
+        static_attest((self->locations).len < tail);
         string::format(&(self->locations), "\n  %s:%zu \t%s", file, line, scope);
     }
 }
@@ -100,15 +102,15 @@ export fn abort(
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
 )
-
 model checked(*err)
 {
-    static_attest(checked(*err));
     if (err->error != 0) {
+        static_attest(checked(*err));
         backtrace(err, file, scope, line);
         fprintf(stderr, "fatal error %u: %s%s\n", err->error, err->description, (err->locations).mem);
         cabort();
     }
+    static_attest(checked(*err));
 }
 
 export fn eprint(Err+tail mut* err)

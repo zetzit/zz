@@ -1594,15 +1594,27 @@ pub fn emit_error<'a, S1, S2, I>(message: S1, v: I)
         j.level     = "error".to_string();
         j.file_name = "<anon>".to_string();
 
-        if let Some((loc,_)) = v.into_iter().next() {
+
+        let mut first  = true;
+        for (loc, message) in v.into_iter() {
             j.file_name     = loc.file.clone();
             j.line_start    = loc.span.start_pos().line_col().0;
             j.column_start  = loc.span.start_pos().line_col().1;
             j.line_end      = loc.span.end_pos().line_col().0;
             j.column_end    = loc.span.end_pos().line_col().1;
+
+
+            if first {
+                println!("{}", serde_json::to_string(&j).unwrap());
+                first = false;
+            }
+
+            j.level     = "W".to_string();
+            j.message   = message.to_string();
+            println!("{}", serde_json::to_string(&j).unwrap());
         }
 
-        println!("{}", serde_json::to_string(&j).unwrap());
+
         return;
     }
 

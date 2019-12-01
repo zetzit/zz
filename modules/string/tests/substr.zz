@@ -40,7 +40,8 @@ test t7{
 
 
 export fn main() -> int {
-    string::String+20 mut sub = {0};
+    string::String+20 mut sub;
+    string::clear(&sub);
 
     char mut * mut line = 0;
     usize mut l = 0;
@@ -51,7 +52,8 @@ export fn main() -> int {
     string::append_bytes(&sub, (u8*)line, (usize)nread -1);
 
 
-    string::String+20 mut s = {0};
+    string::String+20 mut s;
+    string::clear(&s);
 
     nread = as<int>(getline(&line, &l, stdin));
     if nread < 1 { return 1; }

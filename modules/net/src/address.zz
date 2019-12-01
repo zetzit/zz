@@ -102,6 +102,9 @@ export fn from_str_ipv6(Address mut* to, char * s, usize slen) -> bool
             unsafe {
                 n = hexmap[(ch & 0x1f) ^ 0x10];
             }
+            if at_part > 7 {
+                return false;
+            }
             parts[at_part] = (parts[at_part] << 4) | (u32)n;
             if parts[at_part] > 0xffff {
                 return false;
@@ -219,7 +222,7 @@ export fn from_str_ipv4(Address mut* to, char *s, usize slen) -> bool
 
 
 export fn to_string(string::String+st mut*to, Address * from)
-    where st>0
+    where st>2
 {
     switch from->type {
         Type::Ipv4 => {

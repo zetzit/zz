@@ -23,10 +23,10 @@ export enum Result {
     Eof,
 }
 
-export fntype read_fn  (Context ctx, err::Err+et mut* e, u8 mut* to, usize mut* len) -> Result;
-export fntype write_fn (Context ctx, err::Err+et mut* e, u8 mut* to, usize mut* len) -> Result;
-export fntype wake_fn  (Context ctx, err::Err+et mut* e, Wake w);
-export fntype close_fn (Context ctx);
+export fntype read_fn  (Context mut* ctx, err::Err+et mut* e, u8 mut* to, usize mut* len) -> Result;
+export fntype write_fn (Context mut* ctx, err::Err+et mut* e, u8* to, usize mut* len) -> Result;
+export fntype wake_fn  (Context mut* ctx, err::Err+et mut* e, Wake w);
+export fntype close_fn (Context mut* ctx);
 
 
 export struct Context {
@@ -48,24 +48,95 @@ export struct Io {
 export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
     where st > 1
     where err::checked(*e)
+    where str->len < st
 {
-    if self->read_impl != 0 {
-        static_attest(safe(self->read_impl));
-
-        usize mut l = st - str->len - 1;
-        Result rr = self->read_impl(self->ctx, e, as<u8 mut*>(str->mem + str->len), &l);
-        err::check(e);
-        if rr != Result::Ready {
-            return rr;
-        }
-        str->len += l;
-        static_attest(len(str->mem) > str->len);
-        (str->mem)[str->len] = 0;
-        return rr;
-    } else {
+    if self->read_impl == 0 {
         err::fail(e, 1, "noimpl");
         return Result::Error;
     }
+    static_attest(safe(self->read_impl));
+
+    usize mut l = st - str->len - 1;
+    Result rr = self->read_impl(&self->ctx, e, as<u8 mut*>(str->mem + str->len), &l);
+    err::check(e);
+    if rr != Result::Ready {
+        return rr;
+    }
+    str->len += l;
+    static_attest(len(str->mem) > str->len);
+    (str->mem)[str->len] = 0;
+    return rr;
+}
+
+export fn readline(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
+    where st > 1
+    where err::checked(*e)
+    where str->len < st
+    where st > 2
+{
+    if self->read_impl == 0 {
+        err::fail(e, 1, "noimpl");
+        return Result::Error;
+    }
+    static_attest(safe(self->read_impl));
+
+    u8 mut buf[2] = {0};
+    usize mut l = 1;
+    Result rr = self->read_impl(&self->ctx, e, buf, &l);
+    err::check(e);
+    if rr != Result::Ready {
+        return rr;
+    }
+
+    char ch = as<char>(buf[0]);
+
+    if ch == '\n' || ch == '\r' {
+        return Result::Ready;
+    }
+
+    if !str->push(ch) {
+        err::fail(e, 1, "oom");
+        return Result::Error;
+    }
+
+    return Result::Later;
+}
+
+export fn write(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
+    where st > 1
+    where err::checked(*e)
+    where str->len < len(str->mem)
+{
+    if self->write_impl == 0 {
+        err::fail(e, 1, "noimpl");
+        return Result::Error;
+    }
+    static_attest(safe(self->write_impl));
+
+    usize mut l = str->len;
+    Result rr = self->write_impl(&self->ctx, e, as<u8 mut*>(str->mem + str->len), &l);
+    err::check(e);
+    if rr != Result::Ready {
+        return rr;
+    }
+    return rr;
+}
+
+export fn write_bytes(Io mut* self, err::Err+et mut* e, u8 *b, usize mut *blen) -> Result
+    where err::checked(*e)
+{
+    if self->write_impl == 0 {
+        err::fail(e, 1, "noimpl");
+        return Result::Error;
+    }
+    static_attest(safe(self->write_impl));
+
+    Result rr = self->write_impl(&self->ctx, e, b, blen);
+    err::check(e);
+    if rr != Result::Ready {
+        return rr;
+    }
+    return rr;
 }
 
 export fn close(Io mut* self)
@@ -74,17 +145,17 @@ export fn close(Io mut* self)
         return;
     }
     static_attest(safe(self->close_impl));
-    self->close_impl(self->ctx);
+    self->close_impl(&self->ctx);
 }
 
-export fn wake(Io *self, err::Err+et mut* e, Wake w)
+export fn wake(Io mut*self, err::Err+et mut* e, Wake w)
     where err::checked(*e)
 {
     if self->wake_impl == 0 {
         return;
     }
     static_attest(safe(self->wake_impl));
-    self->wake_impl(self->ctx,e,w);
+    self->wake_impl(&self->ctx,e,w);
 }
 
 pub fn drop(Io mut* self) {

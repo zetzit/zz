@@ -15,6 +15,7 @@ test overflow{
 
 export fn main() -> int {
     string::String+50 mut s = {0};
+    string::clear(&s);
 
     for (;;) {
         char mut * mut line = 0;

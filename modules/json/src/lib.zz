@@ -58,6 +58,7 @@ export struct Parser+ {
 
 export fn new(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void mut * unsafe user)
     where err::checked(*e)
+    where tail > 1
     where safe(de)
 
 {
@@ -94,6 +95,7 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
 export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strlen)
     where err::checked(*e)
     where len(str) >= strlen
+    where tail > 2
 {
     for (usize mut at = 0; at < strlen; at++) {
         self->col += 1;
@@ -130,7 +132,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     }
                 }
                 self->esc = false;
-                if !string::push(&(self->capture), ch) {
+                if !(self->capture).push(ch) {
                     err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
                     return;
                 }
@@ -197,8 +199,9 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
 
 fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
     where err::checked(*e)
+    where tail > 2
 {
-    static_attest(self->depth < len(self->state));
+    static_attest(self->depth  < len(self->state));
     ParserStack mut * mut stack = &((self->state)[self->depth]);
 
     switch stack->state {
@@ -253,11 +256,11 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                 stack->state = ParserState::IntVal;
             } else if token == '{' {
                 stack->state = ParserState::PostVal;
-                (self->depth)+=1;
-                if self->depth >= MAX_DEPTH {
+                if self->depth >= MAX_DEPTH - 1 {
                     err::fail(e, 12, "json structure too deep");
                     return;
                 } else {
+                    (self->depth)+=1;
                     ParserStack mut* previous_stack = stack;
                     stack = &((self->state)[self->depth]);
                     memset(stack, 0, sizeof(ParserStack));
@@ -270,6 +273,9 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                             t:      ValueType::Object,
                         };
                         de(e, self, previous_stack->user, (self->capture).mem, val);
+                        if err::check(e) {
+                            return;
+                        }
                     }
                     previous_stack->index += 1;
                 }
@@ -293,6 +299,9 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                             t:      ValueType::Array,
                         };
                         de(e, self, previous_stack->user, (self->capture).mem, val);
+                        if err::check(e) {
+                            return;
+                        }
                     }
                     previous_stack->index += 1;
                 }
@@ -312,6 +321,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                 stack->state = ParserState::PostVal;
                 if stack->de != 0 {
                     static_attest(safe(stack->de));
+                    static_attest(self->keylen < len((self->capture).mem));
                     deserialize_t de = (deserialize_t)stack->de;
                     Value val = Value{
                         index:  stack->index,
@@ -319,6 +329,9 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                         string: ((self->capture).mem + self->keylen),
                     };
                     de(e, self, stack->user, (self->capture).mem, val);
+                    if err::check(e) {
+                        return;
+                    }
                     stack->index += 1;
                 }
             } else {
@@ -348,6 +361,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
 
             if stack->de != 0 {
                 static_attest(safe(stack->de));
+                static_attest(self->keylen < len((self->capture).mem));
                 deserialize_t de = (deserialize_t)stack->de;
 
                 Value val = Value{

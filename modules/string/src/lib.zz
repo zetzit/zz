@@ -8,13 +8,38 @@ export struct String+ {
     char    mem[];
 }
 
-export fn clear(String+tail mut * self) {
+
+/*
+TODO
+this in the beginning of every function:
+
+static_attest(self->len < t);
+
+should have been a where condition,
+but its too damn annoing for the user.
+
+we need conditions that get checked for every use of a struct automatically
+
+*/
+
+export fn clear(String+tail mut * self)
+    model self->len  == 0
+    model nullterm(self->mem)
+{
     c_string::memset(self->mem, 0, tail);
     self->len = 0;
+
+    static_attest(nullterm(self->mem));
 }
 
 export fn push(String+t mut * self, char cstr) -> bool
+    where t > 2
+    model self->len < t
+    model nullterm(self->mem)
 {
+    static_attest(self->len < t);
+    static_attest(nullterm(self->mem));
+
     if self->len > t - 2 {
         return false;
     }
@@ -22,15 +47,19 @@ export fn push(String+t mut * self, char cstr) -> bool
     static_attest(self->len < len(self->mem));
     (self->mem)[self->len] = cstr;
     self->len += 1;
+
     return true;
 }
 
-export fn pop(String+t mut * self) -> bool {
+export fn pop(String+t mut * self) -> bool
+    model self->len < t
+{
+    static_attest(self->len < t);
+
     if self->len == 0 {
         return false;
     }
     self->len -= 1;
-    static_attest(self->len < len(self->mem));
     (self->mem)[self->len] = 0;
     return true;
 }
@@ -38,7 +67,10 @@ export fn pop(String+t mut * self) -> bool {
 export fn append_cstr(String+t mut * self, char * cstr)
     where nullterm(cstr)
     model nullterm(self->mem)
+    model self->len < t
 {
+    static_attest(self->len < t);
+
     usize mut inlen = strlen(cstr);
 
     if inlen + self->len > t - 1 {
@@ -52,7 +84,11 @@ export fn append_cstr(String+t mut * self, char * cstr)
 }
 
 export fn append(String+t mut * self, String+t2 * other)
+    model self->len < t
+    model nullterm(self->mem)
 {
+    static_attest(self->len < t);
+
     usize mut inlen = other->len;
 
     if inlen + self->len > t - 1 {
@@ -68,18 +104,27 @@ export fn append(String+t mut * self, String+t2 * other)
 
 export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
     where len(bytes) >= inlen
+    model self->len < t
+    model nullterm(self->mem)
 {
+    static_attest(self->len < t);
+
     if inlen + self->len > t - 1 {
         inlen = t - 1 - self->len;
     }
 
     c_string::memcpy(self->mem + self->len, bytes, inlen);
     self->len += inlen;
+
+    static_attest(nullterm(self->mem))
 }
 
 export fn format(String+tail mut * self, char *fmt, ...) -> int
     where tail > 0
+    model self->len < tail
 {
+    static_attest(self->len < tail);
+
     va_list mut args;
     va_start (args, fmt);
 
@@ -128,7 +173,11 @@ export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
     return as<int>(c_string::strncmp(self->mem,a,alen)) == 0;
 }
 
-export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool {
+export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
+    model self->len < tail
+{
+    static_attest(self->len < tail);
+
     char *rr = (char*)stdio::fgets(self->mem + self->len, tail - self->len, stream);
     if rr == 0 {
         return false;
@@ -138,15 +187,18 @@ export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool {
     static_attest(safe(extmem));
     static_attest(nullterm(extmem));
     self->len += strlen(extmem);
+    static_attest(self->len < len(self->mem));
     return true;
 }
 
 
 
 export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut* other)
+    model self->len  < tail
+    model other->len < tail2
 {
-    static_attest(len(other->mem) >= tail2);
-    static_attest(len(self->mem) >= tail);
+    static_attest(other->len < len(other->mem));
+    static_attest(self->len < tail);
 
     if self->len == 0 {
         return;
@@ -203,8 +255,11 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
 
 
 export fn split(String+tail *self, char token, usize mut *iterator, String+tail2 mut* other) -> bool
+    model self->len  < tail
+    where other->len < tail2
+    model other->len < tail2
 {
-    static_attest(len(self->mem) >= self->len);
+    static_attest(self->len < tail);
 
     usize start = *iterator;
 
@@ -229,7 +284,9 @@ export fn split(String+tail *self, char token, usize mut *iterator, String+tail2
 }
 
 
-export fn space(String+tail *self) -> usize {
+export fn space(String+tail *self) -> usize
+    model return == tail - self->len
+{
     return tail - self->len;
 }
 

@@ -20,6 +20,7 @@ test limiter {
 
 pub fn main() -> int {
     string::String+10 mut s = {0};
+    string::clear(&s);
     if !string::fgets(&s, stdin) {
         return 2;
     }

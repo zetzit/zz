@@ -1,0 +1,18 @@
+using <stdio.h>::{printf};
+
+
+
+struct A+ {
+    int dummy;
+    int tail[];
+}
+
+
+fn something(A+t*self) {
+    static_assert(t == len(self->tail));
+}
+
+export fn main() -> int {
+
+    return 0;
+}

@@ -1,0 +1,13 @@
+[project]
+version = "0.1.0"
+name = "arith_arith"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
