@@ -583,14 +583,21 @@ impl Symbolic {
         self.check_function_model(&body.end)?;
 
 
-        self.ssa.pop(&format!("end of function {}\n\n", name));
         self.ssa.unbranch(false);
+        self.ssa.pop(&format!("end of function {}\n\n", name));
         self.pop();
         Ok(())
     }
 
 
     fn check_function_model(&mut self, end: &ast::Location) -> Result<(), Error> {
+        if self.current_function_model.len() < 1 {
+            return Ok(());
+        }
+
+        let mut syms = Vec::new();
+        let mut locs = Vec::new();
+
         for callsite_effect in &mut self.current_function_model.clone() {
             let casym = self.execute_expr(callsite_effect)?;
             if self.memory[casym].t != smt::Type::Bool {
@@ -598,21 +605,35 @@ impl Symbolic {
                     (callsite_effect.loc().clone(), format!("model expression must be boolean"))
                 ]));
             }
-            self.ssa.assert((casym, self.memory[casym].temporal), |a,model| match a {
-                false  => {
-                    let mut estack = vec![
-                        (callsite_effect.loc().clone(), format!("function does not behave like this model")),
-                        (end.clone(), format!("when returning here")),
-                    ];
-                    if let Some(model) = &model {
-                        estack.extend(self.demonstrate(model, (casym, self.memory[casym].temporal), 0));
+
+            syms.push((casym, self.memory[casym].temporal));
+            locs.push(callsite_effect.loc().clone());
+        }
+
+
+        // try the fast path
+        let ok = self.ssa.assert(syms.clone(), |val,_|val);
+
+
+        // one assertion broke, try them individually
+        if !ok {
+            for (sym,loc) in syms.into_iter().zip(locs.into_iter()) {
+                self.ssa.assert(vec![sym], |a,model| match a {
+                    false  => {
+                        let mut estack = vec![
+                            (loc.clone(), format!("function does not behave like this model")),
+                            (end.clone(), format!("when returning here")),
+                        ];
+                        if let Some(model) = &model {
+                            estack.extend(self.demonstrate(model, sym, 0));
+                        }
+                        Err(Error::new(format!("unproven model"), estack))
                     }
-                    Err(Error::new(format!("unproven model"), estack))
-                }
-                true => {
-                    Ok(())
-                }
-            })?;
+                    true => {
+                        Ok(())
+                    }
+                })?;
+            }
         };
 
         Ok(())
@@ -877,22 +898,52 @@ impl Symbolic {
                 ast::Statement::Mark{..} => {
                 },
                 ast::Statement::Switch{expr, cases, default, ..} => {
-                    //TODO actually implement branch execution
 
-                    self.push("switch".into());
-                    self.execute_expr(expr)?;
-                    for (conds,body) in cases {
-                        for expr in conds {
-                            let freeze = self.memory.clone();
-                            self.ssa.debug_loc(&expr.loc());
+
+                    let switchsym = self.execute_expr(expr)?;
+
+                    for (conds, body) in cases {
+                        for expr2 in conds {
+
+                            let compsym = self.execute_expr(expr2)?;
+
+
+                            let switchmatch = self.temporary(
+                                format!("switch branch ({}=={})",
+                                self.memory[switchsym].name,
+                                self.memory[compsym].name),
+                                ast::Typed{
+                                    t:      ast::Type::Bool,
+                                    ptr:    Vec::new(),
+                                    loc:    expr.loc().clone(),
+                                    tail:   ast::Tail::None,
+                                },
+                                expr.loc().clone(),
+                                ast::Tags::new(),
+                            )?;
+
+                            self.ssa.infix_op(
+                                switchmatch,
+                                (switchsym , self.memory[switchsym].temporal),
+                                (compsym, self.memory[compsym].temporal),
+                                ast::InfixOperator::Equals,
+                                self.memory[switchmatch].t.clone(),
+                                false,
+                            );
+
                             self.push("case".into());
-                            self.ssa.push("case");
-                            self.execute_expr(expr)?;
-                            self.execute_scope(&mut body.statements)?;
-                            self.ssa.pop("end of case");
+                            self.ssa.branch();
+                            self.ssa.constrain_branch((switchmatch, self.memory[switchmatch].temporal), true);
+
+                            let rere = self.execute_scope(&mut body.statements)?;
+
+                            if let ScopeReturn::Return(_) = rere {
+                                self.ssa.unbranch(true);
+                            } else {
+                                self.ssa.unbranch(false);
+                            }
+
                             self.pop();
-                            self.memory = freeze;
-                            self.ssa.debug_loc(&expr.loc());
                         }
                     }
 
@@ -905,8 +956,6 @@ impl Symbolic {
                         self.pop();
                         self.memory = freeze;
                     }
-
-                    self.pop();
                 }
                 ast::Statement::Assign{loc, lhs, op, rhs} => {
                     let lhs = self.execute_expr(lhs)?;
@@ -1416,7 +1465,7 @@ impl Symbolic {
                     );
 
                 self.ssa.debug("assert that length less than index is true");
-                self.ssa.assert((tmp2, self.memory[tmp2].temporal), |a,model| match a {
+                self.ssa.assert(vec![(tmp2, self.memory[tmp2].temporal)], |a,model| match a {
                     false => {
                         let mut estack = Vec::new();
                         estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp2, self.memory[tmp2].temporal), 0));
@@ -1631,7 +1680,7 @@ impl Symbolic {
                                 (args[0].loc().clone(), format!("coercion to boolean is difficult to prove"))
                             ]));
                         }
-                        self.ssa.assert((sym, self.memory[sym].temporal), |a,model|match a{
+                        self.ssa.assert(vec![(sym, self.memory[sym].temporal)], |a,model|match a{
                             false => {
                                 let mut estack = vec![(loc.clone(),
                                     format!("you may need an if condition or callsite_assert to increase confidence"))];
@@ -1817,7 +1866,12 @@ impl Symbolic {
                         // callsite assert evaluated in the callsite means we need to export
                         // callargs as their argument names
 
-                        for callsite_assert in &mut callsite_assert {
+
+                        if callsite_assert.len() > 0 {
+                            let mut ca_syms = Vec::new();
+                            let mut ca_locs = Vec::new();
+
+
                             self.push("callsite_assert".to_string());
                             self.ssa.push("callsite_assert");
 
@@ -1827,31 +1881,47 @@ impl Symbolic {
                                     farg.typed.clone(),
                                     args[i].loc().clone(),
                                     farg.tags.clone(),
-                                )?;
+                                    )?;
                                 self.copy(tmp, syms[i].0, args[i].loc())?;
                             }
 
-                            let casym = self.execute_expr(callsite_assert)?;
-                            self.ssa.assert((casym, self.memory[casym].temporal), |a,model| match a {
-                                false => {
-                                    let mut estack = vec![
-                                        (loc.clone(),format!("in this callsite")),
-                                        (callsite_assert.loc().clone(), format!("function call requires these conditions")),
-                                        (functionlloc.clone(), format!("for this function")),
-                                    ];
-                                    if let Some(model) = &model {
-                                        estack.extend(self.demonstrate(model, (casym, self.memory[casym].temporal), 0));
-                                    }
-                                    Err(Error::new(format!("unproven callsite assert for {}", self.memory[casym].name), estack))
-                                }
-                                true => {
-                                    Ok(())
-                                }
-                            })?;
+                            for callsite_assert in &mut callsite_assert {
+                                let casym = self.execute_expr(callsite_assert)?;
+                                ca_syms.push((casym, self.memory[casym].temporal));
+                                ca_locs.push(callsite_assert.loc().clone());
+                            }
 
+                            // try the fast path
+                            let ok = self.ssa.assert(ca_syms.clone(), |val,_|val);
+
+
+                            // one assertion broke, try them individually
+                            if !ok {
+                                for (sym,loc) in ca_syms.into_iter().zip(ca_locs.into_iter()) {
+                                    self.ssa.assert(vec![sym], |a,model| match a {
+                                        false => {
+                                            let mut estack = vec![
+                                                (loc.clone(),format!("in this callsite")),
+                                                (loc.clone(), format!("function call requires these conditions")),
+                                                (functionlloc.clone(), format!("for this function")),
+                                            ];
+                                            if let Some(model) = &model {
+                                                estack.extend(self.demonstrate(model, sym, 0));
+                                            }
+                                            Err(Error::new(format!("unproven callsite assert for {}", self.memory[sym.0].name), estack))
+                                        }
+                                        true => {
+                                            Ok(())
+                                        }
+                                    })?;
+                                }
+
+                            }
                             self.ssa.pop("end of callsite_assert");
                             self.pop();
                         }
+
+
 
 
                         // TODO for now mark all pointer call args as untrackable in the callsite
@@ -2046,7 +2116,7 @@ impl Symbolic {
                         false,
                     );
                     self.ssa.debug("assert that length less than index is true");
-                    self.ssa.assert((len_assert, self.memory[len_assert].temporal), |a, model| match a {
+                    self.ssa.assert(vec![(len_assert, self.memory[len_assert].temporal)], |a, model| match a {
                         false => {
                             let mut estack = Vec::new();
                             estack.extend(self.demonstrate(model.as_ref().unwrap(), (len_assert, self.memory[len_assert].temporal), 0));
@@ -2398,7 +2468,7 @@ impl Symbolic {
         let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
         self.ssa.invocation(*theosym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], tmp1);
 
-        self.ssa.assert((tmp1, self.memory[tmp1].temporal), |a,model| match a {
+        self.ssa.assert(vec![(tmp1, self.memory[tmp1].temporal)], |a,model| match a {
             false  => {
                 let mut estack = vec![(loc.clone(),
                 format!("you may need an if condition or callsite_assert to prove it is safe"))];

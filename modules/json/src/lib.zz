@@ -160,11 +160,13 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         }
                     }
                     */
+                    static_attest(err::checked(*e));
                     if state == ParserState::IntVal {
                         advance(self, e, ch);
                     }
                 }
                 '{' | '[' | '}' | ']' | '"' | ':' | ',' => {
+                    static_attest(err::checked(*e));
                     advance(self, e, ch);
                     if err::check(e) {
                         return;
@@ -370,6 +372,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     integer:    as<int>(atoi((self->capture).mem + self->keylen)),
                 };
                 de(e, self, stack->user, (self->capture).mem, val);
+                if err::check(e) { return; }
                 stack->index += 1;
             }
         }

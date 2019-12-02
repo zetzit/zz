@@ -27,6 +27,7 @@ use name::Name;
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 
 pub struct Error {
@@ -133,13 +134,28 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
 
 
-    let iterf =  |mut module|{
+
+    let working_on_these = Arc::new(Mutex::new(HashSet::new()));
+
+
+    let iterf =  |mut module| {
 
         //only emit if any source file is newer than the c file
         let (_, outname) = emitter::outname(&project.project, &stage, &module, false);
         if module.is_newer_than(&outname) {
+            let module_human_name = module.name.human_name();
             if !silent {
-                pb.lock().unwrap().message(&format!("emitting {} ", module.name));
+                working_on_these.lock().unwrap().insert(module_human_name.clone());
+                let mut indic = String::new();
+                for working_on in  working_on_these.lock().unwrap().iter() {
+                    if !indic.is_empty() {
+                        indic.push_str(", ");
+                    }
+                    indic = format!("{}{} ", indic, working_on);
+                }
+                indic = format!("prove [ {}]  ", indic);
+                pb.lock().unwrap().message(&indic);
+                pb.lock().unwrap().tick();
             }
 
             expand::expand(&mut module)?;
@@ -155,6 +171,16 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             let cf = em.emit();
 
             if !silent {
+                working_on_these.lock().unwrap().remove(&module_human_name);
+                let mut indic = String::new();
+                for working_on in  working_on_these.lock().unwrap().iter() {
+                    if !indic.is_empty() {
+                        indic.push_str(", ");
+                    }
+                    indic = format!("{}{} ", indic, working_on);
+                }
+                indic = format!("prove [ {}]  ", indic);
+                pb.lock().unwrap().message(&indic);
                 pb.lock().unwrap().inc();
             }
             Ok((cf.name.clone(), cf))

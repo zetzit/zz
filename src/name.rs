@@ -26,6 +26,15 @@ impl Name {
             false
         }
     }
+
+
+    pub fn human_name(&self) -> String {
+        if self.is_absolute() {
+            (self.0)[1..].join("::")
+        } else {
+            self.0.join("::")
+        }
+    }
 }
 
 impl Hash for Name {

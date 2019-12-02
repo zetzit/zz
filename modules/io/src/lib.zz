@@ -48,8 +48,9 @@ export struct Io {
 export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
     where st > 1
     where err::checked(*e)
-    where str->len < st
 {
+    static_attest(str->len < len(str->mem));
+
     if self->read_impl == 0 {
         err::fail(e, 1, "noimpl");
         return Result::Error;
@@ -58,7 +59,9 @@ export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> 
 
     usize mut l = st - str->len - 1;
     Result rr = self->read_impl(&self->ctx, e, as<u8 mut*>(str->mem + str->len), &l);
-    err::check(e);
+    if err::check(e) {
+        return Result::Error;
+    }
     if rr != Result::Ready {
         return rr;
     }
@@ -71,7 +74,6 @@ export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> 
 export fn readline(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
     where st > 1
     where err::checked(*e)
-    where str->len < st
     where st > 2
 {
     if self->read_impl == 0 {
@@ -83,7 +85,9 @@ export fn readline(Io mut* self, err::Err+et mut* e, string::String+st mut* str)
     u8 mut buf[2] = {0};
     usize mut l = 1;
     Result rr = self->read_impl(&self->ctx, e, buf, &l);
-    err::check(e);
+    if err::check(e) {
+        return Result::Error;
+    }
     if rr != Result::Ready {
         return rr;
     }
@@ -105,8 +109,9 @@ export fn readline(Io mut* self, err::Err+et mut* e, string::String+st mut* str)
 export fn write(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
     where st > 1
     where err::checked(*e)
-    where str->len < len(str->mem)
 {
+    static_attest(str->len < len(str->mem));
+
     if self->write_impl == 0 {
         err::fail(e, 1, "noimpl");
         return Result::Error;

@@ -1,0 +1,35 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+
+    int i = 0;
+    int mut x = 3;
+
+    switch i {
+        0 => {
+            x = 16;
+        }
+        1 => {
+            x = 32;
+        }
+    }
+
+    static_assert(x == 16);
+
+
+
+
+    switch i {
+        0 => {
+            x = 32;
+            return 0;
+        }
+    }
+    
+
+    static_assert(x == 16);
+
+
+    return 1;
+}

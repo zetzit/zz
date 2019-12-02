@@ -68,6 +68,7 @@ fn impl_unix_wake(io::Context mut*ctx, err::Err+et mut*e, io::Wake w)
 export fn wait(Async+tail mut* self, err::Err+et mut*e)
     where err::checked(*e)
 {
+    //printf("io::unix::wait %d\n", self->timeout);
     int rr = (int)poll(self->fds, self->count, self->timeout);
     new(self);
     if rr < 0 {
@@ -145,13 +146,16 @@ fn impl_unix_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize mut 
     return io::Result::Ready;
 }
 
+
+using <unistd.h>::{usleep};
 fn impl_unix_write(io::Context mut*ctx, err::Err+et mut*e, u8 * to, usize mut *l) -> io::Result
     where err::checked(*e)
 {
-    for (;;) {
+    for (usize mut attempt = 0;attempt<100;attempt++) {
         isize rr = (isize)unistd::write(ctx->fd, to, *l);
         if rr < 0 {
             if (int)errno == (int)EAGAIN {
+                usleep(1000);
                 continue;
             }
             err::fail_with_errno(e, "read");
@@ -160,6 +164,9 @@ fn impl_unix_write(io::Context mut*ctx, err::Err+et mut*e, u8 * to, usize mut *l
         *l= (usize)rr;
         return io::Result::Ready;
     }
+    static_attest(err::checked(*e));
+    err::fail_with_errno(e, "read");
+    return io::Result::Error;
 }
 
 fn impl_unix_close(io::Context mut* ctx)

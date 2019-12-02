@@ -1,0 +1,13 @@
+[project]
+version = "0.1.0"
+name = "switch_branches"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]

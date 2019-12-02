@@ -56,7 +56,16 @@ impl Solver {
                 write!(self.debug.borrow_mut(), "{}; {}\n", self.debug_indent, branch_debug).unwrap();
 
                 self.branches.pop();
-                self.branches.first_mut().unwrap().push((branch_capi, branch_debug));
+
+                // ideally we'd just inject all the previous conditions as negative branch conditions, but this bloats up the model. 
+                //
+                //   self.branches.first_mut().unwrap().push((branch_capi, branch_debug));
+                //
+                //
+                // but we can simply assert it as negative, because symbolic execution is linear anyway. it wont ask about the previous stuff
+
+                self.solver.assert(&branch_capi);
+                write!(self.debug.borrow_mut(), "{} (assert {})\n", self.debug_indent, branch_debug).unwrap();
 
                 return;
             }
@@ -765,7 +774,11 @@ impl Solver {
         }
     }
 
-    pub fn assert<R, F> (&self, lhs: (Symbol, u64), with: F) -> R
+    // asserts are false if
+    //  - we reached it due to branch flow
+    //  - the opposite of the assert condition is solveable
+    // assert(a) ->   !solveable(assert(branch && !a));
+    pub fn assert<R, F> (&self, lhs: Vec<(Symbol, u64)>, with: F) -> R
         where F : Fn(bool, Option<ModelRef>) -> R,
               R : Sized,
     {
@@ -777,27 +790,46 @@ impl Solver {
 
 
 
-        let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
+        assert!(lhs.len() > 0);
+
+
+        let mut asserts_capi  = Vec::new();
+        let mut asserts_debug = Vec::new();
+        for lhs in lhs {
+            let lhs_s = self.syms[&lhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
+
+            asserts_capi.push(lhs_s.not());
+            asserts_debug.push(format!("(not (S{} {}))", self.syms[&lhs.0].1, lhs.1));
+        }
+        let asserts_capi  : Vec<_> = asserts_capi.iter().map(|s|s).collect();
 
         write!(self.debug.borrow_mut(), "{}(echo \"\")\n", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "{}(push)\n", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{} (echo \"vvv assert (as negative)\")\n", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "{} (assert (and {} (not (S{} {}))))\n", self.debug_indent,
-            branch_debug, self.syms[&lhs.0].1, lhs.1).unwrap();
+        write!(self.debug.borrow_mut(), "{} (echo \"vvv assert (if any conditions could be negative/sat, the assert fails)\")\n",
+            self.debug_indent).unwrap();
+        write!(self.debug.borrow_mut(), "{} (assert (and {} (or {} )))\n",
+            self.debug_indent,
+            branch_debug,
+            asserts_debug.join(" ")
+        ).unwrap();
         write!(self.debug.borrow_mut(), "{} (check-sat)\n", self.debug_indent).unwrap();
 
-        self.solver.push();
 
 
-        // asserts are false if
-        //  - we reached it due to branch flow
-        //  - the opposite of the assert condition is solveable
-        // assert(a) ->   !solveable(assert(branch && !a));
-
-        self.solver.assert(&branch_capi.and(&[&lhs_s.not()]));
 
 
-        let rs = self.solver.check();
+        let assertion = branch_capi.and(&[&ast::Bool::from_bool(&self.ctx, false).or(&asserts_capi)]);
+
+
+        #[cfg(not(target_os = "osx"))]
+        let rs = self.solver.check_assumptions(&[assertion]);
+
+        #[cfg(target_os = "osx")] {
+            self.solver.push();
+            self.solver.assert(&assertion);
+            let rs = self.solver.check();
+            self.solver.pop(1);
+        }
 
         let r = match rs {
             SatResult::Sat  => {
@@ -816,7 +848,6 @@ impl Solver {
         };
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
         write!(self.debug.borrow_mut(), "(pop)\n").unwrap();
-        self.solver.pop(1);
         r
     }
 
@@ -976,6 +1007,11 @@ impl Solver {
         write!(self.debug.borrow_mut(), "(pop); {}\n", reason).unwrap();
         self.debug_indent.pop();
         self.solver.pop(1);
+
+
+        if self.debug_indent.len() < 1 && self.branches.len() > 0 {
+            panic!("ICE: last pop without unbranch");
+        }
     }
 
 
@@ -1020,6 +1056,7 @@ impl Solver {
 
     pub fn new(module_name: String) -> Self {
         //Config::set_global_param_value(":model.partial", "true");
+        //Config::set_global_param_value(":parallel.enable", "true");
         let mut config  = Config::new();
         //config.set_model_generation(true);
         config.set_timeout_msec(TIMEOUT.load(Ordering::Relaxed) as u64);

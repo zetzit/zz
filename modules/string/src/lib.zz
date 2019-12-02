@@ -174,7 +174,6 @@ export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
 }
 
 export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
-    model self->len < tail
 {
     static_attest(self->len < tail);
 
@@ -187,13 +186,14 @@ export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
     static_attest(safe(extmem));
     static_attest(nullterm(extmem));
     self->len += strlen(extmem);
-    static_attest(self->len < len(self->mem));
     return true;
 }
 
 
 
 export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut* other)
+    where tail  > 0
+    where tail2 > 0
     model self->len  < tail
     model other->len < tail2
 {
@@ -205,14 +205,6 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
     }
 
     if from >= self->len {
-        return;
-    }
-
-    if tail2 == 0 {
-        return;
-    }
-
-    if tail == 0 {
         return;
     }
 
