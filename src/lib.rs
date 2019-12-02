@@ -151,6 +151,10 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
                     if !indic.is_empty() {
                         indic.push_str(", ");
                     }
+                    if indic.len() > 30 {
+                        indic = format!("{}.. ", indic);
+                        break;
+                    }
                     indic = format!("{}{} ", indic, working_on);
                 }
                 indic = format!("prove [ {}]  ", indic);
@@ -159,7 +163,10 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             }
 
             expand::expand(&mut module)?;
-            symbolic::execute(&mut module)?;
+            if !symbolic::execute(&mut module) {
+                ABORT.store(true, Ordering::Relaxed);
+                return Ok(None);
+            }
 
             let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
             let header  = header.emit();
@@ -177,13 +184,17 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
                     if !indic.is_empty() {
                         indic.push_str(", ");
                     }
+                    if indic.len() > 30 {
+                        indic = format!("{}.. ", indic);
+                        break;
+                    }
                     indic = format!("{}{} ", indic, working_on);
                 }
                 indic = format!("prove [ {}]  ", indic);
                 pb.lock().unwrap().message(&indic);
                 pb.lock().unwrap().inc();
             }
-            Ok((cf.name.clone(), cf))
+            Ok(Some((cf.name.clone(), cf)))
         } else {
             if !silent {
                 //pb.lock().unwrap().message(&format!("cached {} ", module.name));
@@ -195,11 +206,11 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
                 sources:    module.sources,
                 deps:       module.deps
             };
-            Ok((cf.name.clone(), cf))
+            Ok(Some((cf.name.clone(), cf)))
         }
 
     };
-    let mut cfiles_r : Vec<Result<(Name, emitter::CFile), Error>> = if slow {
+    let cfiles_r : Vec<Result<Option<(Name, emitter::CFile)>, Error>> = if slow {
         flat.into_iter().map(iterf).collect()
     } else {
         flat.into_par_iter().map(iterf).collect()
@@ -208,7 +219,8 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     let mut cfiles = HashMap::new();
     for r in cfiles_r {
         match r {
-            Ok(v) => {
+            Ok(None) => {},
+            Ok(Some(v)) => {
                 cfiles.insert(v.0, v.1);
             }
             Err(e) => {

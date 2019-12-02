@@ -821,15 +821,13 @@ impl Solver {
         let assertion = branch_capi.and(&[&ast::Bool::from_bool(&self.ctx, false).or(&asserts_capi)]);
 
 
-        #[cfg(not(target_os = "osx"))]
-        let rs = self.solver.check_assumptions(&[assertion]);
+        // broken on old z3
+        //let rs = self.solver.check_assumptions(&[assertion]);
 
-        #[cfg(target_os = "osx")] {
-            self.solver.push();
-            self.solver.assert(&assertion);
-            let rs = self.solver.check();
-            self.solver.pop(1);
-        }
+        self.solver.push();
+        self.solver.assert(&assertion);
+        let rs = self.solver.check();
+        self.solver.pop(1);
 
         let r = match rs {
             SatResult::Sat  => {

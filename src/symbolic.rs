@@ -116,7 +116,10 @@ pub enum ScopeReturn {
 }
 
 impl Symbolic {
-    fn execute_module(&mut self, module: &mut flatten::Module) -> Result<(), Error> {
+    fn execute_module(&mut self, module: &mut flatten::Module, fun: usize) -> Result<(), Error> {
+
+
+
 
         // built in len theory
         let sym = self.alloc(Name::from("len"), ast::Typed{
@@ -425,29 +428,19 @@ impl Symbolic {
             }
         }
 
+        let (fun,_,_) = &mut module.d[fun];
 
-        // definition run
-        for (d,_,defined_here) in &mut module.d {
-            self.defs.insert(Name::from(&d.name), d.def.clone());
-            match &mut d.def {
-                ast::Def::Theory{args, ret, attr} => {},
-                ast::Def::Function{args, body, vararg, ret, callassert, calleffect, ..} => {
-                    if *defined_here {
-                        self.execute_function(&d.name, args, ret.as_ref(), body, callassert, calleffect)?;
-                        if !self.ssa.solve() {
-                            return Err(Error::new(format!("function is unprovable"), vec![
-                                                  (d.loc.clone(), format!("this function body is impossible to prove"))
-                            ]));
-                        }
-                    }
-                },
-                _ => (),
-            }
+        match &mut fun.def {
+            ast::Def::Function{args, body, vararg, ret, callassert, calleffect, ..} => {
+                self.execute_function(&fun.name, args, ret.as_ref(), body, callassert, calleffect)?;
+                if !self.ssa.solve() {
+                    return Err(Error::new(format!("function is unprovable"), vec![
+                        (fun.loc.clone(), format!("this function body is impossible to prove"))
+                    ]));
+                }
+            },
+            _ => unreachable!(),
         }
-
-
-
-
 
 
         Ok(())
@@ -464,7 +457,11 @@ impl Symbolic {
     ) -> Result<(), Error> {
 
         self.push(format!("function {}", name));
-        self.ssa.push(&format!("\n\n;start of function {}", name));
+        self.ssa.push(&format!("\n\n\n\
+                                ;----------------------------------------------\n\
+                                ;function {}\n\
+                                ;----------------------------------------------\n\
+                                ", name));
         self.ssa.branch();
         self.current_function_name  = name.clone();
         self.current_function_model = calleffect.clone();
@@ -1897,12 +1894,12 @@ impl Symbolic {
 
                             // one assertion broke, try them individually
                             if !ok {
-                                for (sym,loc) in ca_syms.into_iter().zip(ca_locs.into_iter()) {
+                                for (sym,loc2) in ca_syms.into_iter().zip(ca_locs.into_iter()) {
                                     self.ssa.assert(vec![sym], |a,model| match a {
                                         false => {
                                             let mut estack = vec![
                                                 (loc.clone(),format!("in this callsite")),
-                                                (loc.clone(), format!("function call requires these conditions")),
+                                                (loc2.clone(), format!("function call requires these conditions")),
                                                 (functionlloc.clone(), format!("for this function")),
                                             ];
                                             if let Some(model) = &model {
@@ -3066,8 +3063,51 @@ impl Symbolic {
 }
 
 
-pub fn execute(module: &mut flatten::Module) -> Result<Symbolic, Error> {
-    let mut sym = Symbolic::new(&module.name);
-    sym.execute_module(module)?;
-    Ok(sym)
+pub fn execute(module: &mut flatten::Module) -> bool {
+    use rayon::prelude::*;
+
+    let mut defs        = Vec::new();
+    let mut function_at = Vec::new();
+    for (i, (d,_,defined_here)) in module.d.clone().into_iter().enumerate() {
+        if let ast::Def::Function{..} = d.def {
+            if defined_here {
+                function_at.push((i, d.name.clone(), module.clone()));
+            }
+        }
+        defs.push(d.clone());
+    }
+
+
+
+    // execute one in serial on the borrowed module to get modifications to globals
+    if let Some((at, name, _)) = function_at.pop() {
+        let mut sym = Symbolic::new(&Name::from(&name));
+        if let Err(e) = sym.execute_module(module, at) {
+            parser::emit_error(e.message.clone(), &e.details);
+            return false;
+        }
+    }
+
+    let repl = function_at.into_par_iter().map(|(at, name, mut module)|{
+        let mut sym = Symbolic::new(&Name::from(&name));
+        match sym.execute_module(&mut module, at) {
+            Err(e) => {
+                parser::emit_error(e.message.clone(), &e.details);
+                None
+            }
+            Ok(_)  => {
+                Some((at, module.d.remove(at).0))
+            }
+        }
+    }).collect::<Vec<Option<(usize, ast::Local)>>>();
+
+    for r in repl {
+        if let Some((at,l)) = r {
+            module.d[at].0 = l;
+        } else {
+            return false;
+        }
+    }
+
+    true
 }
