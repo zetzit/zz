@@ -1,0 +1,23 @@
+using <stdio.h>::{printf};
+
+
+
+struct A {
+    int *bob;
+}
+
+fn bob(A*a, usize l)
+    where len(a->bob) > l
+{
+    int * something;
+
+    if (l > 0) {
+        something = (a->bob)[1];
+    }
+
+    something = (a->bob)[1];
+}
+
+export fn main(int argc, char **argv) -> int {
+    return 0;
+}

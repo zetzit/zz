@@ -91,6 +91,7 @@ struct Storage {
     borrows:        Vec<(Symbol, ast::Location)>,
 }
 
+#[derive(Clone)]
 struct Scope{
     name:   String,
     locals: HashMap<Name, usize>,
@@ -787,17 +788,15 @@ impl Symbolic {
 
                 },
                 ast::Statement::If{branches} => {
-                    let mut expanded = Vec::new();
-                    let mut negative_stack : Vec<(ast::Location, ast::Expression)> = Vec::new();
-
-
-
-
-
+                    /*
                     // create branch expansions
                     let freeze = self.memory.clone();
                     self.push("branch".to_string());
                     for (loc, expr, body2) in branches {
+
+
+
+
                         expanded.push((negative_stack.clone(), expr.clone(), loc.clone(), body2));
                         if let Some(expr) = expr {
                             // we have to execute all conditionals once, because there might be translations
@@ -807,23 +806,23 @@ impl Symbolic {
                             self.ssa.pop("end of dummy");
                             negative_stack.push((loc.clone(), expr.clone()));
                         }
+
                     }
                     self.pop();
                     self.memory = freeze;
+                    */
 
 
+                    let mut previous_ifs : Vec<(TemporalSymbol, ast::Location)> = Vec::new();
 
+                    for (branch_loc, ref mut branch_expr, branch_body) in branches {
 
+                        let positive_sym = if let Some(branch_expr) = branch_expr {
+                            let sym = self.execute_expr(branch_expr)?;
 
-                    // execute each expansion with all negative preconditions
-                    for (mut negative, mut positive, branchloc, body2) in expanded {
-
-                        let positive_constrain = if let Some(expr) = &mut positive {
-
-                            let sym = self.execute_expr(expr)?;
                             if self.memory[sym].typed.t != ast::Type::Bool {
                                 return Err(Error::new(format!("expected boolean, got {}", self.memory[sym].typed), vec![
-                                    (expr.loc().clone(), format!("coercion to boolean is difficult to prove"))
+                                    (branch_expr.loc().clone(), format!("coercion to boolean is difficult to prove"))
                                 ]));
                             }
                             let sym = (sym, self.memory[sym].temporal);
@@ -832,45 +831,39 @@ impl Symbolic {
                             self.ssa.bool_value(sym, |a,_model| match a {
                                 smt::Assertion::Constrained(val) => {
                                     emit_warn("unnecessary branch condition", &[
-                                        (expr.loc().clone(), format!("expression is always {}", val))
+                                        (branch_expr.loc().clone(), format!("expression is always {}", val))
                                     ]);
-                                    /* TODO this is wrong, because it may be different for a different parent branch.
-                                     *  i guess we need to include branches in bool_value
-                                     *
-                                    let mut estack = Vec::new();
-                                    estack.push((expr.loc().clone(), format!("expression is statically provable")));
-                                    if let Some(model) = &model {
-                                        estack.extend(self.demonstrate(model, sym, 0));
-                                    }
-                                    Err(Error::new(format!("condition can never be {}", !val), estack))
-                                    */
                                 }
                                 _ => {}
                             });
-                            self.cur().trace.push((sym, expr.loc().clone(), false));
-                            self.ssa.debug_loc(&expr.loc());
-                            Some((sym, expr.loc().clone()))
+
+                            self.cur().trace.push((sym, branch_expr.loc().clone(), false));
+
+                            self.ssa.debug_loc(&branch_expr.loc());
+                            Some((sym, branch_expr.loc().clone()))
                         } else {
                             None
                         };
 
                         self.push("branch".to_string());
-                        self.ssa.debug_loc(&branchloc);
+                        self.ssa.debug_loc(&branch_loc);
                         self.ssa.branch();
 
-                        if let Some((sym, loc)) = &positive_constrain {
+                        if let Some((sym, _)) = &positive_sym{
                             self.ssa.constrain_branch(*sym, true);
                         }
 
                         // all previous expressions are therefor false
-                        for (loc, expr) in &mut negative {
-                            let sym = self.execute_expr(expr)?;
-                            let sym = (sym, self.memory[sym].temporal);
-                            self.ssa.constrain_branch(sym, false);
-                            self.cur().trace.push((sym, expr.loc().clone(), false));
+                        for (sym, loc) in &previous_ifs {
+                            self.ssa.constrain_branch(*sym, false);
+                            self.cur().trace.push((*sym, loc.clone(), false));
                         }
 
-                        let rere = self.execute_scope(&mut body2.statements)?;
+                        if let Some((sym, loc)) = &positive_sym{
+                            previous_ifs.push((sym.clone(), loc.clone()));
+                        }
+
+                        let rere = self.execute_scope(&mut branch_body.statements)?;
                         self.ssa.debug("end branch");
 
                         if let ScopeReturn::Return(_) = rere {
@@ -911,6 +904,7 @@ impl Symbolic {
 
                             let compsym = self.execute_expr(expr2)?;
 
+                            let (_, switchsym, compsym) = self.type_coersion(switchsym, compsym, expr2.loc())?;
 
                             let switchmatch = self.temporary(
                                 format!("switch branch ({}=={})",
@@ -919,12 +913,13 @@ impl Symbolic {
                                 ast::Typed{
                                     t:      ast::Type::Bool,
                                     ptr:    Vec::new(),
-                                    loc:    expr.loc().clone(),
+                                    loc:    expr2.loc().clone(),
                                     tail:   ast::Tail::None,
                                 },
                                 expr2.loc().clone(),
                                 ast::Tags::new(),
                             )?;
+
 
                             self.ssa.infix_op(
                                 switchmatch,
@@ -1035,7 +1030,7 @@ impl Symbolic {
                 }
                 ast::Statement::For{e1,e2,e3,body} => {
                     self.push("for loop".to_string());
-                    self.ssa.push("for loop");
+                    //self.ssa.push("for loop");
 
                     let prev_loop = self.in_loop;
                     self.in_loop = false;
@@ -1063,12 +1058,12 @@ impl Symbolic {
 
                     self.execute_scope(&mut body.statements)?;
                     self.in_loop = prev_loop;
-                    self.ssa.pop("end of for loop");
+                    //self.ssa.pop("end of for loop");
                     self.pop();
                 }
                 ast::Statement::While{expr, body} => {
                     self.push("while loop".to_string());
-                    self.ssa.push("while loop");
+                    //self.ssa.push("while loop");
 
                     let sym = self.execute_expr(expr)?;
                     if self.memory[sym].t != smt::Type::Bool {
@@ -1091,7 +1086,7 @@ impl Symbolic {
                     self.execute_scope(&mut body.statements)?;
 
                     self.in_loop = prev_loop;
-                    self.ssa.pop("end of while loop");
+                    //self.ssa.pop("end of while loop");
                     self.pop();
                 }
                 ast::Statement::Unsafe{..} => {
@@ -1873,7 +1868,9 @@ impl Symbolic {
 
 
 
-
+                        //dont expose any symbols during callsite assert
+                        let global_only = vec![self.stack[0].clone()];
+                        let stack_original = std::mem::replace(&mut self.stack, global_only);
 
                         if callsite_assert.len() > 0 {
                             let mut ca_syms = Vec::new();
@@ -1883,17 +1880,11 @@ impl Symbolic {
                             self.push("callsite_assert".to_string());
                             self.ssa.push("callsite_assert");
 
-                            // callsite assert evaluated in the callsite means we need to export
-                            // callargs as their argument names
+                            // callsite assert evaluated in the callsite
+                            // so we expose the symbol as a different name
 
                             for (i, farg) in fargs.iter().enumerate() {
-                                let tmp = self.alloc(
-                                    Name::from(&farg.name),
-                                    farg.typed.clone(),
-                                    args[i].loc().clone(),
-                                    farg.tags.clone(),
-                                    )?;
-                                self.copy(tmp, syms[i].0, args[i].loc())?;
+                                self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
                             }
 
                             for callsite_assert in &mut callsite_assert {
@@ -1932,8 +1923,7 @@ impl Symbolic {
                             self.pop();
                         }
 
-
-
+                        self.stack = stack_original;
 
                         // TODO for now mark all pointer call args as untrackable in the callsite
                         // this should become a full borrow/aliasing checker
@@ -1972,6 +1962,13 @@ impl Symbolic {
                         let value = Value::Unconstrained("return value".to_string());
                         self.memory[return_sym].value = value;
 
+
+
+
+                        //dont expose any symbols during callsite effect
+                        let global_only = vec![self.stack[0].clone()];
+                        let stack_original = std::mem::replace(&mut self.stack, global_only);
+
                         self.ssa.debug("callsite effects");
                         for callsite_effect in &mut callsite_effect {
                             self.push("callsite_effect".to_string());
@@ -1991,16 +1988,6 @@ impl Symbolic {
                             // callsite effects happen in the callsite, but the names are from
                             // the function declaration, so we expose the symbol as a different name
                             for (i, farg) in fargs.iter().enumerate() {
-                                /*
-                                let tmp = self.alloc(
-                                    Name::from(&farg.name),
-                                    farg.typed.clone(),
-                                    args[i].loc().clone(),
-                                    farg.tags.clone(),
-                                )?;
-                                self.copy(tmp, syms[i].0, args[i].loc())?;
-                                */
-
                                 self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
                             }
                             let casym = self.execute_expr(callsite_effect)?;
@@ -2016,6 +2003,8 @@ impl Symbolic {
                             self.pop();
                         }
                         self.ssa.debug("end of callsite effects");
+
+                        self.stack = stack_original;
 
 
                         Ok(return_sym)
@@ -2932,6 +2921,9 @@ impl Symbolic {
                 Tags::new(),
             )?;
             self.memory[sym].value = Value::Unconstrained(format!("c name {}", name));
+
+            self.ssa.check_ded(sym, used_here);
+
             return Ok(sym);
         }
 

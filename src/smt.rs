@@ -3,8 +3,9 @@ use crate::symbolic::{Symbol, TemporalSymbol};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::cell::{RefCell, RefMut};
+use std::cell::{RefCell};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use super::parser::{emit_warn};
 
 pub static TIMEOUT: AtomicUsize = AtomicUsize::new(5000);
 
@@ -25,6 +26,9 @@ pub struct Solver {
 
 
     branches:       Vec<Vec<(z3::ast::Bool<'static>, String)>>,
+
+    symbol_stack:   Vec<Vec<(Symbol, String, Type)>>,
+    ded_syms:       HashMap<Symbol, String>,
 }
 
 
@@ -164,6 +168,8 @@ impl Solver {
         );
 
         self.syms.insert(sym, (f, lname));
+
+        self.symbol_stack.last_mut().as_mut().unwrap().push((sym, name.to_string(), typ));
         self.checkpoint();
     }
 
@@ -1032,6 +1038,9 @@ impl Solver {
         write!(self.debug.borrow_mut(), "(push); {}\n", reason).unwrap();
         self.debug_indent.push(' ');
         self.solver.push();
+
+
+        self.symbol_stack.push(Vec::new());
     }
     pub fn pop(&mut self, reason: &str) {
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
@@ -1042,6 +1051,23 @@ impl Solver {
 
         if self.debug_indent.len() < 1 && self.branches.len() > 0 {
             panic!("ICE: last pop without unbranch");
+        }
+
+        self.debug("recover declarations");
+        // recover declarations done inside the scope. symbols are global, but z3 doesn't have a way to specify that
+        for (sym,name, t) in self.symbol_stack.pop().unwrap() {
+            self.declare(sym,&name,t);
+            self.ded_syms.insert(sym,name);
+        }
+        self.debug("end of recover declarations");
+    }
+
+
+    pub fn check_ded(&self, sym: Symbol, here: &crate::ast::Location) {
+        if let Some(name) = self.ded_syms.get(&sym) {
+            emit_warn(format!("ICE: reuse of dead symbol '{}'", name), &[
+                (here.clone(), format!("reuse in this scope will lead to strange behaviour"))
+            ]);
         }
     }
 
@@ -1108,6 +1134,8 @@ impl Solver {
             debug,
             debug_indent: String::new(),
             branches: Vec::new(),
+            symbol_stack:   vec![Vec::new()],
+            ded_syms:       HashMap::new(),
         }
     }
 
