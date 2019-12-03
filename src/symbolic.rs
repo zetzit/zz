@@ -94,7 +94,7 @@ struct Storage {
 struct Scope{
     name:   String,
     locals: HashMap<Name, usize>,
-    trace:  Vec<(TemporalSymbol, ast::Location)>,
+    trace:  Vec<(TemporalSymbol, ast::Location, bool /*only demonstrace if true*/)>,
 }
 
 pub struct Symbolic {
@@ -406,6 +406,8 @@ impl Symbolic {
                             ast::Tags::new(),
                         )?;
                         self.memory[sym].value = Value::Integer(value);
+
+                        self.ssa.literal(sym, value, self.memory[sym].t.clone());
 
                         value += 1;
                     }
@@ -845,7 +847,7 @@ impl Symbolic {
                                 }
                                 _ => {}
                             });
-                            self.cur().trace.push((sym, expr.loc().clone()));
+                            self.cur().trace.push((sym, expr.loc().clone(), false));
                             self.ssa.debug_loc(&expr.loc());
                             Some((sym, expr.loc().clone()))
                         } else {
@@ -865,7 +867,7 @@ impl Symbolic {
                             let sym = self.execute_expr(expr)?;
                             let sym = (sym, self.memory[sym].temporal);
                             self.ssa.constrain_branch(sym, false);
-                            self.cur().trace.push((sym, expr.loc().clone()));
+                            self.cur().trace.push((sym, expr.loc().clone(), false));
                         }
 
                         let rere = self.execute_scope(&mut body2.statements)?;
@@ -920,7 +922,7 @@ impl Symbolic {
                                     loc:    expr.loc().clone(),
                                     tail:   ast::Tail::None,
                                 },
-                                expr.loc().clone(),
+                                expr2.loc().clone(),
                                 ast::Tags::new(),
                             )?;
 
@@ -933,9 +935,11 @@ impl Symbolic {
                                 false,
                             );
 
+                            let switchmatch = (switchmatch, self.memory[switchmatch].temporal);
+
                             self.push("case".into());
                             self.ssa.branch();
-                            self.ssa.constrain_branch((switchmatch, self.memory[switchmatch].temporal), true);
+                            self.ssa.constrain_branch(switchmatch, true);
 
                             let rere = self.execute_scope(&mut body.statements)?;
                             if let ScopeReturn::Return(_) = rere {
@@ -945,6 +949,7 @@ impl Symbolic {
                             }
 
                             self.pop();
+                            self.cur().trace.push((switchmatch, expr2.loc().clone(), true));
                         }
                     }
 
@@ -1047,7 +1052,7 @@ impl Symbolic {
                             ]));
                         }
                         let sym = (sym, self.memory[sym].temporal);
-                        self.cur().trace.push((sym.clone(), expr.loc().clone()));
+                        self.cur().trace.push((sym.clone(), expr.loc().clone(),false));
                         if !self.ssa.attest(sym, true) {
                             return Err(Error::new(format!("condition breaks ssa"), vec![
                                 (expr.loc().clone(), format!("there may be conflicting constraints"))
@@ -1072,7 +1077,7 @@ impl Symbolic {
                         ]));
                     }
                     let sym = (sym, self.memory[sym].temporal);
-                    self.cur().trace.push((sym.clone(), expr.loc().clone()));
+                    self.cur().trace.push((sym.clone(), expr.loc().clone(),false));
 
                     if !self.ssa.attest(sym, true) {
                         return Err(Error::new(format!("condition breaks ssa"), vec![
@@ -1932,6 +1937,7 @@ impl Symbolic {
 
                         // TODO for now mark all pointer call args as untrackable in the callsite
                         // this should become a full borrow/aliasing checker
+                        self.ssa.debug("borrows after call");
                         for (i,(s,_)) in syms.iter().enumerate() {
                             let mut borrow = false;
                             if let Some(farg) = fargs.get(i) {
@@ -1950,6 +1956,7 @@ impl Symbolic {
                                 self.borrow_away(*s);
                             }
                         }
+                        self.ssa.debug("end of borrows after call");
 
                         let return_sym = self.temporary(
                             format!("return value of {}", self.memory[name_sym].name),
@@ -2437,7 +2444,16 @@ impl Symbolic {
             Value::Address(to) => {
                 self.ssa.debug(&format!("{} to temporal +1 because of function borrow", to));
                 self.memory[*to].temporal += 1;
-                self.memory[*to].value     = Value::Unconstrained("borrowed in function call".to_string());
+                //self.memory[*to].value     = Value::Unconstrained("borrowed in function call".to_string());
+
+                // but if the current branch never happens, the  alue remains the same
+                self.ssa.assign_branch(
+                    (*to, self.memory[*to].temporal),
+                    (*to, self.memory[*to].temporal),
+                    (*to, self.memory[*to].temporal -1),
+                    self.memory[*to].t.clone(),
+                );
+
             }
             _ => ()
         }
@@ -2816,11 +2832,10 @@ impl Symbolic {
         self.memory[lhs].value = self.memory[rhs].value.clone();
 
 
-        self.ssa.assign_maybe(
-            lhs,
-            self.memory[lhs].temporal - 1,
-            self.memory[lhs].temporal,
+        self.ssa.assign_branch(
+            (lhs, self.memory[lhs].temporal),
             (rhs, self.memory[rhs].temporal),
+            (lhs, self.memory[lhs].temporal-1),
             Self::smt_type(&newtype),
         );
 
@@ -3039,7 +3054,12 @@ impl Symbolic {
             //Value::Integer(_) => return estack,
             _ => {
                 if let Some(v) = self.ssa.extract(model, sym) {
-                    estack.push((valloc, format!("for {} |{}| = 0x{:x}", self.memory[sym.0].name, sym.1, v)));
+                    let v = if self.memory[sym.0].t == smt::Type::Bool {
+                        if v > 0 { "true".into() } else { "false".into() }
+                    } else {
+                        format!("0x{:x}", v)
+                    };
+                    estack.push((valloc, format!("for {} |{}| = {}", self.memory[sym.0].name, sym.1, v)));
                 } else {
                     estack.push((valloc, format!("for {} |{}| = ??", self.memory[sym.0].temporal, sym.1)));
                 }
@@ -3049,15 +3069,17 @@ impl Symbolic {
 
         if depth == 0 {
             for stack in self.stack.iter().rev() {
-                for (sym, loc) in &stack.trace {
+                for (sym, loc, onlyiftrue) in &stack.trace {
                     match self.ssa.extract(model, *sym) {
                         Some(f) if f > 0 => {
                             estack.push((loc.clone(), format!("reached because this branch condition was true")));
                             estack.extend(self.demonstrate(model, *sym, depth + 1));
                         },
                         Some(_)  => {
-                            estack.push((loc.clone(), format!("reached because this branch condition was false")));
-                            estack.extend(self.demonstrate(model, *sym, depth + 1));
+                            if !onlyiftrue {
+                                estack.push((loc.clone(), format!("reached because this branch condition was false")));
+                                estack.extend(self.demonstrate(model, *sym, depth + 1));
+                            }
                         },
                         None => {}
                     };

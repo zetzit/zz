@@ -1,0 +1,62 @@
+using <stdio.h>::{printf};
+
+
+
+theory checked(int a) -> bool;
+
+fn check(int * thing) -> bool
+    model checked(*thing)
+{
+    static_attest(checked(*thing));
+
+    return false;
+}
+
+fn uncheck(int mut *thing)
+    where checked(*thing)
+{
+}
+
+
+
+
+
+enum Enum {
+    Bob,
+    Peter,
+}
+
+
+
+
+
+export fn bob(Enum x, int mut* a) -> int {
+
+
+    if check(a) {
+        return 2;
+    }
+    uncheck(a);
+
+    if check(a) {
+        return 2;
+    }
+
+
+    switch x {
+        Enum::Bob => {
+            uncheck(a);
+        }
+        Enum::Peter => {
+            uncheck(a);
+        }
+    }
+
+
+    return 0;
+}
+
+
+export fn main()  -> int {
+    return 0;
+}

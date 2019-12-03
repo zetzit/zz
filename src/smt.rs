@@ -191,8 +191,7 @@ impl Solver {
 
 
     /// an assign that happens depending on branch conditions
-    /// LHS2 = if (branch) { rhs } else { LHS1 }
-    pub fn assign_maybe(&mut self, lhs: Symbol, current: u64, new: u64, rhs: TemporalSymbol, t: Type) {
+    pub fn assign_branch(&mut self, lhs: TemporalSymbol, rhs_if : TemporalSymbol, rhs_else : TemporalSymbol, t: Type) {
         let (branch_capi, branch_debug) = match self.build_branch_bundle() {
             Some(v) => v,
             None => (ast::Bool::from_bool(&self.ctx, true), " true ".to_string()),
@@ -200,61 +199,95 @@ impl Solver {
 
 
         if t == Type::Bool {
+            let lhs_s      = self.syms[&lhs.0].0.apply(
+                &[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bool().unwrap();
+            let rhs_s_if   = self.syms[&rhs_if.0].0.apply(
+                &[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs_if.1))]);
+            let rhs_s_else = self.syms[&rhs_else.0].0.apply(
+                &[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs_else.1))]);
 
-
-            let lhs_1 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, current))]).as_bool().unwrap();
-            let lhs_2 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, new))]).as_bool().unwrap();
-            let rhs_s = self.syms[&rhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs.1))]);
-
-
-            let rhs_s = match rhs_s.as_bool() {
+            // cast to bool
+            let rhs_s_if = match rhs_s_if.as_bool() {
                 Some(b) => b,
                 None => {
-                    let rhs_s = rhs_s.as_bv().unwrap();
-                    let bone = ast::BV::from_u64(&self.ctx, 1, rhs_s.get_size());
-                    rhs_s.bvuge(&bone)
+                    let rhs_s_if = rhs_s_if.as_bv().unwrap();
+                    let bone = ast::BV::from_u64(&self.ctx, 1, rhs_s_if.get_size());
+                    rhs_s_if.bvuge(&bone)
+                }
+            };
+            let rhs_s_else = match rhs_s_else.as_bool() {
+                Some(b) => b,
+                None => {
+                    let rhs_s_else = rhs_s_else.as_bv().unwrap();
+                    let bone = ast::BV::from_u64(&self.ctx, 1, rhs_s_else.get_size());
+                    rhs_s_else.bvuge(&bone)
                 }
             };
 
             write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
 
             write!(self.debug.borrow_mut(), "(assert (= (S{} {}) (ite {}\n      (S{} {}) (S{} {}))   ))\n",
-                self.syms[&lhs].1, new, branch_debug,  self.syms[&rhs.0].1, rhs.1, self.syms[&lhs].1, current).unwrap();
+                self.syms[&lhs.0].1, lhs.1,
+                branch_debug,
+                self.syms[&rhs_if.0].1, rhs_if.1,
+                self.syms[&rhs_else.0].1, rhs_else.1
+            ).unwrap();
 
-            self.solver.assert(&lhs_2._eq(&branch_capi.ite(&rhs_s, &lhs_1)));
+            self.solver.assert(&lhs_s._eq(&branch_capi.ite(&rhs_s_if, &rhs_s_else)));
 
             return;
         }
 
+        let lhs_s      = self.syms[&lhs.0].0.apply(
+            &[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, lhs.1))]).as_bv().unwrap();
+        let rhs_s_if   = self.syms[&rhs_if.0].0.apply(
+            &[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs_if.1))]).as_bv().unwrap();
+        let rhs_s_else = self.syms[&rhs_else.0].0.apply(
+            &[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs_else.1))]).as_bv().unwrap();
 
-        let lhs_1 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, current))]).as_bv().unwrap();
-        let lhs_2 = self.syms[&lhs].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, new))]).as_bv().unwrap();
-        let rhs_s = self.syms[&rhs.0].0.apply(&[&ast::Dynamic::from_ast(&ast::Int::from_u64(&self.ctx, rhs.1))]).as_bv().unwrap();
+        let lhs_size    = lhs_s.get_size();
 
-        let lhs_size = lhs_1.get_size();
-        let rhs_size = rhs_s.get_size();
-
-        let (debug, capi) = if lhs_size < rhs_size {
+        let rhs_if_size   = rhs_s_if.get_size();
+        let (debug_if, capi_if) = if lhs_size < rhs_if_size {
             (
-                format!("((_ extract {} {}) (S{} {}))", lhs_size - 1, 0, self.syms[&rhs.0].1, rhs.1),
-                rhs_s.extract(lhs_size -1, 0)
+                format!("((_ extract {} {}) (S{} {}))", lhs_size - 1, 0, self.syms[&rhs_if.0].1, rhs_if.1),
+                rhs_s_if.extract(lhs_size -1, 0)
             )
-        } else if lhs_size > rhs_size {
+        } else if lhs_size > rhs_if_size {
             (
-                format!("((zero_extend {}) (S{} {}))", lhs_size - rhs_size, self.syms[&rhs.0].1, rhs.1),
-                rhs_s.zero_ext(lhs_size - rhs_size),
+                format!("((zero_extend {}) (S{} {}))", lhs_size - rhs_if_size, self.syms[&rhs_if.0].1, rhs_if.1),
+                rhs_s_if.zero_ext(lhs_size - rhs_if_size),
             )
         } else {
             (
-                format!("(S{} {})", self.syms[&rhs.0].1, rhs.1),
-                rhs_s
+                format!("(S{} {})", self.syms[&rhs_if.0].1, rhs_if.1),
+                rhs_s_if
+            )
+        };
+
+        let rhs_else_size = rhs_s_else.get_size();
+        let (debug_else, capi_else) = if lhs_size < rhs_else_size {
+            (
+                format!("((_ extract {} {}) (S{} {}))", lhs_size - 1, 0, self.syms[&rhs_else.0].1, rhs_else.1),
+                rhs_s_else.extract(lhs_size -1, 0)
+            )
+        } else if lhs_size > rhs_else_size {
+            (
+                format!("((zero_extend {}) (S{} {}))", lhs_size - rhs_else_size, self.syms[&rhs_else.0].1, rhs_else.1),
+                rhs_s_else.zero_ext(lhs_size - rhs_else_size),
+            )
+        } else {
+            (
+                format!("(S{} {})", self.syms[&rhs_else.0].1, rhs_else.1),
+                rhs_s_else
             )
         };
 
         write!(self.debug.borrow_mut(), "{}", self.debug_indent).unwrap();
-        write!(self.debug.borrow_mut(), "(assert (= (S{} {}) (ite {} {} (S{} {}))   ))\n",
-            self.syms[&lhs].1, new, branch_debug, debug, self.syms[&lhs].1, current).unwrap();
-        self.solver.assert(&lhs_2._eq(&branch_capi.ite(&capi, &lhs_1)));
+        write!(self.debug.borrow_mut(), "(assert (= (S{} {}) (ite {} {} {})   ))\n",
+            self.syms[&lhs.0].1, lhs.1, branch_debug, debug_if, debug_else).unwrap();
+
+        self.solver.assert(&lhs_s._eq(&branch_capi.ite(&capi_if, &capi_else)));
 
         self.checkpoint();
     }
@@ -761,7 +794,7 @@ impl Solver {
                 if bvstring == "false" {
                     return Some(0)
                 } else if bvstring == "true" {
-                    return Some(0xffffffff)
+                    return Some(1)
                 } else  if bvstring.starts_with("#x") {
                     if let Ok(v) = u64::from_str_radix(&bvstring[2..], 16) {
                         return Some(v)
