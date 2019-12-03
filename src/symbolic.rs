@@ -523,7 +523,7 @@ impl Symbolic {
                 let mut nutype = self.memory[prev].typed.clone();
                 nutype.ptr.pop();
                 let sym2 = self.temporary(
-                    format!("*{}", self.memory[prev].name),
+                    format!("deref(S{}_{})", prev, self.memory[prev].name),
                     nutype.clone(),
                     args[i].loc.clone(),
                     self.memory[prev].tags.clone(),
@@ -592,6 +592,9 @@ impl Symbolic {
             return Ok(());
         }
 
+        self.push("model check".into());
+        self.ssa.push("model check");
+
         let mut syms = Vec::new();
         let mut locs = Vec::new();
 
@@ -633,6 +636,8 @@ impl Symbolic {
             }
         };
 
+        self.ssa.pop("end of model check");
+        self.pop();
         Ok(())
 
     }
@@ -933,7 +938,6 @@ impl Symbolic {
                             self.ssa.constrain_branch((switchmatch, self.memory[switchmatch].temporal), true);
 
                             let rere = self.execute_scope(&mut body.statements)?;
-
                             if let ScopeReturn::Return(_) = rere {
                                 self.ssa.unbranch(true);
                             } else {
@@ -945,13 +949,17 @@ impl Symbolic {
                     }
 
                     if let Some(default) = default {
-                        let freeze = self.memory.clone();
                         self.push("case".into());
-                        self.ssa.push("case");
-                        self.execute_scope(&mut default.statements)?;
-                        self.ssa.pop("end of case");
+                        self.ssa.branch();
+
+                        let rere = self.execute_scope(&mut default.statements)?;
+                        if let ScopeReturn::Return(_) = rere {
+                            self.ssa.unbranch(true);
+                        } else {
+                            self.ssa.unbranch(false);
+                        }
+
                         self.pop();
-                        self.memory = freeze;
                     }
                 }
                 ast::Statement::Assign{loc, lhs, op, rhs} => {
@@ -1860,8 +1868,6 @@ impl Symbolic {
 
 
 
-                        // callsite assert evaluated in the callsite means we need to export
-                        // callargs as their argument names
 
 
                         if callsite_assert.len() > 0 {
@@ -1871,6 +1877,9 @@ impl Symbolic {
 
                             self.push("callsite_assert".to_string());
                             self.ssa.push("callsite_assert");
+
+                            // callsite assert evaluated in the callsite means we need to export
+                            // callargs as their argument names
 
                             for (i, farg) in fargs.iter().enumerate() {
                                 let tmp = self.alloc(
@@ -1956,6 +1965,7 @@ impl Symbolic {
                         let value = Value::Unconstrained("return value".to_string());
                         self.memory[return_sym].value = value;
 
+                        self.ssa.debug("callsite effects");
                         for callsite_effect in &mut callsite_effect {
                             self.push("callsite_effect".to_string());
 
@@ -1971,7 +1981,10 @@ impl Symbolic {
                                 Tags::new(),
                             )?;
 
+                            // callsite effects happen in the callsite, but the names are from
+                            // the function declaration, so we expose the symbol as a different name
                             for (i, farg) in fargs.iter().enumerate() {
+                                /*
                                 let tmp = self.alloc(
                                     Name::from(&farg.name),
                                     farg.typed.clone(),
@@ -1979,6 +1992,9 @@ impl Symbolic {
                                     farg.tags.clone(),
                                 )?;
                                 self.copy(tmp, syms[i].0, args[i].loc())?;
+                                */
+
+                                self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
                             }
                             let casym = self.execute_expr(callsite_effect)?;
                             if !self.ssa.attest((casym, self.memory[casym].temporal), true) {
@@ -1992,6 +2008,7 @@ impl Symbolic {
 
                             self.pop();
                         }
+                        self.ssa.debug("end of callsite effects");
 
 
                         Ok(return_sym)
@@ -2265,7 +2282,7 @@ impl Symbolic {
                             loc:    loc.clone(),
                         });
                         let tmp = self.temporary(
-                            format!("address of {}", self.memory[lhs_sym].name),
+                            format!("addressof({})", self.memory[lhs_sym].name),
                             typed,
                             loc.clone(),
                             ast::Tags::new(),
@@ -2443,7 +2460,7 @@ impl Symbolic {
         };
 
         let member = self.temporary(
-            format!("*{}", self.memory[lhs_sym].name),
+            format!("deref(S{}_{})", lhs_sym, self.memory[lhs_sym].name),
             nutype,
             loc.clone(),
             popped_tags,
@@ -2670,6 +2687,7 @@ impl Symbolic {
     fn copy(&mut self, lhs: Symbol, rhs: Symbol, used_here: &ast::Location) -> Result<(), Error> {
 
         // transfer theories of pointers
+        // TODO: nah thats shitty. they should automatically transfer in smt
         if self.memory[rhs].t == smt::Type::Unsigned(64) && self.memory[lhs].t == smt::Type::Unsigned(64) {
             let tmp_safe_transfer = self.temporary(
                 format!("safe({}) == safe({})", self.memory[rhs].name, self.memory[lhs].name),

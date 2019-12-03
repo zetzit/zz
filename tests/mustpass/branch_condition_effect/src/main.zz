@@ -1,0 +1,42 @@
+using <stdio.h>::{printf};
+
+
+
+theory checked(int a) -> bool;
+
+fn check(int *thing) -> bool
+    model checked(*thing)
+{
+    static_attest(checked(*thing));
+
+    return false;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+export fn bob(int *a) -> int {
+
+
+    if check(a) {
+        return 2;
+    }
+
+    static_assert(checked(*a));
+
+    return 0;
+}
+
+
+export fn main()  -> int {
+    return 0;
+}
