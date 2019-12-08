@@ -91,7 +91,7 @@ named_typei = _{ type_part  ~ named_typei | ident }
 
 // declarations
 
-fn_attr     = {"inline"}
+fn_attr     = {"inline" | "extern"}
 fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
 call_assert = {"where" ~ expr }

@@ -127,7 +127,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut args = Vec::new();
                 let mut ret  = None;
                 let mut body = None;
-                let mut attr = Vec::new();
+                let mut attr = HashMap::new();
                 let mut vararg = false;
                 let mut callassert = Vec::new();
                 let mut calleffect = Vec::new();
@@ -159,7 +159,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                                 file: n.to_string_lossy().into(),
                                 span: part.as_span(),
                             };
-                            attr.push((part.as_str().into(), loc));
+                            attr.insert(part.as_str().into(), loc);
                         },
                         Rule::fn_args => {
                             for arg in part.into_inner() {

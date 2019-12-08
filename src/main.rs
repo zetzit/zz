@@ -26,6 +26,11 @@ fn main() {
         .setting(clap::AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("smt-timeout").takes_value(true).required(false).long("smt-timeout"))
         .subcommand(SubCommand::with_name("check").about("check the current project"))
+        .subcommand(SubCommand::with_name("export").about("emit c files without building them"))
+            .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
+            .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
+            .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
+            .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
         .subcommand(SubCommand::with_name("build").about("build the current project")
             .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
@@ -326,6 +331,17 @@ fn main() {
             };
 
             zz::build(true, false, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
+        },
+        ("export", Some(submatches)) => {
+            let stage = if submatches.is_present("release") {
+                zz::make::Stage::release()
+            } else if submatches.is_present("debug") {
+                zz::make::Stage::debug()
+            } else {
+                zz::make::Stage::test()
+            };
+
+            zz::build(false, true, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
         },
         ("", None) => {
             zz::build(false, false, "default", zz::make::Stage::test(), false);

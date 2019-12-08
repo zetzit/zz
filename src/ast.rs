@@ -83,7 +83,7 @@ pub enum Def {
         nameloc:    Location,
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
-        attr:       Vec<(String, Location)>,
+        attr:       HashMap<String, Location>,
         body:       Block,
         vararg:     bool,
         callassert: Vec<Expression>,
@@ -92,13 +92,13 @@ pub enum Def {
     Theory {
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
-        attr:       Vec<(String, Location)>,
+        attr:       HashMap<String, Location>,
     },
     Fntype {
         nameloc:    Location,
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
-        attr:       Vec<(String, Location)>,
+        attr:       HashMap<String, Location>,
         vararg:     bool,
     },
     Struct {

@@ -26,6 +26,7 @@ pub struct Emitter{
     inside_macro:   bool,
     cur_loc:        Option<ast::Location>,
     casedir:        String,
+    emit_as_extern: HashSet<Name>,
 }
 
 pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module, header: bool) -> (bool, String) {
@@ -71,6 +72,7 @@ impl Emitter {
             module,
             inside_macro: false,
             cur_loc: None,
+            emit_as_extern: HashSet::new(),
         }
     }
 
@@ -132,8 +134,13 @@ impl Emitter {
         }
     }
     fn to_local_name(&self, s: &Name) -> String {
+
         if !s.is_absolute() {
             return s.0.join("_");
+        }
+
+        if self.emit_as_extern.contains(s) {
+            return s.0.last().unwrap().clone();
         }
 
         assert!(s.is_absolute(), "ICE not abs: '{}'", s);
@@ -150,18 +157,6 @@ impl Emitter {
             s.0.remove(0);
             return s.0.join("_");
         }
-
-        /*
-        let mut search  = s.clone();
-        let mut rem     = Vec::new();
-        while search.len() > 1 {
-            if self.module.short_names.contains(&search) {
-                rem.insert(0, search.pop().unwrap());
-                return rem.join("_");
-            }
-            rem.push(search.pop().unwrap());
-        }
-        */
 
         let mut s = s.clone();
         s.0.remove(0);
@@ -653,8 +648,14 @@ impl Emitter {
             ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
         }
 
+        let mut name = Name::from(&ast.name);
         for (attr, loc) in attr {
             match attr.as_str() {
+                "extern" => {
+                    self.emit_as_extern.insert(name.clone());
+                    name = Name::from(name.0.last().unwrap());
+                    name.0.insert(0, String::new());
+                },
                 "inline" => {
                 },
                 o => {
@@ -668,7 +669,7 @@ impl Emitter {
             }
         }
 
-        write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
+        write!(self.f, "{} (", name.0[1..].join("_")).unwrap();
 
         self.function_args(args);
         if vararg {
@@ -676,8 +677,13 @@ impl Emitter {
         }
         write!(self.f, ");\n").unwrap();
 
-        // declare the short local name
+
+        // declare the aliased local name
         // aliases are broken in clang, so we need to create an inline redirect
+
+        if self.emit_as_extern.contains(&Name::from(&ast.name)) {
+            return;
+        }
 
         if self.to_local_name(&Name::from(&ast.name)) == Name::from(&ast.name).0[1..].join("_") {
             return;
@@ -744,8 +750,14 @@ impl Emitter {
             };
         }
 
+        let mut name = Name::from(&ast.name);
         for (attr, loc) in attr {
             match attr.as_str() {
+                "extern" => {
+                    self.emit_as_extern.insert(name.clone());
+                    name = Name::from(name.0.last().unwrap());
+                    name.0.insert(0, String::new());
+                },
                 "inline" => {
                     write!(self.f, " inline ").unwrap();
                 },
@@ -778,7 +790,7 @@ impl Emitter {
                 ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
                 ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
             }
-            write!(self.f, "{} (", Name::from(&ast.name).0[1..].join("_")).unwrap();
+            write!(self.f, "{} (", name.0[1..].join("_")).unwrap();
         }
 
 

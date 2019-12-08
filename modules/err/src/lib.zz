@@ -40,7 +40,7 @@ export  fn check(
 }
 
 
-fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line)
+export fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line)
 {
     if tail > 0 {
         static_attest((self->locations).len < tail);

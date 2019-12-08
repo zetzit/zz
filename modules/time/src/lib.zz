@@ -71,23 +71,12 @@ export fn more_than(Time *self, Time *other) -> bool {
     return false;
 }
 
-
-
-
+inline using "native.h"::{ _os_time_system }
 
 /// monotonic system clock
-
-using <time.h>::{clock_gettime, (struct timespec) as timespec_t, CLOCK_MONOTONIC};
 export fn system() -> Time {
-    timespec_t mut tt;
-    int r = (int)clock_gettime(CLOCK_MONOTONIC, &tt);
-
     Time mut tr = {0};
-    if r == 0 {
-        @{{
-            tr.secs  = tt.tv_sec;
-            tr.nano  = tt.tv_nsec;
-        }}@
-    }
+    tr.finite = _os_time_system(&tr.secs, &tr.nano) == 0;
     return tr;
 }
+

@@ -31,7 +31,7 @@ export fntype close_fn (Context mut* ctx);
 
 export struct Context {
     int         fd;
-    void*       handle;
+    void mut*   handle;
     u64         time;
 
     Async mut* unsafe async;
@@ -111,20 +111,8 @@ export fn write(Io mut* self, err::Err+et mut* e, string::String+st mut* str) ->
     where err::checked(*e)
 {
     static_attest(str->len < len(str->mem));
-
-    if self->write_impl == 0 {
-        err::fail(e, 1, "noimpl");
-        return Result::Error;
-    }
-    static_attest(safe(self->write_impl));
-
-    usize mut l = str->len;
-    Result rr = self->write_impl(&self->ctx, e, as<u8 mut*>(str->mem + str->len), &l);
-    err::check(e);
-    if rr != Result::Ready {
-        return rr;
-    }
-    return rr;
+    usize mut blen = str->len;
+    return write_bytes(self, e, (u8*)(str->mem), &blen);
 }
 
 export fn write_bytes(Io mut* self, err::Err+et mut* e, u8 *b, usize mut *blen) -> Result
@@ -137,6 +125,26 @@ export fn write_bytes(Io mut* self, err::Err+et mut* e, u8 *b, usize mut *blen) 
     static_attest(safe(self->write_impl));
 
     Result rr = self->write_impl(&self->ctx, e, b, blen);
+    err::check(e);
+    if rr != Result::Ready {
+        return rr;
+    }
+    return rr;
+}
+
+export fn write_cstr(Io mut* self, err::Err+et mut* e, char *b) -> Result
+    where nullterm(b)
+    where err::checked(*e)
+{
+    if self->write_impl == 0 {
+        err::fail(e, 1, "noimpl");
+        return Result::Error;
+    }
+    static_attest(safe(self->write_impl));
+
+    usize mut blen = string::strlen(b);
+
+    Result rr = self->write_impl(&self->ctx, e, (u8*)b, &blen);
     err::check(e);
     if rr != Result::Ready {
         return rr;
