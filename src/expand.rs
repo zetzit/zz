@@ -247,8 +247,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     d.loc.clone(), Tags::new()
                 )?;
             },
-            ast::Def::Testcase {..} => {
-            },
+            ast::Def::Testcase {..} => {},
+            ast::Def::Include {..} => {},
         }
     }
 

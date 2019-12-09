@@ -103,6 +103,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
 
 
+    let mut ext = abs::Ext::new();
 
     let mut names : Vec<Name> = modules.keys().cloned().collect();
     names.sort_unstable();
@@ -111,7 +112,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
         match &mut md {
             loader::Module::C(_) => (),
             loader::Module::ZZ(ast) => {
-                abs::abs(ast, &modules);
+                abs::abs(ast, &modules, &mut ext);
             }
         }
         modules.insert(name.clone(), md);
@@ -123,7 +124,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
         match &mut md {
             loader::Module::C(_) => (),
             loader::Module::ZZ(ast) => {
-                flat.push(flatten::flatten(ast, &modules));
+                flat.push(flatten::flatten(ast, &modules, &ext));
             }
         }
         modules.insert(name.clone(), md);

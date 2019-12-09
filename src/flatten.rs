@@ -5,6 +5,7 @@ use super::parser::emit_error;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use super::abs::Ext;
 
 
 #[derive(Clone, Default)]
@@ -15,7 +16,6 @@ pub struct Module {
 
                                         //vv declare in this object, define in this object
     pub d:              Vec<(ast::Local, bool,                       bool)>,
-    pub cincludes:      Vec<ast::Include>,
 
 
     pub aliases:        HashMap<Name, String>,
@@ -117,7 +117,7 @@ fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, ast::Locatio
         },
         ast::Statement::If{branches} => {
             let mut deps = Vec::new();
-            for (loc, expr, body) in branches {
+            for (_, expr, body) in branches {
                 if let Some(expr) = expr {
                     deps.extend(expr_deps(cr, expr));
                 }
@@ -246,7 +246,7 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, ast::Loca
     }
 }
 
-pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) -> Module {
+pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ext: &Ext) -> Module {
     debug!("flatten {}", md.name);
 
     let mut flat    = Module::default();
@@ -255,15 +255,16 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
     let mut collected   = Locals::default();
     let mut injected    : HashMap<Name, Vec<(Name, ast::Location)>> = Default::default();
-    let mut incomming = Vec::new();
-    let mut inlined_includes = HashMap::new();
+    let mut incomming   : Vec<(Name, ast::Location)>  = Vec::new();
     let mut thisobject  = HashSet::new();
     let mut collector   = Collector::default();
     let cr = &mut collector;
 
+
     for local in &md.locals {
         let mut ns = md.name.clone();
         ns.push(local.name.clone());
+        debug!("  local from abs.md: {}", local.name);
         thisobject.insert(ns.clone());
         incomming.push((ns, local.loc.clone()));
     }
@@ -273,11 +274,11 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         incomming_imports.push(import);
     }
 
-    let mut recursion_guard : HashSet<Name> = HashSet::new();
+    let mut visited : HashSet<Name> = HashSet::new();
 
     while incomming.len() > 0 {
         for (name, loc) in std::mem::replace(&mut incomming, Vec::new()) {
-            if !recursion_guard.insert(name.clone())  {
+            if !visited.insert(name.clone())  {
                 continue;
             }
             debug!("  localizing {}", name);
@@ -290,55 +291,53 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             }
 
 
-
-            if name.0[1] == "ext" {
-                //TODO
-                collected.0.insert(name.clone(), Local{
-                    impl_deps:      Vec::new(),
-                    decl_deps:      Vec::new(),
-                    use_deps:       Vec::new(),
-                    ast:  None,
-                    in_scope_here: loc,
-                });
-                continue
-            }
-
             let mut module_name = name.clone();
             let mut local_name = module_name.pop().unwrap();
             let mut expecting_sub_type = false;
-
-            let module = loop {
-                let module = if module_name == md.name { &md } else {match all_modules.get(&module_name) {
-                    None => {
-                        // try moving left
-                        if module_name.len() > 2{
-                            local_name = module_name.pop().unwrap();
-                            expecting_sub_type = true;
-                            if let Some(loader::Module::ZZ(ast)) = all_modules.get(&module_name) {
-                                break ast;
-                            } else {
-                                continue;
-                            }
-                        }
-
-                        emit_error(format!("ice: unknown module {}", module_name), &[
-                            (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
-                        ]);
-                        std::process::exit(9);
-                    },
-                    Some(loader::Module::C(_)) => panic!("not implemented"),
-                    Some(loader::Module::ZZ(ast)) => ast,
-                }};
-                break module;
-            };
-
-            // find the local we're looking for
             let mut local = None;
-            for local2 in &module.locals {
-                if local2.name == local_name {
-                    local = Some(local2);
-                    break;
+
+            if name.0[1] == "ext" {
+                local = ext.ext.get(&module_name);
+                if local.is_none() {
+                    emit_error(format!("ICE ext module {} unavable or somehow we're missing local {}", module_name, local_name ), &[
+                        (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
+                    ]);
+                    std::process::exit(9);
                 }
+            } else {
+                let module = loop {
+                    let module = if module_name == md.name { &md } else {match all_modules.get(&module_name) {
+                        None => {
+                            // try moving left
+                            if module_name.len() > 2{
+                                local_name = module_name.pop().unwrap();
+                                expecting_sub_type = true;
+                                if let Some(loader::Module::ZZ(ast)) = all_modules.get(&module_name) {
+                                    break ast;
+                                } else {
+                                    continue;
+                                }
+                            }
+
+                            emit_error(format!("ice: unknown module {}", module_name), &[
+                                       (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
+                            ]);
+                            std::process::exit(9);
+                        },
+                        Some(loader::Module::C(_)) => panic!("not implemented"),
+                        Some(loader::Module::ZZ(ast)) => ast,
+                    }};
+                    break module;
+                };
+
+                // find the local we're looking for
+                for local2 in &module.locals {
+                    if local2.name == local_name {
+                        local = Some(local2);
+                        break;
+                    }
+                };
+
             };
 
             // should have been cought by abs
@@ -346,12 +345,14 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 Some(v) => v,
                 None => {
                     emit_error(format!("module {} does not contain {}", module_name, local_name ), &[
-                        (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
+                               (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
                     ]);
                     std::process::exit(9);
                 }
             };
 
+            let mut ast = local.clone();
+            let ast_name = local.name.clone();
 
             let mut decl_deps : Vec<(Name, ast::Location)> = Vec::new();
             let mut impl_deps : Vec<(Name, ast::Location)> = Vec::new();
@@ -453,6 +454,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         decl_deps.extend(expr_deps(cr, expr));
                     }
                 }
+                ast::Def::Include{needs, expr, inline,.. } => {
+                    for (typed,_) in needs {
+                        decl_deps.extend(type_deps(cr, &typed));
+                    }
+
+                    if *inline {
+                        flat.sources.insert(PathBuf::from(&expr));
+                    }
+                }
             }
 
             if expecting_sub_type {
@@ -467,10 +477,16 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             }
 
 
-            let mut ns = module_name.clone();
-            ns.push(local.name.clone());
-            let mut ast = local.clone();
-            ast.name = ns.to_string();
+            let ns = if module_name.0[1] == "ext" {
+                Name::from(&ast_name)
+            } else {
+                let mut ns = module_name.clone();
+                ns.push(ast_name.clone());
+                ast.name = ns.to_string();
+                ns
+            };
+
+            debug!("  done local: {}", ns);
             collected.0.insert(ns, Local{
                 decl_deps,
                 impl_deps,
@@ -492,9 +508,21 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                             nn.push(local.clone());
                             flat.c_names.insert(nn, import.loc.clone());
                         }
-                        if import.inline {
-                            inlined_includes.insert(import.name.0[2].clone(), import);
-                        }
+
+
+                        //ext.insert(import.name.clone(), ast::Local {
+                        //    name:       import.name.to_string(),
+                        //    vis:        ast::Visibility::Object,
+                        //    loc:        import.loc.clone(),
+                        //    def: ast::Def::Include {
+                        //        expr:       import.name.0[2].clone(),
+                        //        loc:        import.loc.clone(),
+                        //        fqn:        import.name.clone(),
+                        //        inline:     import.inline,
+                        //        needs:      import.needs.clone(),
+                        //    },
+                        //});
+
                     } else if import.name == md.name {
                         // self import. do nothing
                         debug!("  self {} ", md.name);
@@ -512,9 +540,20 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         included_names.push(nn.clone());
                         flat.c_names.insert(nn, import.loc.clone());
                     }
-                    if import.inline {
-                        inlined_includes.insert(import.name.0[2].clone(), import);
-                    }
+
+                    //ext.insert(import.name.clone(), ast::Local {
+                    //    name:       import.name.to_string(),
+                    //    vis:        ast::Visibility::Object,
+                    //    loc:        import.loc.clone(),
+                    //    def: ast::Def::Include {
+                    //        expr:       import.name.0[2].clone(),
+                    //        loc:        import.loc.clone(),
+                    //        fqn:        import.name.clone(),
+                    //        inline:     import.inline,
+                    //        needs:      import.needs.clone(),
+                    //    },
+                    //});
+
                 }
                 Some(loader::Module::ZZ(ast)) => {
                     debug!("    < mod {}", import.name);
@@ -548,11 +587,25 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     // collect implementation dependencies into this object
     for name in &impl_in_thisobject {
         let n = collected.0.get(&name).unwrap();
+        debug!("  thisobj from impl_in_thisobject: {}", name);
         thisobject.insert(name.clone());
-        for (dep,_) in &n.impl_deps {
+        for (mut dep,_) in n.impl_deps.clone() {
+            if dep.0[1] == "ext" {
+                if dep.0.len() > 3 {
+                    dep.0.truncate(3);
+                }
+            }
+
+            debug!("      < : {}", dep);
             thisobject.insert(dep.clone());
         }
-        for (dep,_) in &n.decl_deps {
+        for (mut dep,_) in n.decl_deps.clone() {
+            if dep.0[1] == "ext" {
+                if dep.0.len() > 3 {
+                    dep.0.truncate(3);
+                }
+            }
+            debug!("      < : {}", dep);
             thisobject.insert(dep.clone());
         }
     }
@@ -579,7 +632,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         decl_visit(
             &mut visited,
             &collected.0,
-            &name,
+            name,
             &mut thisobject,
             0);
     }
@@ -592,7 +645,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             &mut sorted,
             &mut sorted_mark,
             &mut collected.0 ,
-            &name,
+            name.clone(),
             None,
             false,
             0,
@@ -606,7 +659,6 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
     debug!("sorted");
 
-    let mut included = HashMap::new();
     for (name, l) in sorted {
         let decl_in_obj = thisobject.contains(&name);
         let def_in_obj  = impl_in_thisobject.contains(&name);
@@ -617,42 +669,11 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         for (dep, _) in &l.impl_deps {
             debug!("    <I {}", dep);
         }
-        if let Some(ast) = &l.ast {
+
+        if let Some(ast) = l.ast {
             flat.d.push((ast.clone(), decl_in_obj, def_in_obj));
-        } else if name.0[1] == "ext" {
-            let mut fqn = name.0.clone();
-            fqn.pop();
-
-            if decl_in_obj {
-                included.entry(name.0[2].clone()).or_insert(ast::Include{
-                    expr: name.0[2].clone(),
-                    loc:  l.in_scope_here.clone(),
-                    fqn:  Name(fqn),
-                    inline: inlined_includes.contains_key(&name.0[2]),
-                });
-            }
-
         }
     }
-
-    flat.cincludes = included.values().cloned().collect();
-
-
-    /*
-    for (_ ,i) in inlined_includes {
-        if included.insert(i.name.0[2].clone()) {
-            let mut fqn = i.name.0.clone();
-            fqn.pop();
-            let inc = ast::Include{
-                expr: i.name.0[2].clone(),
-                loc:  i.loc.clone(),
-                fqn:  Name(fqn),
-                inline: true,
-            };
-            flat.d.push((D::Include(inc), false));
-        }
-    }
-    */
 
     flat.typevariants = collector.typevariants;
     flat
@@ -662,20 +683,26 @@ fn sort_visit(
         sorted:             &mut Vec<(Name,Local)>,
         sorted_mark:        &mut HashSet<Name>,
         unsorted:           &mut HashMap<Name, Local>,
-        name:               &Name,
+        mut name:           Name,
         here:               Option<&ast::Location>,
         allow_recursion:    bool,
         depth:              usize,
         mut use_deps:       Option<&mut Vec<(Name, ast::Location)>>
 )
 {
-    if sorted_mark.contains(name) {
+    if name.0[1] == "ext" {
+        if name.0.len() > 3 {
+            name.0.truncate(3);
+        }
+    }
+
+    if sorted_mark.contains(&name) {
         return;
     }
 
     debug!("  {} sort_visit: {} {}", " ".repeat(depth), name, if allow_recursion { "(recursion ok)"} else {""});
 
-    let n = match unsorted.remove(name) {
+    let n = match unsorted.remove(&name) {
         Some(v) => v,
         None => {
             if allow_recursion {
@@ -704,14 +731,14 @@ fn sort_visit(
 
 
     for (dep,loc) in &n.impl_deps {
-        if dep == name {
+        if dep == &name {
             continue;
         }
-        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc), true, depth+1, Some(&mut use_deps_here));
+        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), true, depth+1, Some(&mut use_deps_here));
     }
 
     for (dep,loc) in &n.decl_deps {
-        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc), false, depth+1, Some(&mut use_deps_here));
+        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), false, depth+1, Some(&mut use_deps_here));
     }
 
 
@@ -719,7 +746,7 @@ fn sort_visit(
     sorted.push((name.clone(), n.clone()));
 
     for (dep,loc) in &use_deps_here {
-        sort_visit(sorted, sorted_mark, unsorted, dep, Some(loc), true, depth+1, None);
+        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), true, depth+1, None);
     }
 
 
@@ -731,10 +758,15 @@ fn sort_visit(
 fn decl_visit(
         visited:    &mut HashSet<Name>,
         unsorted:   &HashMap<Name, Local>,
-        name:       &Name,
+        mut name:   Name,
         thisobject: &mut HashSet<Name>,
         depth:      usize,
 ) {
+    if name.0[1] == "ext" {
+        if name.0.len() > 3 {
+            name.0.truncate(3);
+        }
+    }
 
     if !visited.insert(name.clone()) {
         return;
@@ -742,7 +774,7 @@ fn decl_visit(
 
     thisobject.insert(name.clone());
 
-    let n = match unsorted.get(name) {
+    let n = match unsorted.get(&name) {
         Some(v) => v,
         None => {
             return;
@@ -750,16 +782,13 @@ fn decl_visit(
     };
 
     for (dep,_) in &n.decl_deps {
-        decl_visit(visited, unsorted, dep, thisobject, depth+1);
+        decl_visit(visited, unsorted, dep.clone(), thisobject, depth+1);
     }
 
     for (dep,_) in &n.use_deps {
-        decl_visit(visited, unsorted, dep, thisobject, depth+1);
+        decl_visit(visited, unsorted, dep.clone(), thisobject, depth+1);
     }
 }
-
-
-
 
 impl Module {
     pub fn is_newer_than(&self, target: &str) -> bool {

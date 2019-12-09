@@ -9,6 +9,28 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static ABORT: AtomicBool = AtomicBool::new(false);
 
+pub struct Ext {
+    pub ext: HashMap<Name, ast::Local>,
+}
+
+impl Ext {
+    pub fn new() -> Self {
+        let mut ext = HashMap::new();
+        ext.insert(Name::from("::ext::<stddef.h>"), ast::Local {
+            name:       "::ext::<stddef.h>".to_string(),
+            vis:        ast::Visibility::Object,
+            loc:        ast::Location::builtin(),
+            def: ast::Def::Include {
+                expr:       "<stddef.h>".to_string(),
+                loc:        ast::Location::builtin(),
+                fqn:        Name::from("::ext::<stddef.h>"),
+                inline:     false,
+                needs:      Vec::new(),
+            },
+        });
+        Ext{ext}
+    }
+}
 
 struct InScope {
     name:       Name,
@@ -22,6 +44,7 @@ struct Scope {
     v: HashMap<String, InScope>,
 }
 
+
 impl Scope{
     pub fn insert(&mut self, local: String, fqn: Name, loc: &ast::Location, is_module: bool, subtypes: bool) {
         if let Some(previous) = self.v.get(&local) {
@@ -34,7 +57,7 @@ impl Scope{
                 std::process::exit(9);
             }
         }
-        trace!("  insert {:?}", fqn);
+        trace!("  insert {} := {}", local, fqn);
         self.v.insert(local, InScope{
             name:       fqn,
             loc:        loc.clone(),
@@ -459,7 +482,7 @@ fn abs_block(
     }
 }
 
-pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
+pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ext: &mut Ext) {
     debug!("abs {}", md.name);
 
     let mut scope = Scope::default();
@@ -490,6 +513,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                 }
             }
         }
+
         import.name = fqn;
     }
 
@@ -641,7 +665,63 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>) {
                     abs_expr(expr, &scope, false, all_modules, &md.name);
                 }
             }
+            ast::Def::Include{needs,..} => {
+                for (t,_) in needs {
+                    scope.abs(t, false);
+                }
+            }
         }
+    }
+
+    // round three, create ext types
+    for import in &mut md.imports {
+        for (name,_) in &mut import.needs {
+            scope.abs(name, false);
+        }
+
+        if import.name.0[1] == "ext" {
+            if let Some(previous) = ext.ext.get(&import.name) {
+                if let ast::Def::Include{inline,..} = previous.def {
+                    if inline != import.inline {
+                        emit_error(format!("conflicting import modes"), &[
+                            (import.loc.clone(), format!("{} here", if inline {"inlined"} else {"included"})),
+                            (previous.loc.clone(), format!("previously {} here", if inline {"inlined"} else {"included"})),
+                        ]);
+                        std::process::exit(9);
+                    }
+                }
+            }
+
+            let mut expr = import.name.0[2].clone();
+            if import.inline {
+
+                if !expr.starts_with("\"") || !expr.ends_with("\"") || expr.len() < 3 {
+                    emit_error(
+                        "cannot inline non-relative include",
+                        &[(import.loc.clone(), format!("'{}' is not a relative include", expr))]
+                        );
+                    std::process::exit(9);
+                }
+
+                let path = &expr[1..expr.len() - 1];
+                let path = std::path::Path::new(&import.loc.file).parent().expect("ICE: inline path resolver").join(path);
+                expr = path.to_string_lossy().into();
+            }
+
+            ext.ext.insert(import.name.clone(), ast::Local {
+                name:       import.name.to_string(),
+                vis:        ast::Visibility::Object,
+                loc:        import.loc.clone(),
+                def: ast::Def::Include {
+                    expr,
+                    loc:        import.loc.clone(),
+                    fqn:        import.name.clone(),
+                    inline:     import.inline,
+                    needs:      import.needs.clone(),
+                },
+            });
+        }
+
     }
 
     if ABORT.load(Ordering::Relaxed) {

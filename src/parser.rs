@@ -454,6 +454,8 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut importname = None;
                 let mut alias      = None;
                 let mut inline     = false;
+                let mut needs      = Vec::new();
+
                 for part in decl.into_inner() {
                     match part.as_rule() {
                         Rule::importname => {
@@ -468,6 +470,25 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         Rule::key_inline => {
                             inline = true;
                         }
+                        Rule::importdeps => {
+                            for ident in part.into_inner() {
+                                needs.push((
+                                        Typed{
+                                            t:      Type::Other(Name::from(ident.as_str())),
+                                            ptr:    Vec::new(),
+                                            loc:    Location{
+                                                file: n.to_string_lossy().into(),
+                                                span: ident.as_span(),
+                                            },
+                                            tail:   Tail::None,
+                                        },
+                                        Location{
+                                            file: n.to_string_lossy().into(),
+                                            span: ident.as_span(),
+                                        }
+                                ));
+                            }
+                        }
                         e => panic!("unexpected rule {:?} in import ", e),
                     }
                 };
@@ -480,6 +501,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                     vis,
                     loc,
                     inline,
+                    needs,
                 });
 
 

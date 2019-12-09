@@ -1,59 +1,36 @@
 using address;
 using string;
 using err;
-using time;
+using io;
 
-using <sys/socket.h> as posix_socket;
-using <arpa/inet.h>::{IPPROTO_UDP};
-using <unistd.h> as unistd;
-using <netinet/in.h>::{
-    (struct sockaddr_in6)   as SockAddrIn,
-    (struct sockaddr)       as SockAddr,
+inline using(needs err::Err, err::fail_with_errno, err::fail, io::Context, address::Type, address::Address) "os.h"::{
+    _os_net_udp_bind,
+    _os_net_udp_close,
 };
-
-using <sys/time.h>::{
-    (struct timeval) as Timeval
-};
-
 
 export struct Socket {
-    int fd;
+    io::Context ctx;
 }
 
-export fn close(Socket mut *self)
-{
-    if self->fd >= 0 {
-        unistd::close(self->fd);
-    }
-    self->fd = 0;
-}
 
-export fn open(Socket mut *self, err::Err+et mut*e, address::Type addrtype)
+export fn bind(err::Err+et mut*e, address::Address *addr) -> Socket
     where err::checked(*e)
 {
-    if self->fd != 0 {
-        close(self);
-    }
-
-    switch addrtype {
-        address::Type::Ipv6 => {
-            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET6, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
-        }
-        address::Type::Ipv4 => {
-            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
-        }
-    }
-
-    if self->fd < 0 {
-        err::fail_with_errno(e, "socket");
-        return;
-    }
-
-    unsafe {
-        int v = 1;
-        posix_socket::setsockopt(self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_REUSEADDR, (void*)&v, sizeof(int));
-    }
+    io::Context mut ctx;
+    _os_net_udp_bind(e, et, addr, &ctx);
+    return Socket {
+        ctx: ctx
+    };
 }
+
+
+
+export fn close(Socket mut* self) {
+    _os_net_udp_close(self->ctx);
+}
+
+
+/*
 
 export fn bind(Socket mut *self, err::Err+et mut*e, address::Address *addr)
     where err::checked(*e)
@@ -126,6 +103,11 @@ export fn recv(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, 
     buf->len += as<usize>(r);
 }
 
+*/
+
+
+/*
+using <sys/time.h>::{ (struct timeval) as Timeval
 export fn deadline(Socket mut *self, err::Err+et mut*e, time::Time dur)
     where err::checked(*e)
 {
@@ -138,3 +120,5 @@ export fn deadline(Socket mut *self, err::Err+et mut*e, time::Time dur)
         err::fail_with_errno(e, "setsockopt");
     }
 }
+
+*/

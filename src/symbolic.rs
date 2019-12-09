@@ -426,8 +426,8 @@ impl Symbolic {
                     )?;
                     self.memory[sym].value = Value::Unconstrained("macro".to_string());
                 },
-                ast::Def::Testcase {..} => {
-                },
+                ast::Def::Testcase {..} => {},
+                ast::Def::Include {..} => {},
             }
         }
 
@@ -1450,6 +1450,12 @@ impl Symbolic {
                         }
                     },
                     _ => ()
+                }
+
+                if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
+                    return Err(Error::new(format!("cannot prove memory access due to unexpected type"), vec![
+                        (lhs.loc().clone(), format!("lhs of array expression appears to be not a pointer or array"))
+                    ]))
                 }
 
                 self.ssa.debug("begin array bounds");
@@ -2493,6 +2499,12 @@ impl Symbolic {
             popped_tags,
         )?;
 
+
+        if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
+            return Err(Error::new(format!("cannot prove memory access due to unexpected type"), vec![
+                (loc.clone(), format!("deref expression appears to be not a pointer or array"))
+            ]))
+        }
 
         self.ssa.debug("begin safe ptr check");
         let tmp1 = self.temporary(

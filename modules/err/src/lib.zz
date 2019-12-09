@@ -97,32 +97,32 @@ export fn fail(
 }
 
 export fn abort(
-        Err+tail mut* err,
+        Err+tail mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
 )
-model checked(*err)
+model checked(*self)
 {
-    if (err->error != 0) {
-        static_attest(checked(*err));
-        backtrace(err, file, scope, line);
-        fprintf(stderr, "fatal error %u: %s%s\n", err->error, err->description, (err->locations).mem);
+    if (self->error != 0) {
+        static_attest(checked(*self));
+        backtrace(self, file, scope, line);
+        fprintf(stderr, "fatal error %u: %s%s\n", self->error, self->description, (self->locations).mem);
         cabort();
     }
-    static_attest(checked(*err));
+    static_attest(checked(*self));
 }
 
-export fn eprint(Err+tail mut* err)
+export fn eprint(Err+tail mut* self)
 {
-    fprintf(stderr, "fatal error %u: %s%s\n", err->error, err->description, (err->locations).mem);
+    fprintf(stderr, "fatal error %u: %s%s\n", self->error, self->description, (self->locations).mem);
 }
 
 export fn to_str(
-    Err mut* err,
+    Err mut* self,
     char mut *dest,
     usize dest_len,
 )
 {
-    snprintf(dest, dest_len, "%s%s\n", err->description, (err->locations).mem);
+    snprintf(dest, dest_len, "%s%s\n", self->description, (self->locations).mem);
 }

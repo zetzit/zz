@@ -55,6 +55,7 @@ pub struct Import {
     pub vis:    Visibility,
     pub loc:    Location,
     pub inline: bool,
+    pub needs:  Vec<(Typed, Location)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -118,6 +119,13 @@ pub enum Def {
     Testcase {
         fields:     Vec<(String, Expression)>,
     },
+    Include {
+        expr:       String,
+        loc:        Location,
+        fqn:        Name,
+        inline:     bool,
+        needs:      Vec<(Typed, Location)>,
+    }
 }
 
 
@@ -129,14 +137,6 @@ pub struct Local {
     pub def:        Def,
 }
 
-
-#[derive(Clone)]
-pub struct Include {
-    pub expr:   String,
-    pub loc:    Location,
-    pub fqn:    Name,
-    pub inline: bool,
-}
 
 #[derive(Clone, Debug)]
 pub struct Pointer {

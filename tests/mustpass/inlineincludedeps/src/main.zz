@@ -1,0 +1,14 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    int x;
+};
+
+inline using(needs A) "something.h"::{bob};
+
+export fn main() -> int {
+    A a;
+    bob(&a);
+    return 0;
+}

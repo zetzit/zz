@@ -172,11 +172,9 @@ impl Emitter {
             write!(self.f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", headername, headername).unwrap();
         }
 
-        for inc in &module.cincludes {
-            self.emit_include(&inc);
-        }
 
         for (d,decl_here,def_here) in &module.d {
+            debug!("  {} (decl_here: {})", d.name, decl_here);
             if !decl_here{
                 continue
             }
@@ -219,6 +217,9 @@ impl Emitter {
                 ast::Def::Testcase {..} => {
                     self.emit_testcase(&d);
                 }
+                ast::Def::Include {..} => {
+                    self.emit_include(&d);
+                }
             }
             write!(self.f, "\n").unwrap();
         }
@@ -255,26 +256,21 @@ impl Emitter {
 
 
 
-    pub fn emit_include(&mut self, i: &ast::Include) {
-        trace!("    emit include {} (inline? {})", i.fqn, i.inline);
-        if i.inline {
+    pub fn emit_include(&mut self, ast: &ast::Local) {
 
-            if !i.expr.starts_with("\"") || !i.expr.ends_with("\"") || i.expr.len() < 3 {
-                parser::emit_error(
-                    "cannot inline non-relative include",
-                    &[(i.loc.clone(), format!("'{}' is not a relative include", i.expr))]
-                    );
-                std::process::exit(9);
-            }
+        self.emit_loc(&ast.loc);
+        let (expr, loc, fqn, inline, _needs) = match &ast.def {
+            ast::Def::Include{expr, loc, fqn, inline, needs} => (expr, loc, fqn, inline, needs),
+            _ => unreachable!(),
+        };
 
-            let path = &i.expr[1..i.expr.len() -1];
-            let path = std::path::Path::new(&i.loc.file).parent().expect("ICE: inline path resolver").join(path);
-
-            let mut f = match fs::File::open(&path) {
+        trace!("    emit include {} (inline? {})", fqn, inline);
+        if *inline {
+            let mut f = match fs::File::open(&expr) {
                 Err(e) => {
                     parser::emit_error(
-                        format!("cannot inline {:?}", path),
-                        &[(i.loc.clone(), format!("{}", e))]
+                        format!("cannot inline {:?}", expr),
+                        &[(loc.clone(), format!("{}", e))]
                         );
                     std::process::exit(9);
 
@@ -284,28 +280,28 @@ impl Emitter {
 
 
             let mut v = Vec::new();
-            f.read_to_end(&mut v).expect(&format!("read {:?}", path));
+            f.read_to_end(&mut v).expect(&format!("read {:?}", expr));
 
             if !self.inside_macro {
-                write!(self.f, "\n#line 1 {}\n", i.expr).unwrap();
+                write!(self.f, "\n#line 1 \"{}\"\n", expr).unwrap();
             }
             self.f.write_all(&v).unwrap();
 
 
             return;
         }
-        self.emit_loc(&i.loc);
+        self.emit_loc(&loc);
 
-        if self.cxx && i.expr.contains(".h>") {
+        if self.cxx && expr.contains(".h>") {
             write!(self.f, "extern \"C\" {{\n").unwrap();
         }
-        write!(self.f, "#include {}\n", i.expr).unwrap();
-        if self.cxx && i.expr.contains(".h>") {
+        write!(self.f, "#include {}\n", expr).unwrap();
+        if self.cxx && expr.contains(".h>") {
             write!(self.f, "}}\n").unwrap();
         }
 
-        if i.fqn.len() > 3 {
-            write!(self.f, "using namespace {} ;\n", i.fqn.0[3..].join("::")).unwrap();
+        if fqn.len() > 3 {
+            write!(self.f, "using namespace {} ;\n", fqn.0[3..].join("::")).unwrap();
         }
     }
 

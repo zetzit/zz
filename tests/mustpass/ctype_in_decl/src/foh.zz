@@ -1,0 +1,6 @@
+inline using "foh.h" as c;
+
+
+pub fn foh() -> c::A *  {
+    return 0;
+}

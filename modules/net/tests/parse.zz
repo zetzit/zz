@@ -124,7 +124,7 @@ export fn main() -> int {
     string::fgets(&sin, stdin);
 
     address::Address mut sa = {0};
-    if !address::from_cstr(&sa, sin.mem) {
+    if !sa.from_string(&sin) {
         return 3;
     }
 

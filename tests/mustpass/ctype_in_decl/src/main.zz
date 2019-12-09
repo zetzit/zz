@@ -1,0 +1,10 @@
+using <stdio.h>::{printf};
+using foh;
+
+export fn main() -> int {
+
+    foh::foh();
+
+    printf("hello ctype_in_decl\n");
+    return 0;
+}

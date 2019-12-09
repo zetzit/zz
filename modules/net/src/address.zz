@@ -1,19 +1,11 @@
 using string;
+using byteorder;
+using string;
 
 using <stdio.h>::{printf};
-using <arpa/inet.h>::{inet_pton, htons, inet_aton, ntohs};
-using <string.h>::{memset, strlen};
-using <netinet/in.h>::{
-    (struct sockaddr_in)    as SockAddrIn4,
-    (struct sockaddr_in6)   as SockAddrIn6,
-    (struct sockaddr)       as SockAddr,
-    (struct in_addr)        as InnetAddr,
-};
+using <string.h>::{memset};
 
-export union Posix{
-    SockAddrIn4 v4;
-    SockAddrIn6 v6;
-}
+inline using "os.h" as os;
 
 export enum Type {
     Ipv4,
@@ -22,22 +14,23 @@ export enum Type {
 
 export struct Address {
     Type    type;
-    Posix   posix;
+    u8      os[24];
 }
 
-export fn from_string(Address mut* to, string::String+st *s) -> bool
+export fn from_string(Address mut* self, string::String+st *s) -> bool
 {
     static_attest(len(s->mem) >= s->len);
-    return from_str(to, s->mem, s->len);
+    return from_str(self, s->mem, s->len);
 }
-export fn from_cstr(Address mut* to, char *s) -> bool
+export fn from_cstr(Address mut* self, char *s) -> bool
+    where nullterm(s)
 {
-    usize slen = as<usize>(strlen(s));
+    usize slen = string::strlen(s);
     static_attest(len(s) >= slen);
-    return from_str(to, s, slen);
+    return from_str(self, s, slen);
 }
 
-export fn from_str(Address mut* to, char * mut s, usize mut slen) -> bool
+export fn from_str(Address mut* self, char * mut s, usize mut slen) -> bool
     where len(s) >= slen
 {
     if slen < 2 {
@@ -49,29 +42,20 @@ export fn from_str(Address mut* to, char * mut s, usize mut slen) -> bool
         slen -= 1;
         static_attest(safe(s));
         static_attest(len(s) >= slen);
-        return from_str_ipv6(to, s, slen);
+        return from_str_ipv6(self, s, slen);
     }
-    return from_str_ipv4(to, s, slen) || from_str_ipv6(to, s, slen);
+    return from_str_ipv4(self, s, slen) || from_str_ipv6(self, s, slen);
 }
 
-export fn from_str_ipv6(Address mut* to, char * s, usize slen) -> bool
+export fn from_str_ipv6(Address mut* self, char * s, usize slen) -> bool
     where len(s) >= slen
     where slen > 0
 {
-    to->type = Type::Ipv6;
-    memset(&to->posix, 0, sizeof(Posix));
-    unsafe {
-        ((to->posix).v6).sin6_family      = AF_INET6;
-    }
+    memset(self, 0, sizeof(Address));
+    self->type = Type::Ipv6;
 
-    u8 mut *mut ip;
-    u16 mut* mut port;
-    unsafe {
-        ip      = (void mut*)&((((to->posix).v6).sin6_addr).s6_addr);
-        port    = &(((to->posix).v6).sin6_port);
-    }
-    static_attest(len(ip) == 4);
-    static_attest(safe(port));
+    u8 mut  ip[16] = {0};
+    u16 mut port = 0;
 
     usize mut at_part = 0;
     u32 mut parts[8] = {0};
@@ -119,11 +103,11 @@ export fn from_str_ipv6(Address mut* to, char * s, usize slen) -> bool
             for(; i < slen; i++) {
                 char ch = s[i];
                 if ch >= '0' && ch <= '9' {
-                    uint nv = as<uint>(*port * 10) + as<uint>(ch - '0');
+                    uint nv = as<uint>(port * 10) + as<uint>(ch - '0');
                     if nv > 65535 {
                         return false;
                     }
-                    *port =  as<u16>(nv);
+                    port = as<u16>(nv);
                 } else {
                     return false;
                 }
@@ -133,14 +117,8 @@ export fn from_str_ipv6(Address mut* to, char * s, usize slen) -> bool
         }
     }
 
-
-    //printf("%u %u\n", at_part, skip_at);
-
-    //TODO prover broke
-    unsafe {
-        if at_part < 7 && skip_at == -1 {
-            return false;
-        }
+    if at_part < 7 && skip_at == -1 {
+        return false;
     }
 
     usize mut j = 0;
@@ -150,36 +128,26 @@ export fn from_str_ipv6(Address mut* to, char * s, usize slen) -> bool
             j += 2 * (7 - at_part);
         } else {
             u8 * p = (u8*)(&parts[i]);
-            unsafe {
-                ip[j]   = p[1];
-                ip[j+1] = p[0];
-            }
+            static_attest(j < 16);
+            static_attest(len(p) == 2);
+            ip[j]   = p[1];
+            ip[j+1] = p[0];
         }
     }
 
-    *port = as<u16>(htons(*port));
-
+    self->set_ip(Type::Ipv6, ip);
+    self->set_port(port);
     return true;
 }
 
-export fn from_str_ipv4(Address mut* to, char *s, usize slen) -> bool
+export fn from_str_ipv4(Address mut* self, char *s, usize slen) -> bool
     where len(s) >= slen
 {
-    to->type = Type::Ipv4;
-    memset(&to->posix, 0, sizeof(Posix));
-    unsafe {
-        ((to->posix).v4).sin_family      = AF_INET;
-    }
+    memset(self, 0, sizeof(Address));
+    self->type = Type::Ipv4;
 
-    u8 mut *mut ip;
-    u16 mut* mut port;
-    unsafe{
-        ip      = (void mut*)&((((to->posix).v4).sin_addr).s_addr);
-        port    = &(((to->posix).v4).sin_port);
-    }
-    static_attest(len(ip) == 4);
-    static_attest(safe(port));
-
+    u8 mut ip[4] = {0};
+    u16 mut port = 0;
     usize mut at = 0;
 
     for(usize mut i = 0; i < slen; i++) {
@@ -200,11 +168,11 @@ export fn from_str_ipv4(Address mut* to, char *s, usize slen) -> bool
             for(; i < slen; i++) {
                 char ch = s[i];
                 if ch >= '0' && ch <= '9' {
-                    uint nv = as<uint>(*port * 10) + as<uint>(ch - '0');
+                    uint nv = as<uint>(port * 10) + as<uint>(ch - '0');
                     if nv > 65535 {
                         return false;
                     }
-                    *port =  as<u16>(nv);
+                    port =  as<u16>(nv);
                 } else {
                     return false;
                 }
@@ -213,10 +181,13 @@ export fn from_str_ipv4(Address mut* to, char *s, usize slen) -> bool
             return false;
         }
     }
-    *port = as<u16>(htons(*port));
     if at != 3 {
         return false;
     }
+
+    self->set_ip(Type::Ipv4, ip);
+    self->set_port(port);
+
     return true;
 }
 
@@ -226,32 +197,22 @@ export fn to_string(string::String+st mut*to, Address * from)
 {
     switch from->type {
         Type::Ipv4 => {
-            u8 * mut ip;
-            u16 * mut port;
-            unsafe{
-                ip      = (void mut*)&((((from->posix).v4).sin_addr).s_addr);
-                port    = &(((from->posix).v4).sin_port);
-            }
+            u8 * ip = os::net_address_ipv4_get_ip(from->os);
             static_attest(len(ip) == 4);
-            static_attest(safe(port));
+            u16 port = byteorder::from_be16((u16)os::net_address_ipv4_get_port(from->os));
 
             string::format(to, "%u.%u.%u.%u:%u",
                     ip[0],
                     ip[1],
                     ip[2],
                     ip[3],
-                    ntohs(*port)
+                    port
             );
         }
         Type::Ipv6 => {
-            u8 * mut ip;
-            u16 * mut port;
-            unsafe{
-                ip      = (void mut*)&((((from->posix).v6).sin6_addr).s6_addr);
-                port    = &(((from->posix).v6).sin6_port);
-            }
+            u8 * ip = os::net_address_ipv6_get_ip(from->os);
             static_attest(len(ip) == 16);
-            static_attest(safe(port));
+            u16 port = byteorder::from_be16((u16)os::net_address_ipv6_get_port(from->os));
 
             // find the largest skippable section
             int mut largest_skippable_start   = -1;
@@ -280,7 +241,7 @@ export fn to_string(string::String+st mut*to, Address * from)
                 largest_skippable_start = current_skippable_start;
             }
 
-            if *port != 0 {
+            if port != 0 {
                 string::push(to, '[');
             }
 
@@ -305,8 +266,8 @@ export fn to_string(string::String+st mut*to, Address * from)
                 }
             }
 
-            if *port != 0 {
-                string::format(to, "]:%u", ntohs(*port));
+            if port != 0 {
+                string::format(to, "]:%u", port);
             }
         }
     }
@@ -317,14 +278,10 @@ export fn to_string(string::String+st mut*to, Address * from)
 export fn set_port(Address mut*self, u16 port) {
     switch self->type {
         Type::Ipv4 => {
-            unsafe {
-                ((self->posix).v4).sin_port = htons(port);
-            }
+            os::net_address_ipv4_set_port(self->os, byteorder::to_be16(port));
         }
         Type::Ipv6 => {
-            unsafe{
-                ((self->posix).v6).sin6_port = htons(port);
-            }
+            os::net_address_ipv6_set_port(self->os, byteorder::to_be16(port));
         }
     }
 }
@@ -332,14 +289,10 @@ export fn set_port(Address mut*self, u16 port) {
 export fn get_port(Address *self) -> u16 {
     switch self->type {
         Type::Ipv4 => {
-            unsafe{
-                return ntohs(((self->posix).v4).sin_port);
-            }
+            return (u16)byteorder::from_be16(os::net_address_ipv4_get_port(self->os));
         }
         Type::Ipv6 => {
-            unsafe {
-                return ntohs(((self->posix).v6).sin6_port);
-            }
+            return (u16)byteorder::from_be16(os::net_address_ipv6_get_port(self->os));
         }
     }
 }
@@ -348,14 +301,10 @@ export fn get_ip(Address *self) -> u8*
 {
     switch self->type {
         Type::Ipv4 => {
-            unsafe{
-                return (u8*)&((((self->posix).v4).sin_addr).s_addr);
-            }
+            return (u8*)os::net_address_ipv4_get_ip(self->os);
         }
         Type::Ipv6 => {
-            unsafe {
-                return (u8*)&((((self->posix).v6).sin6_addr).s6_addr);
-            }
+            return (u8*)os::net_address_ipv4_get_ip(self->os);
         }
     }
 }
@@ -366,18 +315,13 @@ export fn set_ip(Address mut *self, Type t, u8*b)
     self->type = t;
     switch self->type {
         Type::Ipv4 => {
-            unsafe{
-                memcpy((u8 mut*)&((((self->posix).v4).sin_addr).s_addr), b, 4);
-            }
+            os::net_address_ipv4_set_ip(self->os, b);
         }
         Type::Ipv6 => {
-            unsafe {
-                memcpy((u8 mut*)&((((self->posix).v6).sin6_addr).s6_addr), b, 16);
-            }
+            os::net_address_ipv6_set_ip(self->os, b);
         }
     }
 }
-
 
 static u8 hexmap[] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567

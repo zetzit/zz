@@ -118,7 +118,7 @@ impl Emitter {
 
     pub fn emit(mut self) -> CFile {
         let module = self.module.clone();
-        debug!("emitting {}", module.name);
+        debug!("emitting rs {}", module.name);
 
         write!(self.f, "extern {{\n").unwrap();
 
@@ -170,6 +170,7 @@ impl Emitter {
                 }
                 ast::Def::Theory{..} => {}
                 ast::Def::Testcase {..} => {}
+                ast::Def::Include{..} => {}
             }
             write!(self.f, "\n").unwrap();
         }

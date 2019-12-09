@@ -2,25 +2,35 @@ using <stdio.h>::{printf};
 
 using string;
 using address;
-using udp;
 using err;
-using time;
+using udp;
+using io;
 
 export fn main() -> int {
     err::Err+1000 mut e;
-    err::new(&e);
+    e.new();
 
     string::String+100 mut sin = {0};
-    string::append_cstr(&sin, "[::1]:8083");
+    sin.append_cstr("[::1]:8083");
 
     address::Address mut sa = {0};
-    address::from_cstr(&sa, sin.mem);
+    sa.from_cstr(sin.mem);
 
     string::String+100 mut sout = {0};
     address::to_string(&sout, &sa);
 
     printf(">%.*s<\n", (int)sout.len, sout.mem);
 
+
+    udp::Socket mut sock = udp::bind(&e, &sa);
+    e.abort();
+
+
+    
+
+
+
+/*
     udp::Socket mut sock = {0};
 
     udp::bind(&sock, &e, &sa);
@@ -43,6 +53,7 @@ export fn main() -> int {
     printf(">%.*s<\n", (int)srecv.len, srecv.mem);
 
     udp::close(&sock);
+    */
 
     return 0;
 }
