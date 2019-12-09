@@ -1160,7 +1160,7 @@ impl Symbolic {
                 *prev = Box::new(ast::Expression::Cast {
                     into: into_type,
                     expr: prev.clone(),
-                    loc:  defined[i].loc.clone(),
+                    loc:  prev.loc().clone(),
                 });
 
                 match &self.memory[callptr].typed.tail.clone() {
@@ -1188,8 +1188,30 @@ impl Symbolic {
                     }
                 }
             } else {
+
                 if callargs.len() > 0 {
-                    called.push(callargs.remove(0));
+                    let mut calledarg = callargs.remove(0);
+                    let callptr = self.execute_expr(&mut calledarg)?;
+
+                    // pointers to structs can be used as pointers to their first field
+                    if self.memory[callptr].typed !=  defined[i].typed {
+                        if let ast::Type::Other(n) = &self.memory[callptr].typed.t {
+                            if let Some(ast::Def::Struct {fields, ..}) = self.defs.get(&n) {
+                                if let Some(field) = fields.get(0) {
+                                    if field.typed.t == defined[i].typed.t {
+                                        let mut into_type = self.memory[callptr].typed.clone();
+                                        into_type.t = field.typed.t.clone();
+                                        *calledarg = ast::Expression::Cast {
+                                            into: into_type,
+                                            expr: calledarg.clone(),
+                                            loc:  calledarg.loc().clone(),
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    called.push(calledarg);
                 }
             }
         }

@@ -1,0 +1,23 @@
+using <stdio.h>::{printf};
+
+
+
+
+struct A {
+}
+
+struct B {
+    A a;
+}
+
+
+pub fn bla(A mut*self) {
+}
+
+export fn main() -> int {
+
+    B mut b;
+    b.bla();
+
+    return 0;
+}
