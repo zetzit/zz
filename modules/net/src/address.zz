@@ -8,6 +8,7 @@ using <string.h>::{memset};
 inline using "os.h" as os;
 
 export enum Type {
+    Invalid,
     Ipv4,
     Ipv6,
 }
@@ -17,24 +18,36 @@ export struct Address {
     u8      os[24];
 }
 
-export fn from_string(Address mut* self, string::String+st *s) -> bool
+export fn new() -> Address {
+    return Address {
+        type: Type::Invalid,
+    };
+}
+
+export fn is_valid(Address * self) -> bool {
+    return self->type != Type::Invalid;
+}
+
+export fn from_string(string::String+st *s) -> Address
 {
     static_attest(len(s->mem) >= s->len);
-    return from_str(self, s->mem, s->len);
+    return from_str(s->mem, s->len);
 }
-export fn from_cstr(Address mut* self, char *s) -> bool
+export fn from_cstr(char *s) -> Address
     where nullterm(s)
 {
     usize slen = string::strlen(s);
     static_attest(len(s) >= slen);
-    return from_str(self, s, slen);
+
+    return from_str(s, slen);
 }
 
-export fn from_str(Address mut* self, char * mut s, usize mut slen) -> bool
+export fn from_str(char * mut s, usize mut slen) -> Address
     where len(s) >= slen
 {
+    Address mut self = new();
     if slen < 2 {
-        return false;
+        return self;
     }
 
     if s[0] == '[' {
@@ -42,9 +55,11 @@ export fn from_str(Address mut* self, char * mut s, usize mut slen) -> bool
         slen -= 1;
         static_attest(safe(s));
         static_attest(len(s) >= slen);
-        return from_str_ipv6(self, s, slen);
+        from_str_ipv6(&self, s, slen);
+        return self;
     }
-    return from_str_ipv4(self, s, slen) || from_str_ipv6(self, s, slen);
+    from_str_ipv4(&self, s, slen) || from_str_ipv6(&self, s, slen);
+    return self;
 }
 
 export fn from_str_ipv6(Address mut* self, char * s, usize slen) -> bool
@@ -196,10 +211,12 @@ export fn to_string(string::String+st mut*to, Address * from)
     where st>2
 {
     switch from->type {
+        Type::Invalid => {
+        }
         Type::Ipv4 => {
-            u8 * ip = os::net_address_ipv4_get_ip(from->os);
+            u8 * ip = os::os_net_address_ipv4_get_ip(from->os);
             static_attest(len(ip) == 4);
-            u16 port = byteorder::from_be16((u16)os::net_address_ipv4_get_port(from->os));
+            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv4_get_port(from->os));
 
             string::format(to, "%u.%u.%u.%u:%u",
                     ip[0],
@@ -210,9 +227,9 @@ export fn to_string(string::String+st mut*to, Address * from)
             );
         }
         Type::Ipv6 => {
-            u8 * ip = os::net_address_ipv6_get_ip(from->os);
+            u8 * ip = os::os_net_address_ipv6_get_ip(from->os);
             static_attest(len(ip) == 16);
-            u16 port = byteorder::from_be16((u16)os::net_address_ipv6_get_port(from->os));
+            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv6_get_port(from->os));
 
             // find the largest skippable section
             int mut largest_skippable_start   = -1;
@@ -278,10 +295,12 @@ export fn to_string(string::String+st mut*to, Address * from)
 export fn set_port(Address mut*self, u16 port) {
     switch self->type {
         Type::Ipv4 => {
-            os::net_address_ipv4_set_port(self->os, byteorder::to_be16(port));
+            os::os_net_address_ipv4_set_port(self->os, byteorder::to_be16(port));
         }
         Type::Ipv6 => {
-            os::net_address_ipv6_set_port(self->os, byteorder::to_be16(port));
+            os::os_net_address_ipv6_set_port(self->os, byteorder::to_be16(port));
+        }
+        Type::Invalid => {
         }
     }
 }
@@ -289,10 +308,13 @@ export fn set_port(Address mut*self, u16 port) {
 export fn get_port(Address *self) -> u16 {
     switch self->type {
         Type::Ipv4 => {
-            return (u16)byteorder::from_be16(os::net_address_ipv4_get_port(self->os));
+            return (u16)byteorder::from_be16(os::os_net_address_ipv4_get_port(self->os));
         }
         Type::Ipv6 => {
-            return (u16)byteorder::from_be16(os::net_address_ipv6_get_port(self->os));
+            return (u16)byteorder::from_be16(os::os_net_address_ipv6_get_port(self->os));
+        }
+        Type::Invalid => {
+            return 0;
         }
     }
 }
@@ -300,11 +322,11 @@ export fn get_port(Address *self) -> u16 {
 export fn get_ip(Address *self) -> u8*
 {
     switch self->type {
-        Type::Ipv4 => {
-            return (u8*)os::net_address_ipv4_get_ip(self->os);
+        Type::Ipv4 | Type::Invalid => {
+            return (u8*)os::os_net_address_ipv4_get_ip(self->os);
         }
         Type::Ipv6 => {
-            return (u8*)os::net_address_ipv4_get_ip(self->os);
+            return (u8*)os::os_net_address_ipv4_get_ip(self->os);
         }
     }
 }
@@ -314,11 +336,14 @@ export fn set_ip(Address mut *self, Type t, u8*b)
 {
     self->type = t;
     switch self->type {
-        Type::Ipv4 => {
-            os::net_address_ipv4_set_ip(self->os, b);
+        Type::Ipv4=> {
+            os::os_net_address_ipv4_set_ip(self->os, b);
         }
         Type::Ipv6 => {
-            os::net_address_ipv6_set_ip(self->os, b);
+            os::os_net_address_ipv6_set_ip(self->os, b);
+        }
+        Type::Invalid => {
+
         }
     }
 }

@@ -726,6 +726,12 @@ impl Symbolic {
             }
         }
 
+        // object copy with rhs having no tail
+        // TODO in theory the C compiler should init the tail with zeroes, but copy traits would be better
+        if self.memory[a].typed.t == self.memory[b].typed.t && self.memory[b].typed.tail == ast::Tail::None {
+            return Ok((self.memory[a].typed.clone(), a, b));
+        }
+
         return Err(Error::new(format!("incompatible types {} and {}", self.memory[a].typed, self.memory[b].typed), vec![
             (here.clone(), format!("this expression is unprovable over incompatible types")),
             (self.memory[a].declared.clone(), format!("{} := {} {:?}", self.memory[a].name, self.memory[a].typed, self.memory[a].value)),
@@ -1201,6 +1207,7 @@ impl Symbolic {
                                     if field.typed.t == defined[i].typed.t {
                                         let mut into_type = self.memory[callptr].typed.clone();
                                         into_type.t = field.typed.t.clone();
+                                        into_type.tail = ast::Tail::None;
                                         *calledarg = ast::Expression::Cast {
                                             into: into_type,
                                             expr: calledarg.clone(),

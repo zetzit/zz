@@ -22,6 +22,14 @@ we need conditions that get checked for every use of a struct automatically
 
 */
 
+
+export fn new() -> String {
+    return String {
+        len: 0,
+    };
+}
+
+
 export fn clear(String+tail mut * self)
     model self->len  == 0
     model nullterm(self->mem)

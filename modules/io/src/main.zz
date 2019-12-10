@@ -9,55 +9,56 @@ using <stdio.h>::{perror, printf};
 
 export fn main() -> int {
     err::Err+1000 mut e;
-    err::new(&e);
+    e.new();
 
     unix::Async+10 mut async;
-    unix::new(&async);
+    async.new();
 
     io::Io mut i = unix::stdin();
     unix::make_read_async(&i, (io::Async mut*)&async);
 
+    printf("timeout will happen after 3 seconds, then every 1 second.\ninterval must remain uneffected from stdin input\n\n");
     io::Io mut t = io::timeout((io::Async mut*)&async, &e, time::from_seconds(3));
-    err::abort(&e);
+    e.abort();
 
     for (;;) {
         string::String+20 mut buf2;
-        string::clear(&buf2);
+        buf2.clear();
 
         switch t.read(&e, &buf2) {
             io::Result::Ready => {
-                err::abort(&e);
+                e.abort();
 
                 printf("timeout\n");
 
                 t.close();
                 t = io::timeout((io::Async mut*)&async, &e, time::from_seconds(1));
-                err::abort(&e);
+                e.abort();
 
-                t.wake(&e, io::Wake::Read);
-                err::abort(&e);
+                io::select(&async, &e, &t, io::Ready::Read);
+                e.abort();
             }
             default => {}
         }
-        err::abort(&e);
+        e.abort();
 
         string::String+2 mut buf;
-        string::clear(&buf);
+        buf.clear();
+
         switch i.read(&e, &buf) {
             io::Result::Ready => {
                 printf(">%s<\n", buf.mem);
             }
             io::Result::Later => {}
             io::Result::Error | io::Result::Eof => {
-                err::abort(&e);
+                e.abort();
                 return 0;
             }
         }
-        err::abort(&e);
-
+        e.abort();
 
         async.wait(&e);
-        err::abort(&e);
+        e.abort();
     }
     return 0;
 }

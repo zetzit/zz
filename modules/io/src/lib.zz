@@ -4,14 +4,17 @@ using err;
 
 using <stdio.h>::{printf};
 
+export fntype select_fn  (Async mut*self, err::Err+et mut* e, Context mut*ctx, Ready w);
+
 export struct Async {
     //make_timeout_fn
     void unsafe *make_timeout;
-    //wake_fn
+    //select_fn
+    void unsafe *select_impl;
 }
 
 
-export enum Wake {
+export enum Ready {
     Read,
     Write,
 }
@@ -25,7 +28,6 @@ export enum Result {
 
 export fntype read_fn  (Context mut* ctx, err::Err+et mut* e, u8 mut* to, usize mut* len) -> Result;
 export fntype write_fn (Context mut* ctx, err::Err+et mut* e, u8* to, usize mut* len) -> Result;
-export fntype wake_fn  (Context mut* ctx, err::Err+et mut* e, Wake w);
 export fntype close_fn (Context mut* ctx);
 
 
@@ -38,11 +40,15 @@ export struct Context {
 }
 
 export struct Io {
+    Context     ctx;
     read_fn     read_impl;
     write_fn    write_impl;
     close_fn    close_impl;
-    wake_fn     wake_impl;
-    Context     ctx;
+}
+
+
+export fn is_null(Io * self) -> bool {
+    return (self->ctx).fd == 0 && (self->ctx).handle == 0 && (self->ctx).time == 0 && (self->ctx).async == 0;
 }
 
 export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
@@ -161,14 +167,15 @@ export fn close(Io mut* self)
     self->close_impl(&self->ctx);
 }
 
-export fn wake(Io mut*self, err::Err+et mut* e, Wake w)
+export fn select(Async mut *self, err::Err+et mut* e, Context mut*ctx, Ready w)
     where err::checked(*e)
 {
-    if self->wake_impl == 0 {
+    if self->select_impl == 0 {
         return;
     }
-    static_attest(safe(self->wake_impl));
-    self->wake_impl(&self->ctx,e,w);
+    select_fn select_impl = (select_fn)self->select_impl;
+    static_attest(safe(select_impl));
+    select_impl(self, e, ctx, w);
 }
 
 pub fn drop(Io mut* self) {

@@ -3,9 +3,20 @@ using string;
 using err;
 using io;
 
-inline using(needs err::Err, err::fail_with_errno, err::fail, io::Context, address::Type, address::Address) "os.h"::{
-    _os_net_udp_bind,
-    _os_net_udp_close,
+inline using (needs
+    err::Err,
+    err::fail_with_errno,
+    err::fail,
+    io::Context,
+    address::Type,
+    address::Address,
+    io::Result
+) "os.h"::{
+    os_net_udp_bind,
+    os_net_udp_close,
+    os_net_udp_make_async,
+    os_net_udp_recvfrom,
+    os_net_udp_sendto,
 };
 
 export struct Socket {
@@ -17,108 +28,66 @@ export fn bind(err::Err+et mut*e, address::Address *addr) -> Socket
     where err::checked(*e)
 {
     io::Context mut ctx;
-    _os_net_udp_bind(e, et, addr, &ctx);
+    os_net_udp_bind(e, et, addr, &ctx);
+
     return Socket {
         ctx: ctx
     };
 }
 
 
+export fn bind_async(err::Err+et mut*e, address::Address *addr, io::Async mut* async) -> Socket
+    where err::checked(*e)
+{
+    io::Context mut ctx;
+    os_net_udp_bind(e, et, addr, &ctx);
+    if err::check(e) {
+        return Socket {
+            ctx: ctx
+        };
+    }
+
+    os_net_udp_make_async(e, et, &ctx);
+    ctx.async = async;
+
+    return Socket {
+        ctx: ctx
+    };
+}
+
 
 export fn close(Socket mut* self) {
-    _os_net_udp_close(self->ctx);
+    os_net_udp_close(self->ctx);
 }
 
-
-/*
-
-export fn bind(Socket mut *self, err::Err+et mut*e, address::Address *addr)
+export fn recvfrom(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, address::Address mut*from) -> io::Result
     where err::checked(*e)
 {
-    if self->fd != 0 {
-        close(self);
-    }
 
-    switch addr->type {
-        address::Type::Ipv6 => {
-            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET6, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
-        }
-        address::Type::Ipv4 => {
-            self->fd = as<int>(posix_socket::socket(posix_socket::AF_INET, posix_socket::SOCK_DGRAM, IPPROTO_UDP));
+    if (self->ctx).async != 0 {
+        static_attest(safe((self->ctx).async));
+        io::select(((self->ctx).async), e, &self->ctx, io::Ready::Read);
+        if err::check(e) {
+            return io::Result::Error;
         }
     }
-
-    if self->fd < 0 {
-        err::fail_with_errno(e, "socket");
-        return;
-    }
-
-    unsafe {
-        int v = 1;
-        posix_socket::setsockopt(self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_REUSEADDR, (void*)&v, sizeof(int));
-    }
-
-    int r = as<int>(posix_socket::bind(self->fd, as<SockAddr*>(&addr->posix), sizeof(SockAddrIn)));
-    if r != 0 {
-        err::fail_with_errno(e, "bind");
-    }
-}
-
-export fn sendto(Socket mut *self, err::Err+et mut*e, address::Address *to, u8*msg, usize msglen)
-    where err::checked(*e)
-    where len(msg) >= msglen
-{
-    int r = as<int>(posix_socket::sendto(self->fd, msg, msglen, 0, as<SockAddr*>(&to->posix), sizeof(SockAddrIn)));
-    if r != 0 {
-        err::fail_with_errno(e, "bind");
-    }
-}
-
-export fn recv(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, address::Address mut*from)
-    where err::checked(*e)
-{
-    uint mut alen = (uint)sizeof(SockAddrIn);
 
     static_attest(len(buf->mem) > buf->len);
-
-    int r = as<int>(posix_socket::recvfrom(
-        self->fd,
-        buf->mem + buf->len,
-        st - buf->len ,
-        0,
-        as<SockAddr mut*>(&from->posix),
-        &alen
-    ));
-
-    unsafe {
-        if ((from->posix).v6).sin6_family  == posix_socket::AF_INET6 {
-            from->type = address::Type::Ipv6;
-        }
+    usize mut l = 0;
+    io::Result rr = (io::Result)os_net_udp_recvfrom(e, et, &self->ctx, buf->mem + buf->len, buf->len - st, from, &l);
+    if err::check(e) {
+        return rr;
     }
-
-    if r < 1 {
-        err::fail_with_errno(e, "recv");
-        return;
-    }
-    buf->len += as<usize>(r);
+    buf->len += l;
+    return rr;
 }
 
-*/
-
-
-/*
-using <sys/time.h>::{ (struct timeval) as Timeval
-export fn deadline(Socket mut *self, err::Err+et mut*e, time::Time dur)
+export fn sendto(Socket mut *self, err::Err+et mut*e, string::String+st *buf, address::Address * to)
     where err::checked(*e)
 {
-    Timeval v = Timeval {
-        tv_sec:     dur.secs,
-        tv_usec:    (dur.nano * 1000),
-    };
-
-    if ((int)posix_socket::setsockopt (self->fd, posix_socket::SOL_SOCKET, posix_socket::SO_RCVTIMEO, (char *)&v, sizeof(Timeval)) < 0) {
-        err::fail_with_errno(e, "setsockopt");
+    static_attest(len(buf->mem) > buf->len);
+    os_net_udp_sendto(e, et, &self->ctx, buf->mem, buf->len , to);
+    if err::check(e) {
+        return;
     }
 }
-
-*/

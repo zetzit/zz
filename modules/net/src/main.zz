@@ -5,55 +5,47 @@ using address;
 using err;
 using udp;
 using io;
+using io::unix;
 
 export fn main() -> int {
     err::Err+1000 mut e;
     e.new();
 
-    string::String+100 mut sin = {0};
-    sin.append_cstr("[::1]:8083");
+    address::Address recv_addr = address::from_cstr("0.0.0.0:8083");
+    address::Address send_addr = address::from_cstr("0.0.0.0:0");
 
-    address::Address mut sa = {0};
-    sa.from_cstr(sin.mem);
+    unix::Async+10 mut async;
+    async.new();
 
-    string::String+100 mut sout = {0};
-    address::to_string(&sout, &sa);
-
-    printf(">%.*s<\n", (int)sout.len, sout.mem);
-
-
-    udp::Socket mut sock = udp::bind(&e, &sa);
+    udp::Socket mut receiver = udp::bind_async(&e, &recv_addr, &async);
     e.abort();
 
+    udp::Socket mut sender = udp::bind_async(&e, &send_addr, &async);
+    e.abort();
 
-    
+    string::String+100 mut msg = {0};
+    msg.append_cstr("helloouuu");
 
+    sender.sendto(&e, &msg, &recv_addr);
+    e.abort();
 
+    io::select(&async, &e, &receiver, io::Ready::Read);
+    e.abort();
 
-/*
-    udp::Socket mut sock = {0};
+    async.wait(&e);
+    e.abort();
 
-    udp::bind(&sock, &e, &sa);
-    err::abort(&e);
+    string::String+100 mut sbuf = {0};
+    sbuf.clear();
 
-    udp::sendto(&sock, &e, &sa, (u8*)"lulz", 4);
-    err::abort(&e);
+    address::Address mut ra = address::new();
+    receiver.recvfrom(&e, &sbuf, &ra);
+    e.abort();
 
-    udp::deadline(&sock, &e, time::from_seconds(1));
-    err::abort(&e);
+    printf("%.*s\n", (int)sbuf.len, sbuf.mem);
 
-    string::String+100 mut srecv = {0};
-    address::Address mut sa2 = {0};
-    udp::recv(&sock, &e, &srecv, &sa2);
-    err::abort(&e);
-
-    string::clear(&sout);
-    address::to_string(&sout, &sa2);
-    printf(">%.*s<\n", (int)sout.len, sout.mem);
-    printf(">%.*s<\n", (int)srecv.len, srecv.mem);
-
-    udp::close(&sock);
-    */
+    receiver.close();
+    sender.close();
 
     return 0;
 }

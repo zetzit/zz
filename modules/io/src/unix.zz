@@ -25,14 +25,16 @@ export struct Async+ {
 export fn new(Async+tail mut *self) {
     memset(self, 0, (usize)sizeof(Async));
 
-    (self->base).make_timeout = (void*)(impl_make_timeout);
+    (self->base).make_timeout = (void*)impl_make_timeout;
+    (self->base).select_impl    = (void*)impl_unix_select;
+
     self->count     = 0;
     self->tail      = tail;
     self->timeout   = -1;
     memset(self->fds, 0, (usize)sizeof(pollfd_t) * tail);
 }
 
-pub fn wake_fd(Async mut* self, int fd, int events) -> bool {
+pub fn select_fd(Async mut* self, int fd, int events) -> bool {
     if self->count + 1 >= self->tail {
         return false;
     }
@@ -45,7 +47,7 @@ pub fn wake_fd(Async mut* self, int fd, int events) -> bool {
 }
 
 
-fn impl_unix_wake(io::Context mut*ctx, err::Err+et mut*e, io::Wake w)
+fn impl_unix_select(Async mut*self, err::Err+et mut*e, io::Context mut*ctx, io::Ready w)
     where err::checked(*e)
 {
     if ctx->async == 0 {
@@ -53,13 +55,19 @@ fn impl_unix_wake(io::Context mut*ctx, err::Err+et mut*e, io::Wake w)
         return;
     }
 
-    Async mut* self = (Async mut*)ctx->async;
-    static_attest(safe(self));
-
     if ctx->fd != 0 {
-        if !wake_fd(self, ctx->fd, (int)POLLIN) {
+        if !select_fd(self, ctx->fd, (int)POLLIN) {
             err::fail(e,1, "too many fds");
             return;
+        }
+    }
+
+    if ctx->time != 0 {
+        time::Time now  = time::system();
+        u64 mut now_m = now.to_millis();
+        u64 remains = ctx->time - now_m;
+        if self->timeout < 0 || (u64)self->timeout > remains {
+            self->timeout = (int)remains;
         }
     }
 }
@@ -88,7 +96,6 @@ export fn unix(int fd) -> io::Io
         read_impl:  impl_unix_read,
         write_impl: impl_unix_write,
         close_impl: impl_unix_close,
-        wake_impl:  impl_unix_wake,
         ctx:        ctx,
     };
 }
@@ -121,7 +128,7 @@ fn impl_unix_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize mut 
 {
     if ctx->async != 0 {
         static_attest(safe(ctx->async));
-        if !wake_fd((Async mut*)ctx->async, ctx->fd, (int)POLLIN) {
+        if !select_fd((Async mut*)ctx->async, ctx->fd, (int)POLLIN) {
             err::fail(e,1, "too many fds");
             return io::Result::Error;
         }
@@ -193,7 +200,6 @@ fn impl_make_timeout(Async mut *async, err::Err+et mut*e, time::Time t2) -> io::
 
     return io::Io {
         read_impl:  impl_timeout_read,
-        wake_impl:  impl_timer_wake,
         close_impl: impl_timer_close,
         ctx:        ctx,
     };
@@ -222,28 +228,6 @@ fn impl_timeout_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize m
 
     }
     return io::Result::Later;
-}
-
-
-fn impl_timer_wake(io::Context mut*ctx, err::Err+et mut*e, io::Wake w)
-    where err::checked(*e)
-{
-    if ctx->async == 0 {
-        err::fail(e,1, "not an async io");
-        return;
-    }
-
-    Async mut* self = (Async mut*)ctx->async;
-    static_attest(safe(self));
-
-    if ctx->time != 0 {
-        time::Time now  = time::system();
-        u64 mut now_m = now.to_millis();
-        u64 remains = ctx->time - now_m;
-        if self->timeout < 0 || (u64)self->timeout > remains {
-            self->timeout = (int)remains;
-        }
-    }
 }
 
 fn impl_timer_close(io::Context mut*ctx) {
