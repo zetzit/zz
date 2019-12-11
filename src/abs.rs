@@ -488,7 +488,20 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
     let mut scope = Scope::default();
 
     for import in &mut md.imports {
-        let fqn  = abs_import(&md.name, &import, all_modules);
+
+        let mut fqn  = abs_import(&md.name, &import, all_modules);
+
+        // make ext includes absolute, so they dont conflict later
+        if fqn.0[1] == "ext" {
+            let mut expr = import.name.0[2].clone();
+            if expr.starts_with("\"") && expr.len() > 2 {
+                let path = &expr[1..expr.len() - 1];
+                let path = std::path::Path::new(&import.loc.file).parent().expect("ICE: include path resolver").join(path);
+                expr = path.to_string_lossy().into();
+                fqn.0[2] = format!("\"{}\"", expr);
+            }
+        }
+
 
         let local_module_name = import.alias.clone().unwrap_or(import.name.0.last().unwrap().clone());
 
@@ -680,6 +693,8 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
         }
 
         if import.name.0[1] == "ext" {
+
+
             if let Some(previous) = ext.ext.get(&import.name) {
                 if let ast::Def::Include{inline,..} = previous.def {
                     if inline != import.inline {
@@ -694,7 +709,6 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
 
             let mut expr = import.name.0[2].clone();
             if import.inline {
-
                 if !expr.starts_with("\"") || !expr.ends_with("\"") || expr.len() < 3 {
                     emit_error(
                         "cannot inline non-relative include",
@@ -702,10 +716,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                         );
                     std::process::exit(9);
                 }
-
-                let path = &expr[1..expr.len() - 1];
-                let path = std::path::Path::new(&import.loc.file).parent().expect("ICE: inline path resolver").join(path);
-                expr = path.to_string_lossy().into();
+                expr = (&expr[1..expr.len() - 1]).to_string();
             }
 
             ext.ext.insert(import.name.clone(), ast::Local {

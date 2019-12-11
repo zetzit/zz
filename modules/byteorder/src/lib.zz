@@ -70,7 +70,6 @@ pub inline fn to_le16(u16 x) -> u16 {
     BYTE_ORDER;
     @{{
         #if BYTE_ORDER == BIG_ENDIAN
-            printf("BE\n");
             return byteorder_bswap_16(x);
         #else
             return x;

@@ -67,7 +67,6 @@ export fn from_str_ipv6(Address mut* self, char * s, usize slen) -> bool
     where slen > 0
 {
     memset(self, 0, sizeof(Address));
-    self->type = Type::Ipv6;
 
     u8 mut  ip[16] = {0};
     u16 mut port = 0;
@@ -152,6 +151,8 @@ export fn from_str_ipv6(Address mut* self, char * s, usize slen) -> bool
 
     self->set_ip(Type::Ipv6, ip);
     self->set_port(port);
+
+    self->type = Type::Ipv6;
     return true;
 }
 
@@ -159,7 +160,6 @@ export fn from_str_ipv4(Address mut* self, char *s, usize slen) -> bool
     where len(s) >= slen
 {
     memset(self, 0, sizeof(Address));
-    self->type = Type::Ipv4;
 
     u8 mut ip[4] = {0};
     u16 mut port = 0;
@@ -203,6 +203,7 @@ export fn from_str_ipv4(Address mut* self, char *s, usize slen) -> bool
     self->set_ip(Type::Ipv4, ip);
     self->set_port(port);
 
+    self->type = Type::Ipv4;
     return true;
 }
 
@@ -317,18 +318,26 @@ export fn get_port(Address *self) -> u16 {
             return 0;
         }
     }
+
+    // c compiler gets really confused for some reason
+    // this never happens
+    return 0;
 }
 
 export fn get_ip(Address *self) -> u8*
 {
     switch self->type {
-        Type::Ipv4 | Type::Invalid => {
-            return (u8*)os::os_net_address_ipv4_get_ip(self->os);
-        }
         Type::Ipv6 => {
             return (u8*)os::os_net_address_ipv4_get_ip(self->os);
         }
+        default => {
+            return (u8*)os::os_net_address_ipv4_get_ip(self->os);
+        }
     }
+
+    // c compiler gets really confused for some reason
+    // this never happens
+    return 0;
 }
 
 export fn set_ip(Address mut *self, Type t, u8*b)
