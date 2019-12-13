@@ -32,17 +32,21 @@ export fn main() -> int {
     io::select(&async, &e, &receiver, io::Ready::Read);
     e.abort();
 
-    async.wait(&e);
-    e.abort();
+    for (;;) {
+        async.wait(&e);
+        e.abort();
 
-    string::String+100 mut sbuf = {0};
-    sbuf.clear();
+        string::String+100 mut sbuf = {0};
+        sbuf.clear();
 
-    address::Address mut ra = address::new();
-    receiver.recvfrom(&e, &sbuf, &ra);
-    e.abort();
+        address::Address mut ra = address::new();
+        if receiver.recvfrom(&e, &sbuf, &ra) == io::Result::Ready {
+            printf("%zu >%.*s<\n", sbuf.len, (int)sbuf.len, sbuf.mem);
+            break;
+        }
+        e.abort();
 
-    printf("%.*s\n", (int)sbuf.len, sbuf.mem);
+    }
 
     receiver.close();
     sender.close();

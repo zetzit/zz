@@ -64,67 +64,26 @@ static inline uint8_t const* os_net_address_ipv4_get_ip(uint8_t const *raw) {
 #include <fcntl.h>
 #include <errno.h>
 
-static inline void os_net_udp_bind(err_Err *e, size_t et, net_address_Address const* addr, io_Context *ctx)
-{
 
-    switch (addr->type) {
-        case net_address_Type_Ipv6:
-            ctx->fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-            break;
-        case net_address_Type_Ipv4:
-            ctx->fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-            break;
-        default:
-            break;
-    }
-
-    if (ctx->fd < 0) {
-        err_fail_with_errno(e, et, __FILE__, "os_net_udp_open", __LINE__, "socket");
-        return;
-    }
-
-    int r = bind(ctx->fd, (struct  sockaddr*)(&addr->os), sizeof(struct sockaddr_in6));
-    if (r != 0) {
-        err_fail_with_errno(e, et, __FILE__, "os_net_udp_open", __LINE__, "bind");
-    }
-}
-
-static inline void os_net_udp_close(io_Context ctx)
-{
-    close(ctx.fd);
-}
-
-static inline void os_net_udp_make_async(err_Err *e, size_t et, io_Context const *ctx) {
-    int flags = fcntl(ctx->fd, F_GETFL, 0);
-    if (flags == -1) {
-        err_fail_with_errno(e, et, __FILE__, "os_net_udp_make_async", __LINE__, "fcntl");
-    }
-    flags = flags | O_NONBLOCK;
-
-    flags = fcntl(ctx->fd, F_SETFL, flags);
-    if (flags == -1) {
-        err_fail_with_errno(e, et, __FILE__, "os_net_udp_make_async", __LINE__, "fcntl");
-    }
-}
-
-
-
-
-static inline io_Result os_net_udp_recvfrom(
+static io_Result os_net_udp_recvfrom(
+        net_udp_Socket *self,
         err_Err *e, size_t et,
-        io_Context const *ctx,
         char * mem,
-        size_t memlen,
-        net_address_Address *addr,
-        size_t * l
+        size_t * memlen,
+        net_address_Address *addr
 )
 {
+
+    if ((self->ctx).async != 0) {
+        io_select(((self->ctx).async), e, et, &self->ctx, io_Ready_Read);
+    }
+
     unsigned alen = sizeof(struct sockaddr_in6);
 
     int r = recvfrom(
-        ctx->fd,
+        self->ctx.fd,
         mem,
-        memlen,
+        *memlen,
         0,
         (struct sockaddr*)addr->os,
         &alen
@@ -144,36 +103,84 @@ static inline io_Result os_net_udp_recvfrom(
         return io_Result_Error;
     }
 
-    *l = (size_t)r;
+    *memlen = (size_t)r;
 
     return io_Result_Ready;
 }
 
 
-static inline size_t os_net_udp_sendto(
+static inline io_Result os_net_udp_sendto(
+        net_udp_Socket *self,
         err_Err *e, size_t et,
-        io_Context const *ctx,
         char const * mem,
-        size_t memlen,
+        size_t * memlen,
         net_address_Address const *addr
 )
 {
     unsigned alen = sizeof(struct sockaddr_in6);
 
     int r = sendto(
-        ctx->fd,
+        self->ctx.fd,
         mem,
-        memlen,
+        *memlen,
         0,
         (struct sockaddr const*)addr->os,
         alen
     );
 
     if (r < 0) {
+        if (errno == EAGAIN) {
+            return io_Result_Later;
+        }
         err_fail_with_errno(e, et, __FILE__, "os_net_udp_sendto", __LINE__, "recvfrom");
-        return 0;
+        return io_Result_Error;
     }
 
-    return (size_t)r;
+
+    *memlen = (size_t)r;
+
+    return io_Result_Ready;
 }
+
+static inline void os_net_udp_bind(err_Err *e, size_t et, net_address_Address const* addr, net_udp_Socket *sock)
+{
+
+    switch (addr->type) {
+        case net_address_Type_Ipv6:
+            sock->ctx.fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+            break;
+        case net_address_Type_Ipv4:
+            sock->ctx.fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            break;
+        default:
+            break;
+    }
+
+    if (sock->ctx.fd < 0) {
+        err_fail_with_errno(e, et, __FILE__, "os_net_udp_open", __LINE__, "socket");
+        return;
+    }
+
+    int r = bind(sock->ctx.fd, (struct  sockaddr*)(&addr->os), sizeof(struct sockaddr_in6));
+    if (r != 0) {
+        err_fail_with_errno(e, et, __FILE__, "os_net_udp_open", __LINE__, "bind");
+    }
+
+    sock->impl_recvfrom = (void*)os_net_udp_recvfrom;
+    sock->impl_sendto   = (void*)os_net_udp_sendto;
+}
+
+static inline void os_net_udp_make_async(err_Err *e, size_t et, net_udp_Socket *sock) {
+    int flags = fcntl(sock->ctx.fd, F_GETFL, 0);
+    if (flags == -1) {
+        err_fail_with_errno(e, et, __FILE__, "os_net_udp_make_async", __LINE__, "fcntl");
+    }
+    flags = flags | O_NONBLOCK;
+
+    flags = fcntl(sock->ctx.fd, F_SETFL, flags);
+    if (flags == -1) {
+        err_fail_with_errno(e, et, __FILE__, "os_net_udp_make_async", __LINE__, "fcntl");
+    }
+}
+
 

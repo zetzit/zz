@@ -208,29 +208,26 @@ export fn from_str_ipv4(Address mut* self, char *s, usize slen) -> bool
 }
 
 
-export fn to_string(string::String+st mut*to, Address * from)
+export fn ip_to_string(Address * self, string::String+st mut*to)
     where st>2
 {
-    switch from->type {
+    switch self->type {
         Type::Invalid => {
         }
         Type::Ipv4 => {
-            u8 * ip = os::os_net_address_ipv4_get_ip(from->os);
+            u8 * ip = os::os_net_address_ipv4_get_ip(self->os);
             static_attest(len(ip) == 4);
-            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv4_get_port(from->os));
 
-            string::format(to, "%u.%u.%u.%u:%u",
+            string::format(to, "%u.%u.%u.%u",
                     ip[0],
                     ip[1],
                     ip[2],
-                    ip[3],
-                    port
+                    ip[3]
             );
         }
         Type::Ipv6 => {
-            u8 * ip = os::os_net_address_ipv6_get_ip(from->os);
+            u8 * ip = os::os_net_address_ipv6_get_ip(self->os);
             static_attest(len(ip) == 16);
-            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv6_get_port(from->os));
 
             // find the largest skippable section
             int mut largest_skippable_start   = -1;
@@ -259,9 +256,6 @@ export fn to_string(string::String+st mut*to, Address * from)
                 largest_skippable_start = current_skippable_start;
             }
 
-            if port != 0 {
-                string::push(to, '[');
-            }
 
             for (usize mut i = 0; i < 15; i += 2) {
                 if i == (usize)largest_skippable_start && largest_skipable_size > 0{
@@ -283,6 +277,30 @@ export fn to_string(string::String+st mut*to, Address * from)
                     string::push(to, ':');
                 }
             }
+        }
+    }
+}
+
+export fn to_string(Address * self, string::String+st mut*to)
+    where st>2
+{
+
+    switch self->type {
+        Type::Invalid => {}
+        Type::Ipv4 => {
+            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv4_get_port(self->os));
+
+            ip_to_string(self, to);
+            string::format(to, ":%u",port);
+        }
+        Type::Ipv6 => {
+            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv6_get_port(self->os));
+
+            if port != 0 {
+                string::push(to, '[');
+            }
+
+            ip_to_string(self, to);
 
             if port != 0 {
                 string::format(to, "]:%u", port);
@@ -290,7 +308,6 @@ export fn to_string(string::String+st mut*to, Address * from)
         }
     }
 }
-
 
 
 export fn set_port(Address mut*self, u16 port) {

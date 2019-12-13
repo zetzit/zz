@@ -35,6 +35,16 @@ export fn new(Async+tail mut *self) {
 }
 
 pub fn select_fd(Async mut* self, int fd, int events) -> bool {
+
+    for (usize mut i = 0; i < self->count;  i++) {
+        static_attest(i < len(self->fds));
+        unsafe {
+            if ((self->fds)[i]).fd == fd && ((self->fds)[i]).events == events {
+                return true;
+            }
+        }
+    }
+
     if self->count + 1 >= self->tail {
         return false;
     }
@@ -45,7 +55,6 @@ pub fn select_fd(Async mut* self, int fd, int events) -> bool {
     self->count += 1;
     return true;
 }
-
 
 fn impl_unix_select(Async mut*self, err::Err+et mut*e, io::Context mut*ctx, io::Ready w)
     where err::checked(*e)
@@ -135,7 +144,7 @@ fn impl_unix_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize mut 
     }
 
     if *l == 0 {
-        err::fail(e, 2, "oom");
+        err::fail(e, 2, "buffer is 0 long");
         return io::Result::Error;
     }
 

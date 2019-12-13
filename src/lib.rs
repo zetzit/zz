@@ -90,11 +90,23 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
 
 
+    let mut searchpaths = HashSet::new();
+    searchpaths.insert(std::env::current_exe().expect("self path")
+        .canonicalize().expect("self path")
+        .parent().expect("self path")
+        .parent().expect("self path")
+        .parent().expect("self path")
+        .join("modules"));
+    searchpaths.insert(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules")
+    );
+
+
     if let Some(deps) = &project.dependencies {
         for (name, dep) in deps {
             match dep {
                 toml::Value::String(v) => {
-                    getdep(name, &mut modules);
+                    getdep(name, &mut modules, &mut project.project, &mut searchpaths);
                 },
                 _ => (),
             }
@@ -292,31 +304,14 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     };
 }
 
-fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
+fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>, rootproj: &mut project::Project, searchpaths: &mut HashSet<std::path::PathBuf>) {
 
-    let mut searchpaths = Vec::new();
-
-    searchpaths.push(
+    searchpaths.insert(
         std::env::current_dir().unwrap().join("modules")
     );
 
-    searchpaths.push(std::env::current_exe().expect("self path")
-        .canonicalize().expect("self path")
-        .parent().expect("self path")
-        .parent().expect("self path")
-        .parent().expect("self path")
-        .join("modules"));
-
-
-    searchpaths.push(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules")
-    );
-
-
-
-
     let mut found = None;
-    for searchpath in &searchpaths {
+    for searchpath in searchpaths.iter() {
         let modpath = searchpath.join(name).join("zz.toml");
         if modpath.exists() {
             found = Some(searchpath.join(name));
@@ -333,7 +328,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
 
     let pp = std::env::current_dir().unwrap();
     //std::env::set_current_dir(&found).unwrap();
-    let (_root, project)  = project::load(&found);
+    let (root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
     if found.join("./src").exists() {
         loader::load(modules, &project_name, &found.join("./src"),
@@ -341,11 +336,31 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>) {
     }
     //std::env::set_current_dir(pp).unwrap();
 
+    searchpaths.insert(
+        root.join("modules")
+    );
+
+
+    for i in project.project.cincludes {
+        let ii = root.join(&i);
+        let i = std::fs::canonicalize(&ii).expect(&format!("{}: cannot resolve cinclude {:?}", name, ii));
+        rootproj.cincludes.push(i.to_string_lossy().into());
+    }
+    for i in project.project.cobjects {
+        let ii = root.join(&i);
+        let i = std::fs::canonicalize(&ii).expect(&format!("{}: cannot resolve cobject {:?}", name, ii));
+        rootproj.cobjects.push(i.to_string_lossy().into());
+    }
+    rootproj.pkgconfig.extend(project.project.pkgconfig);
+    rootproj.cflags.extend(project.project.cflags);
+    rootproj.lflags.extend(project.project.lflags);
+
+
     if let Some(deps) = &project.dependencies {
         for (name, dep) in deps {
             match dep {
                 toml::Value::String(v) => {
-                    getdep(name, modules);
+                    getdep(name, modules, rootproj, searchpaths);
                 },
                 _ => (),
             }

@@ -77,6 +77,26 @@ export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> 
     return rr;
 }
 
+
+export fn read_bytes(Io mut* self, err::Err+et mut* e, u8 mut* mem, usize mut *memlen) -> Result
+    where err::checked(*e)
+{
+    if self->read_impl == 0 {
+        err::fail(e, 1, "noimpl");
+        return Result::Error;
+    }
+    static_attest(safe(self->read_impl));
+
+    Result rr = self->read_impl(&self->ctx, e, mem, memlen);
+    if err::check(e) {
+        return Result::Error;
+    }
+    if rr != Result::Ready {
+        return rr;
+    }
+    return rr;
+}
+
 export fn readline(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
     where st > 1
     where err::checked(*e)

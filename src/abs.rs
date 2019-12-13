@@ -497,6 +497,15 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
             if expr.starts_with("\"") && expr.len() > 2 {
                 let path = &expr[1..expr.len() - 1];
                 let path = std::path::Path::new(&import.loc.file).parent().expect("ICE: include path resolver").join(path);
+                let path = match std::fs::canonicalize(&path) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        emit_error(format!("path resolve error"), &[
+                            (import.loc.clone(), format!("{} : {:?}", e, path)),
+                        ]);
+                        std::process::exit(9);
+                    }
+                };
                 expr = path.to_string_lossy().into();
                 fqn.0[2] = format!("\"{}\"", expr);
             }
