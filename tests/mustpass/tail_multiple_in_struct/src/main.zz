@@ -1,0 +1,30 @@
+using  <assert.h>::{assert};
+
+struct B+ {
+    int bla;
+    u8 mem[];
+}
+
+
+struct A+ {
+    B+1 x;
+    B+  y;
+}
+
+export fn assert_correct_tailx(B+bt *b) {
+    assert(bt == 1);
+}
+
+export fn assert_correct_taily(B+bt *b) {
+    assert(bt == 100);
+}
+
+export fn main() -> int {
+
+    A+100 a;
+
+    assert_correct_tailx(&a.x);
+    assert_correct_taily(&a.y);
+
+    return 0;
+}

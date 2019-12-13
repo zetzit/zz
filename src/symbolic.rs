@@ -1159,10 +1159,10 @@ impl Symbolic {
                 let prev_loc = prev.loc().clone();
                 let mut into_type = self.memory[callptr].typed.clone();
 
+                // cast to unsized type for the C compiler to be happy
                 if into_type.tail != ast::Tail::None {
                     into_type.tail = ast::Tail::Dynamic;
                 }
-
                 *prev = Box::new(ast::Expression::Cast {
                     into: into_type,
                     expr: prev.clone(),
@@ -1312,14 +1312,14 @@ impl Symbolic {
 
         //nested tail
         match fieldtyped.tail {
-            ast::Tail::None => (),
-            _ => {
+            ast::Tail::Dynamic => {
                 fieldtyped.tail = self.memory[lhs_sym].typed.tail.clone();
                 //return Err(Error::new(
                 //    format!("TODO: implement access to nested tail member"), vec![
                 //    (loc.clone(), format!("here"))
                 //]));
             }
+            _ => {},
         }
 
         let tmp = self.temporary(
