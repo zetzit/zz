@@ -618,9 +618,8 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
 
 pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Expression {
     match decl.as_rule() {
-        Rule::lhs   => { }
         Rule::expr  => { }
-        Rule::termish => { }
+        Rule::expr_to_precedence_2 => {}
         _ => { panic!("parse_expr call called with {:?}", decl); }
     };
 
@@ -653,10 +652,68 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
         Operator::new(Rule::modulo, Assoc::Left) | Operator::new(Rule::divide, Assoc::Left) |
         Operator::new(Rule::multiply, Assoc::Left),
         //2
-        Operator::new(Rule::preop, Assoc::Left),
+        Operator::new(Rule::preop, Assoc::Right),
+        //1
+        Operator::new(Rule::memberaccess,   Assoc::Left) |
+            Operator::new(Rule::ptraccess,  Assoc::Left) |
+            Operator::new(Rule::callstart,  Assoc::Left) |
+            Operator::new(Rule::arraystart, Assoc::Left),
+
     ]);
 
     let reduce = |lhs: Expression, op: pest::iterators::Pair<'static, Rule>, rhs: Expression | {
+
+        if op.as_rule()  == Rule::memberaccess {
+            if let Expression::Name(typed) = &rhs {
+                if let Type::Other(n) = &typed.t {
+                    return Expression::MemberAccess{
+                        lhs: Box::new(lhs),
+                        rhs: n.to_string(),
+                        op:  ".".to_string(),
+                        loc: loc.clone(),
+                    };
+                }
+            }
+            emit_error(format!("ICE: unexpected rhs {:?}", rhs), &[
+                       (loc.clone(), "in this memberaccess ")
+            ]);
+            std::process::exit(9);
+        } else if op.as_rule()  == Rule::ptraccess {
+            if let Expression::Name(typed) = &rhs {
+                if let Type::Other(n) = &typed.t {
+                    return Expression::MemberAccess{
+                        lhs: Box::new(lhs),
+                        rhs: n.to_string(),
+                        op:  "->".to_string(),
+                        loc: loc.clone(),
+                    };
+                }
+            }
+            emit_error(format!("ICE: unexpected rhs {:?}", rhs), &[
+                       (loc.clone(), "in this ptraccess ")
+            ]);
+            std::process::exit(9);
+        } else if op.as_rule()  == Rule::callstart {
+            if let Expression::Call{loc, args, .. }  = &rhs {
+                return Expression::Call{
+                    loc:            loc.clone(),
+                    name:           Box::new(lhs),
+                    args:           args.clone(),
+                    expanded:       false,
+                    emit:           EmitBehaviour::Default,
+                };
+            }
+            emit_error(format!("ICE: unexpected rhs {:?}", rhs), &[
+                       (loc.clone(), "in this call ")
+            ]);
+            std::process::exit(9);
+        } else if op.as_rule()  == Rule::arraystart {
+            return Expression::ArrayAccess {
+                loc:    loc.clone(),
+                lhs:    Box::new(lhs),
+                rhs:    Box::new(rhs),
+            };
+        }
 
         Expression::Infix {
             loc:    loc.clone(),
@@ -682,7 +739,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
                 Rule::bitand    => crate::ast::InfixOperator::Bitand,
                 Rule::bitor     => crate::ast::InfixOperator::Bitor,
                 _ => {
-                    emit_error("ICE: unexpected operator", &[
+                    emit_error(format!("ICE: unexpected operator {}", op), &[
                         (loc.clone(), "in this infix")
                     ]);
                     std::process::exit(9);
@@ -732,7 +789,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                         tail: Tail::None,
                     })
                 },
-                Rule::termish => {
+                Rule::expr_to_precedence_2 => {
                     parse_expr(n, part)
                 }
                 e => panic!("unexpected rule {:?} in unary pre lhs", e),
@@ -794,61 +851,6 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                 loc,
                 into,
                 expr: Box::new(expr),
-            }
-        },
-        Rule::ptr_access | Rule::member_access | Rule::array_access => {
-            let op = match expr.as_rule() {
-                Rule::ptr_access => "->",
-                Rule::member_access => ".",
-                Rule::array_access => "[",
-                _ => unreachable!(),
-            }.to_string();
-            let mut expr = expr.into_inner();
-
-            let lhs;
-            let e1  = expr.next().unwrap();
-            match e1.as_rule() {
-                Rule::type_name => {
-                    let loc = Location{
-                        file: n.1.to_string_lossy().into(),
-                        span: e1.as_span(),
-                    };
-                    let name = Name::from(e1.as_str());
-                    lhs = Some(Expression::Name(Typed{
-                        t:   Type::Other(name),
-                        ptr: Vec::new(),
-                        loc,
-                        tail: Tail::None,
-                    }));
-                },
-                Rule::termish | Rule::expr  => {
-                    lhs = Some(parse_expr(n, e1));
-                }
-                e => panic!("unexpected rule {:?} in access lhs", e),
-            }
-
-            if op == "[" {
-                let e2  = expr.next().unwrap();
-                match e2.as_rule() {
-                    Rule::array => (),
-                    _ => { panic!("unexpected rule {:?} in array expr", e2); }
-                };
-                let e2 = e2.into_inner().next().unwrap();
-                let rhs = parse_expr(n, e2);
-                Expression::ArrayAccess{
-                    lhs: Box::new(lhs.unwrap()),
-                    rhs: Box::new(rhs),
-                    loc,
-                }
-            } else {
-                let e2  = expr.next().unwrap();
-                let rhs = e2.as_str().to_string();
-                Expression::MemberAccess{
-                    lhs: Box::new(lhs.unwrap()),
-                    rhs,
-                    op,
-                    loc,
-                }
             }
         },
         Rule::type_name => {
@@ -922,7 +924,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
                         tail: Tail::None,
                     })
                 },
-                Rule::termish => {
+                Rule::expr_to_precedence_2 => {
                     parse_expr(n, part)
                 }
                 e => panic!("unexpected rule {:?} in deref lhs", e),
@@ -941,7 +943,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
             let expr = expr.into_inner();
             for part in expr {
                 match part.as_rule()  {
-                    Rule::termish => {
+                    Rule::expr => {
                         let expr = parse_expr(n, part);
                         fields.push(Box::new(expr));
                     }
@@ -1214,7 +1216,7 @@ pub(crate) fn parse_statement(
 
             for part in stm {
                 match part.as_rule() {
-                    Rule::lhs if lhs.is_none() => {
+                    Rule::expr if lhs.is_none() => {
                         lhs = Some(parse_expr(n, part));
                     }
                     Rule::assignop => {
@@ -1561,12 +1563,12 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
         span: expr.as_span(),
     };
     let mut expr = expr.into_inner();
-    let name = expr.next().unwrap();
-    let nameloc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: name.as_span(),
-    };
-    let name = Box::new(parse_expr(n, name));
+    //let name = expr.next().unwrap();
+    //let nameloc = Location{
+    //    file: n.1.to_string_lossy().into(),
+    //    span: name.as_span(),
+    //};
+    //let name = Box::new(parse_expr(n, name));
 
 
     let mut args = Vec::new();
@@ -1584,8 +1586,11 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
     };
 
     Expression::Call{
+        name : Box::new(Expression::Literal{
+            v: "#error ICE this was supposed to be removed by pre climber pass".to_string(),
+            loc: loc.clone()
+        }),
         loc: loc,
-        name,
         args,
         expanded:       false,
         emit:           EmitBehaviour::Default,

@@ -50,7 +50,7 @@ impl PP {
                 Value::String(s)
 
             },
-            Rule::call => {
+            Rule::pp_call => {
                 let mut expr = expr.into_inner();
                 let name = Name::from(expr.next().unwrap().as_str());
                 let args = match expr.next() {

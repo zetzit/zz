@@ -103,7 +103,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
         char mut ch = str[at];
 
         static_attest(self->depth < len(self->state));
-        ParserState mut state = ((self->state)[self->depth]).state;
+        ParserState mut state = self->state[self->depth].state;
 
         if state == ParserState::Key ||  state == ParserState::StringVal {
             if ch == 92 {
@@ -151,7 +151,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     }
                     */
                 }
-                '\t' | '\r' | ' ' => {
+                '\t' , '\r' , ' ' => {
                     /*
                     if state == ParserState::Key || state == ParserState::StringVal {
                         if !string::push(&(self->capture), ch) {
@@ -165,7 +165,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         advance(self, e, ch);
                     }
                 }
-                '{' | '[' | '}' | ']' | '"' | ':' | ',' => {
+                '{' , '[' , '}' , ']' , '"' , ':' , ',' => {
                     static_attest(err::checked(*e));
                     advance(self, e, ch);
                     if err::check(e) {

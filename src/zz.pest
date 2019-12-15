@@ -114,9 +114,19 @@ path        = { ('a'..'z' | '0'..'9' | "/" | "." | "-" | "_" )+ }
 syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
 
+
+
+
+
+
+// legacy expr without prec climber, just here until we change pp to go POST parser
+pp_call        = { ident ~ "(" ~ call_args? ~ ")"  }
+pp_expr        = { number_literal | string_literal | pp_call }
+
+
 pp          = { ppif | ppelse | ppelif | ppendif}
-ppif        = ${ "#if" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
-ppelif      = ${ "#elif" ~ WHITESPACE+ ~ termish ~ WHITESPACE+}
+ppif        = ${ "#if" ~ WHITESPACE+ ~ pp_expr ~ WHITESPACE+}
+ppelif      = ${ "#elif" ~ WHITESPACE+ ~ pp_expr ~ WHITESPACE+}
 ppelse      = ${ "#else" ~ WHITESPACE+ }
 ppendif     = ${ "#endif" ~ WHITESPACE+}
 
@@ -152,30 +162,49 @@ imacro          = { ( exported | key_shared)? ~ "macro" ~ ident ~ "(" ~ macro_ar
 // statements
 
 infix = _{
+    ptraccess | memberaccess |
     moreeq | lesseq |
     equals | nequals |
     shiftleft | shiftright |
     add | subtract | multiply | divide | bitxor | boolor |
     booland | lessthan | morethan | modulo | bitand | bitor
-    }
-    equals      = { "==" }
-    nequals     = { "!=" }
-    add         = { "+"  }
-    subtract    = { "-"  }
-    multiply    = { "*"  }
-    divide      = { "/"  }
-    bitxor      = { "^"  }
-    booland     = { "&&" }
-    boolor      = { "||" }
-    moreeq      = { ">=" }
-    lesseq      = { "<=" }
-    lessthan    = { "<"  }
-    morethan    = { ">"  }
-    shiftleft   = { "<<" }
-    shiftright  = { ">>" }
-    modulo      = { "%"  }
-    bitand      = { "&"  }
-    bitor       = { "|"  }
+}
+
+equals      = { "==" }
+nequals     = { "!=" }
+add         = { "+"  }
+subtract    = { "-"  }
+multiply    = { "*"  }
+divide      = { "/"  }
+bitxor      = { "^"  }
+booland     = { "&&" }
+boolor      = { "||" }
+moreeq      = { ">=" }
+lesseq      = { "<=" }
+lessthan    = { "<"  }
+morethan    = { ">"  }
+shiftleft   = { "<<" }
+shiftright  = { ">>" }
+modulo      = { "%"  }
+bitand      = { "&"  }
+bitor       = { "|"  }
+ptraccess   = { "->" }
+memberaccess= { "."  }
+callstart   = { "("  }
+arraystart  = { "["  }
+
+
+
+expr = {
+    (term ~ (callstart ~ call | arraystart ~ arrayaccess | infix ~ term) + ) |
+    term
+}
+
+// this is kind of a hack to get preop working. pest doesnt support empty lhs for precclimber
+// so we just build another expr that is interrupted by an op with precendence 2
+infix_to_precedence_2 = _{ ptraccess | memberaccess }
+expr_to_precedence_2 = { term ~ (callstart ~ call | arraystart ~ arrayaccess | infix_to_precedence_2 ~ term) * }
+
 
 preop  = _{boolnot | bitnot | increment |  decrement}
 postop = _{ increment |  decrement }
@@ -185,25 +214,21 @@ postop = _{ increment |  decrement }
     decrement   = { "--" }
 
 term    = _{
-    unarypost | call | number_literal | char_literal | string_literal |bool_literal| struct_init | array_init | member_access |
-    unarypre | ptr_access | array_access | takeref | deref | cast | type_name | "(" ~ expr ~ ")"
+    unarypost | number_literal | char_literal | string_literal |bool_literal| struct_init | array_init |
+    unarypre | takeref | deref | cast | type_name | "(" ~ expr ~ ")"
 }
-expr    = { term ~ (infix ~ term) * }
-termish  = !{ term }
 
 unarypost       = { ( type_name | "(" ~ expr ~ ")") ~ postop }
-unarypre        = { preop  ~ termish}
-deref           = { "*"  ~ termish}
-takeref         = { "&"  ~ termish}
+unarypre        = { preop  ~ expr_to_precedence_2}
+deref           = { "*"  ~ expr_to_precedence_2 }
+takeref         = { "&"  ~ expr_to_precedence_2}
 
-member_access   = { (type_name | "(" ~ expr ~ ")") ~ "." ~ ident }
-ptr_access      = { (type_name | "(" ~ expr ~ ")") ~ "->" ~ ident}
-array_access    = { (type_name | "(" ~ expr ~ ")") ~ array }
-cast            = { "as" ~ "<" ~ anon_type ~ ">" ~ termish | "(" ~ anon_type ~ ")" ~ termish }
+arrayaccess     = _{ expr ~ "]" }
+cast            = { "as" ~ "<" ~ anon_type ~ ">" ~ expr_to_precedence_2 | "(" ~ anon_type ~ ")" ~ expr_to_precedence_2}
 
-struct_init_field = { ident ~ ":" ~ termish }
+struct_init_field = { ident ~ ":" ~ expr }
 struct_init     = { anon_type ~ "{" ~  struct_init_field ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
-array_init      = { "{" ~ termish ~ ("," ~ termish)* ~ ","?  ~ "}" }
+array_init      = { "{" ~ expr ~ ("," ~ expr)* ~ ","?  ~ "}" }
 
 assignop    = { assignbitor | assignbitand | assignadd | assignsub | assigneq }
     assignbitor  = { "|=" }
@@ -212,13 +237,8 @@ assignop    = { assignbitor | assignbitand | assignadd | assignsub | assigneq }
     assignsub    = { "-=" }
     assigneq     = { "="  }
 
-
-
-lhs         = {
-    member_access | unarypost | unarypre | ptr_access | array_access | takeref | deref | type_name | "(" ~ expr ~ ")"
-}
-assign      = { lhs ~ assignop ~ expr}
-call        = { lhs  ~ "(" ~ call_args? ~ ")"  }
+assign      = { expr ~ assignop ~ expr}
+call        = { call_args? ~ ")"  }
 call_args   = { expr ~ ( "," ~ expr )* }
 
 array       = { "[" ~ expr? ~ "]" }
@@ -228,7 +248,10 @@ semicolon   = { ";" }
 stm_list    = _{ expr_stm ~ "," ~ stm_list | expr_stm }
 for_stm     = { "for" ~ "(" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list? ~ ")" ~ block }
 while_stm   = { "while" ~ expr ~ block }
-case_cond   = { termish ~ ("|" ~ termish)* }
+
+case_cond   = { expr ~ ("," ~ expr)* }
+
+
 case_stm    = { (key_default | case_cond ) ~ "=>" ~ block }
 switch_stm  = { "switch" ~ expr ~ "{" ~ case_stm* ~ "}"}
 if_stm      = { "if"  ~ expr  ~ block }
@@ -238,7 +261,7 @@ return_stm  = { key_return ~ expr_stm? }
 continue_stm  = { key_continue }
 break_stm   = { key_break }
 label       = ${ ident ~ ":"}
-mark_stm    = ${ lhs ~ WHITESPACE+ ~ "is" ~ WHITESPACE+ ~ tag_name }
+mark_stm    = ${ expr ~ WHITESPACE+ ~ "is" ~ WHITESPACE+ ~ tag_name }
 unsafe_block = {"unsafe" ~ block }
 
 cblock_inner = { ( (!"}}@" ~ ANY))*}
