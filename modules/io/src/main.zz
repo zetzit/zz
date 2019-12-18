@@ -5,6 +5,7 @@ using string;
 using err;
 
 using <stdio.h>::{perror, printf};
+using <assert.h>::{assert};
 
 
 export fn main() -> int {
@@ -20,6 +21,8 @@ export fn main() -> int {
     printf("timeout will happen after 3 seconds, then every 1 second.\ninterval must remain uneffected from stdin input\n\n");
     io::Io mut t = io::timeout((io::Async mut*)&async, &e, time::from_seconds(3));
     e.abort();
+
+    assert(t.valid());
 
     for (;;) {
         string::String+20 mut buf2;

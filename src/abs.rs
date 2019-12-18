@@ -41,13 +41,41 @@ struct InScope {
 
 #[derive(Default)]
 struct Scope {
-    v: HashMap<String, InScope>,
+    v: Vec<HashMap<String, InScope>>,
 }
 
 
 impl Scope{
+    fn push(&mut self) {
+        self.v.push(HashMap::new());
+    }
+    fn pop(&mut self) {
+        self.v.pop();
+    }
+    fn cur(&mut self) -> &mut HashMap<String, InScope> {
+        self.v.last_mut().unwrap()
+    }
+
+    fn get(&self, n: &str) -> Option<&InScope> {
+        for scope in self.v.iter().rev() {
+            if let Some(v) = scope.get(n) {
+                return Some(v);
+            }
+        }
+        None
+    }
+
+    fn get_mut(&mut self, n: &str) -> Option<&mut InScope> {
+        for scope in self.v.iter_mut().rev() {
+            if let Some(v) = scope.get_mut(n) {
+                return Some(v);
+            }
+        }
+        None
+    }
+
     pub fn insert(&mut self, local: String, fqn: Name, loc: &ast::Location, is_module: bool, subtypes: bool) {
-        if let Some(previous) = self.v.get(&local) {
+        if let Some(previous) = self.cur().get(&local) {
             if !is_module || !previous.is_module || fqn != previous.name {
 
                 emit_error(format!("conflicting local name '{}'", local), &[
@@ -58,7 +86,7 @@ impl Scope{
             }
         }
         trace!("  insert {} := {}", local, fqn);
-        self.v.insert(local, InScope{
+        self.cur().insert(local, InScope{
             name:       fqn,
             loc:        loc.clone(),
             is_module,
@@ -70,7 +98,7 @@ impl Scope{
         for (kk,vals) in tags.0.iter_mut() {
             if kk.as_str() == "static_assert" {
                 for (k,_) in vals.iter_mut() {
-                    if let Some(v2) = self.v.get(k) {
+                    if let Some(v2) = self.get(k) {
                         #[allow(mutable_transmutes)]
                         let k = unsafe { std::mem::transmute::<&String, &mut String>(k) };
                         *k = v2.name.to_string();
@@ -143,7 +171,7 @@ impl Scope{
         let mut rhs : Vec<String> = name.0.clone();
         let lhs = rhs.remove(0);
 
-        match self.v.get(&lhs) {
+        match self.get(&lhs) {
             None => {
                 if inbody {
                     if name.len() > 1 {
@@ -486,6 +514,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
     debug!("abs {}", md.name);
 
     let mut scope = Scope::default();
+    scope.push();
 
     for import in &mut md.imports {
 
@@ -608,6 +637,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                 }
             }
             ast::Def::Function{ret, args, ref mut body, callassert, calleffect, ..} => {
+                scope.push();
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
                     if let ast::Type::Other(name) = &ret.typed.t{
@@ -616,7 +646,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                 }
 
 
-                abs_args(args, &scope, &ast.vis, all_modules, &md.name);
+                abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
 
                 for calleffect in calleffect {
                     abs_expr(calleffect, &scope, true, all_modules, &md.name);
@@ -625,6 +655,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     abs_expr(callassert, &scope, true, all_modules, &md.name);
                 }
                 abs_block(body, &scope,all_modules, &md.name);
+                scope.pop();
             }
             ast::Def::Fntype{ret, args, ..} => {
                 if let Some(ret) = ret {
@@ -633,7 +664,9 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                         check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
                 }
-                abs_args(args, &scope, &ast.vis, all_modules, &md.name);
+                scope.push();
+                abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
+                scope.pop();
             }
             ast::Def::Theory{ret, args, ..} => {
                 if let Some(ret) = ret {
@@ -754,7 +787,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
 
 fn abs_args(
     args: &mut Vec<ast::NamedArg>,
-    scope: &Scope,
+    scope: &mut Scope,
     astvis: &ast::Visibility,
     all_modules: &HashMap<Name, loader::Module>,
     mdname: &Name
@@ -799,6 +832,15 @@ fn abs_args(
                 });
             }
         }
+
+
+        scope.insert(
+            arg.name.clone(),
+            Name::from(&arg.name),
+            &arg.loc,
+            false,
+            false
+        );
     }
 }
 

@@ -132,7 +132,7 @@ static inline io_Result os_net_udp_sendto(
         if (errno == EAGAIN) {
             return io_Result_Later;
         }
-        err_fail_with_errno(e, et, __FILE__, "os_net_udp_sendto", __LINE__, "recvfrom");
+        err_fail_with_errno(e, et, __FILE__, "os_net_udp_sendto", __LINE__, "sendto");
         return io_Result_Error;
     }
 
@@ -142,9 +142,16 @@ static inline io_Result os_net_udp_sendto(
     return io_Result_Ready;
 }
 
+static inline void os_net_udp_close(io_Context *self) {
+    if (!self->isvalid) {
+        return;
+    }
+    close(self->fd);
+    self->isvalid = false;
+}
+
 static inline void os_net_udp_bind(err_Err *e, size_t et, net_address_Address const* addr, net_udp_Socket *sock)
 {
-
     switch (addr->type) {
         case net_address_Type_Ipv6:
             sock->ctx.fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -168,6 +175,9 @@ static inline void os_net_udp_bind(err_Err *e, size_t et, net_address_Address co
 
     sock->impl_recvfrom = (void*)os_net_udp_recvfrom;
     sock->impl_sendto   = (void*)os_net_udp_sendto;
+    sock->impl_close    = os_net_udp_close;
+
+    sock->ctx.isvalid = true;
 }
 
 static inline void os_net_udp_make_async(err_Err *e, size_t et, net_udp_Socket *sock) {

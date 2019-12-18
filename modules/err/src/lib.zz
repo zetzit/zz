@@ -115,7 +115,7 @@ model checked(*self)
 
 export fn eprint(Err+tail mut* self)
 {
-    fprintf(stderr, "fatal error %u: %s%s\n", self->error, self->description, (self->locations).mem);
+    fprintf(stderr, "error %u: %s%s\n", self->error, self->description, (self->locations).mem);
 }
 
 export fn to_str(

@@ -98,7 +98,8 @@ export fn unix(int fd) -> io::Io
     model(safe(return.read_impl))
 {
     io::Context ctx = io::Context{
-        fd:   fd,
+        fd:         fd,
+        isvalid:    true,
     };
 
     return io::Io {
@@ -187,11 +188,11 @@ fn impl_unix_write(io::Context mut*ctx, err::Err+et mut*e, u8 * to, usize mut *l
 
 fn impl_unix_close(io::Context mut* ctx)
 {
-    if ctx->fd == 0 {
+    if !ctx->isvalid  {
         return;
     }
     unistd::close(ctx->fd);
-    ctx->fd = 0;
+    ctx->isvalid = false;
 }
 
 
@@ -203,8 +204,9 @@ fn impl_make_timeout(Async mut *async, err::Err+et mut*e, time::Time t2) -> io::
     expires += t2.to_millis();
 
     io::Context ctx = io::Context{
-        time: expires,
-        async: (io::Async mut*)async,
+        time:       expires,
+        async:      (io::Async mut*)async,
+        isvalid:    true,
     };
 
     return io::Io {
@@ -240,7 +242,8 @@ fn impl_timeout_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize m
 }
 
 fn impl_timer_close(io::Context mut*ctx) {
-    ctx->time = 0;
+    ctx->time     = 0;
+    ctx->isvalid  = false;
 }
 
 

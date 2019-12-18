@@ -1,2 +1,35 @@
 using address;
 using udp;
+
+using err;
+using io;
+
+export fntype new_udp_fn(err::Err+et mut*e, address::Address *local_addr, io::Async mut* unsafe async)  -> udp::Socket;
+
+export struct Engine {
+    new_udp_fn  impl_new_udp;
+}
+
+static Engine os_engine = Engine {
+    impl_new_udp:  udp::os_new,
+};
+
+export fn os() -> Engine*
+    model safe(return)
+{
+    return &os_engine;
+}
+
+
+export fn new_udp(Engine *self, err::Err+et mut*e, address::Address *local_addr, io::Async mut* unsafe async) -> udp::Socket
+    where err::checked(*e)
+{
+    if self->impl_new_udp == 0 {
+        err::fail(e, 1, "no new_udp impl");
+        return udp::Socket {
+            impl_sendto: 0,
+        };
+    }
+    static_attest(safe(self->impl_new_udp));
+    return self->impl_new_udp(e, local_addr, async);
+}

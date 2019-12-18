@@ -35,6 +35,7 @@ export struct Context {
     int         fd;
     void mut*   handle;
     u64         time;
+    bool        isvalid;
 
     Async mut* unsafe async;
 }
@@ -46,9 +47,8 @@ export struct Io {
     close_fn    close_impl;
 }
 
-
-export fn is_null(Io * self) -> bool {
-    return (self->ctx).fd == 0 && (self->ctx).handle == 0 && (self->ctx).time == 0 && (self->ctx).async == 0;
+export fn valid(Context *self) -> bool {
+    return self->isvalid;
 }
 
 export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
@@ -197,11 +197,6 @@ export fn select(Async mut *self, err::Err+et mut* e, Context mut*ctx, Ready w)
     static_attest(safe(select_impl));
     select_impl(self, e, ctx, w);
 }
-
-pub fn drop(Io mut* self) {
-    close(self);
-}
-
 
 export fntype make_timeout_fn(Async *async, err::Err+et mut*e, time::Time t2) -> Io;
 // TODO cannot use self function because flatten makes it a recursive type

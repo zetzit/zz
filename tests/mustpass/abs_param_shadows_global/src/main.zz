@@ -1,0 +1,12 @@
+using <stdio.h>::{printf};
+
+
+static usize x = 1;
+
+fn bob(isize mut x) {
+    x = -1;
+}
+
+export fn main() -> int {
+    return 0;
+}

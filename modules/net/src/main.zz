@@ -1,4 +1,5 @@
 using <stdio.h>::{printf};
+using <assert.h>::{assert};
 
 using string;
 using address;
@@ -6,6 +7,7 @@ using err;
 using udp;
 using io;
 using io::unix;
+using net;
 
 export fn main() -> int {
     err::Err+1000 mut e;
@@ -17,11 +19,12 @@ export fn main() -> int {
     unix::Async+10 mut async;
     async.new();
 
-    udp::Socket mut receiver = udp::bind_async(&e, &recv_addr, &async);
+    udp::Socket mut receiver = net::os()->new_udp(&e, &recv_addr, &async);
     e.abort();
 
-    udp::Socket mut sender = udp::bind_async(&e, &send_addr, &async);
+    udp::Socket mut sender = net::os()->new_udp(&e, &send_addr, &async);
     e.abort();
+
 
     string::String+100 mut msg = {0};
     msg.append_cstr("helloouuu");

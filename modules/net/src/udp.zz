@@ -23,7 +23,6 @@ inline using (needs
     os_net_udp_sendto,
 };
 
-
 export fntype sendto_fn(
         Socket mut*sock,
         err::Err *e,
@@ -43,20 +42,11 @@ export fntype recvfrom_fn   (
 ) -> io::Result;
 
 export struct Socket {
-    io::Context ctx;
+    io::Context     ctx;
     void *          impl_sendto;
     void *          impl_recvfrom;
     io::close_fn    impl_close;
 }
-
-export fn bind(err::Err+et mut*e, address::Address *addr) -> Socket
-    where err::checked(*e)
-{
-    Socket mut sock;
-    os_net_udp_bind(e, et, addr, &sock);
-    return sock;
-}
-
 
 export fn close(Socket mut*self) {
     if self->impl_close == 0 {
@@ -66,8 +56,7 @@ export fn close(Socket mut*self) {
     self->impl_close(&self->ctx);
 }
 
-
-export fn bind_async(err::Err+et mut*e, address::Address *addr, io::Async mut* async) -> Socket
+pub fn os_new(err::Err+et mut*e, address::Address *addr,  io::Async mut* unsafe async) -> Socket
     where err::checked(*e)
 {
     Socket mut sock = {0};
@@ -76,6 +65,10 @@ export fn bind_async(err::Err+et mut*e, address::Address *addr, io::Async mut* a
         return sock;
     }
 
+    if async == 0 {
+        return sock;
+    }
+    static_attest(safe(async));
     os_net_udp_make_async(e, et, &sock);
     (sock.ctx).async = async;
 
@@ -119,29 +112,3 @@ export fn sendto(Socket mut *self, err::Err+et mut*e, string::String+st *buf, ad
     }
     return rr;
 }
-/*
-export fn os_recvfrom(Socket mut *self, err::Err+et mut*e, string::String+st mut *buf, address::Address mut*from) -> io::Result
-    where err::checked(*e)
-{
-
-
-    static_attest(len(buf->mem) > buf->len);
-    usize mut l = 0;
-    io::Result rr = (io::Result)os_net_udp_recvfrom(e, et, &self->ctx, buf->mem + buf->len, buf->len - st, from, &l);
-    if err::check(e) {
-        return rr;
-    }
-    buf->len += l;
-    return rr;
-}
-
-export fn os_sendto(Socket mut *self, err::Err+et mut*e, string::String+st *buf, address::Address * to)
-    where err::checked(*e)
-{
-    static_attest(len(buf->mem) > buf->len);
-    os_net_udp_sendto(e, et, &self->ctx, buf->mem, buf->len , to);
-    if err::check(e) {
-        return;
-    }
-}
-*/

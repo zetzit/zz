@@ -1,0 +1,13 @@
+[project]
+version = "0.1.0"
+name = "abs_param_shadows_global"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
