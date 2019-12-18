@@ -1,0 +1,36 @@
+using <stdio.h>::{printf};
+
+
+struct A+ {
+    int bla;
+    int mem[];
+};
+
+
+fn foh(A+at * self) {
+    static_assert(len(self->mem) == at);
+}
+
+struct B {
+    A+100 a1;
+    A+200 a2;
+};
+
+
+fn bob(B*self) {
+    self->a1.foh();
+    self->a2.foh();
+    static_assert(len(self->a1.mem) == 100);
+    static_assert(len(self->a2.mem) == 200);
+}
+
+export fn main() -> int {
+    B b;
+
+    b.a1.foh();
+    b.a2.foh();
+
+    b.bob();
+
+    return 0;
+}

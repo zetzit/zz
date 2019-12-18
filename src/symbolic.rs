@@ -1285,7 +1285,11 @@ impl Symbolic {
 
         let mut fieldvalue = Value::Uninitialized;
         let mut fieldtyped = field.1.typed.clone();
+
+
         if let Some(array) = &field.1.array {
+
+            // sized array
             if let Some(expr) = array {
                 let mut expr = expr.clone();
                 let asym = self.execute_expr(&mut expr)?;
@@ -1295,7 +1299,7 @@ impl Symbolic {
                     },
                     _ => {
                         Err(Error::new("array size must be static".to_string(), vec![
-                                       (expr.loc().clone(), format!("expression cannot be reduced to a constrained value at compile time"))
+                            (expr.loc().clone(), format!("expression cannot be reduced to a constrained value at compile time"))
                         ]))
                     }
                 })?;
@@ -1303,12 +1307,21 @@ impl Symbolic {
                     len:    val as usize,
                     array:  HashMap::new(),
                 };
+
+            // unsized array, but container has a tail
+            } else if let ast::Tail::Static(val,_loc) = &self.memory[lhs_sym].typed.tail {
+                fieldvalue = Value::Array {
+                    len:    *val as usize,
+                    array:  HashMap::new(),
+                };
             }
+
             fieldtyped.ptr.push(ast::Pointer{
                 loc:  field.1.loc.clone(),
                 tags: Tags::new(),
             });
         }
+
 
         //nested tail
         match fieldtyped.tail {
