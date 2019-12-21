@@ -974,6 +974,7 @@ impl Symbolic {
 
                     let (newtype, lhs, rhs) = self.type_coersion(lhs, rhs, loc)?;
 
+
                     if let ast::AssignOperator::Eq = op {
                         if self.in_loop {
                             self.memory[lhs].temporal += 1;
@@ -986,6 +987,13 @@ impl Symbolic {
                             loc.clone(),
                             self.memory[lhs].tags.clone(),
                         )?;
+
+                        if newtype.ptr.len() > 0 {
+                            return Err(Error::new(format!("assign arithmetic is not yet implemented"), vec![
+                                (loc.clone(), format!("use a=a+n instead of a+=n"))
+                            ]));
+                        }
+
 
                         let infix = match op {
                             ast::AssignOperator::Bitor  => ast::InfixOperator::Bitor,

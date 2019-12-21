@@ -1,7 +1,8 @@
 pub fn rand(u8 mut* mut bytes)
 {
     for (;;) {
-        bytes   += 1;
+        static_attest(len(bytes) > 1);
+        bytes = bytes + 1;
     }
 }
 

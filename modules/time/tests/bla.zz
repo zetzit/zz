@@ -11,7 +11,7 @@ pub fn main() -> int {
     time::Time t2 = time::from_millis(2001);
     assert(t2.to_millis() == 2001);
 
-    time::Time t3 = time::system();
+    time::Time t3 = time::tick();
     printf("%lu\n", t3.to_millis());
 
     return 0;

@@ -124,7 +124,7 @@ export fn main() -> int {
     string::fgets(&sin, stdin);
 
     address::Address mut sa = address::from_string(&sin);
-    if !sa.is_valid() {
+    if !sa.valid() {
         return 3;
     }
 

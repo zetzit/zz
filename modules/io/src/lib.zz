@@ -11,6 +11,8 @@ export struct Async {
     void unsafe *make_timeout;
     //select_fn
     void unsafe *select_impl;
+    //wake_fn
+    void unsafe *do_wake;
 }
 
 
@@ -198,6 +200,7 @@ export fn select(Async mut *self, err::Err+et mut* e, Context mut*ctx, Ready w)
     select_impl(self, e, ctx, w);
 }
 
+
 export fntype make_timeout_fn(Async *async, err::Err+et mut*e, time::Time t2) -> Io;
 // TODO cannot use self function because flatten makes it a recursive type
 export fn timeout(Async mut* this, err::Err+et mut*e, time::Time t2) -> Io
@@ -213,4 +216,13 @@ export fn timeout(Async mut* this, err::Err+et mut*e, time::Time t2) -> Io
     };
 }
 
+
+export fntype wake_fn(Async *async);
+export fn wake(Async mut* self) {
+    if self->do_wake != 0 {
+        wake_fn iwake = (wake_fn)self->do_wake;
+        static_attest(safe(iwake));
+        iwake(self);
+    }
+}
 

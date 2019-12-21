@@ -56,7 +56,7 @@ export fn close(Socket mut*self) {
     self->impl_close(&self->ctx);
 }
 
-pub fn os_new(err::Err+et mut*e, address::Address *addr,  io::Async mut* unsafe async) -> Socket
+pub fn os_new(void * _engine, err::Err+et mut*e, address::Address *addr,  io::Async mut* unsafe async) -> Socket
     where err::checked(*e)
 {
     Socket mut sock = {0};

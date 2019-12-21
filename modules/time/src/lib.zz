@@ -29,6 +29,10 @@ export fn from_seconds(u64 secs) -> Time {
     };
 }
 
+export fn to_seconds(Time *self) -> u64 {
+    return self->secs;
+}
+
 export fn to_millis(Time *self) -> u64 {
     if self->secs > (u64)UINT64_MAX/1000 {
         return (u64)UINT64_MAX;
@@ -71,12 +75,19 @@ export fn more_than(Time *self, Time *other) -> bool {
     return false;
 }
 
-inline using "native.h"::{ _os_time_system }
+inline using "native.h"::{ os_time_tick, os_time_real}
 
 /// monotonic system clock
-export fn system() -> Time {
+export fn tick() -> Time {
     Time mut tr = {0};
-    tr.finite = _os_time_system(&tr.secs, &tr.nano) == 0;
+    tr.finite = os_time_tick(&tr.secs, &tr.nano) == 0;
     return tr;
 }
 
+
+/// real world time
+export fn real() -> Time {
+    Time mut tr = {0};
+    tr.finite = os_time_real(&tr.secs, &tr.nano) == 0;
+    return tr;
+}

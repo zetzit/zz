@@ -1,3 +1,6 @@
+
+
+#ifdef __unix__
 #include <netinet/in.h>
 #include <stdint.h>
 #include <string.h>
@@ -193,4 +196,38 @@ static inline void os_net_udp_make_async(err_Err *e, size_t et, net_udp_Socket *
     }
 }
 
+#else
+void os_net_address_ipv4_set_port(uint8_t *raw, short port_be16);
+void os_net_address_ipv6_set_port(uint8_t *raw, short port_be16);
+short os_net_address_ipv4_get_port(uint8_t const *raw);
+short os_net_address_ipv6_get_port(uint8_t const *raw);
+void os_net_address_ipv4_set_ip(uint8_t *raw, uint8_t const *ip);
+void os_net_address_ipv6_set_ip(uint8_t *raw, uint8_t const *ip);
+uint8_t const* os_net_address_ipv6_get_ip(uint8_t const *raw);
+uint8_t const* os_net_address_ipv4_get_ip(uint8_t const *raw);
 
+
+io_Result os_net_udp_recvfrom(
+        net_udp_Socket *self,
+        err_Err *e, size_t et,
+        char * mem,
+        size_t * memlen,
+        net_address_Address *addr
+);
+io_Result os_net_udp_sendto(
+        net_udp_Socket *self,
+        err_Err *e, size_t et,
+        char const * mem,
+        size_t * memlen,
+        net_address_Address const *addr
+);
+void os_net_udp_close(io_Context *self) {
+    if (!self->isvalid) {
+        return;
+    }
+    close(self->fd);
+    self->isvalid = false;
+};
+void os_net_udp_bind(err_Err *e, size_t et, net_address_Address const* addr, net_udp_Socket *sock);
+void os_net_udp_make_async(err_Err *e, size_t et, net_udp_Socket *sock);
+#endif

@@ -1,0 +1,11 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    u8 b[1000];
+
+    u8*x = b;
+    b += 1000;
+
+    return 0;
+}

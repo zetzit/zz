@@ -25,8 +25,9 @@ export struct Async+ {
 export fn new(Async+tail mut *self) {
     memset(self, 0, (usize)sizeof(Async));
 
-    (self->base).make_timeout = (void*)impl_make_timeout;
-    (self->base).select_impl    = (void*)impl_unix_select;
+    self->base.make_timeout = (void*)impl_make_timeout;
+    self->base.select_impl  = (void*)impl_unix_select;
+    self->base.do_wake      = (void*)impl_wake;
 
     self->count     = 0;
     self->tail      = tail;
@@ -72,7 +73,7 @@ fn impl_unix_select(Async mut*self, err::Err+et mut*e, io::Context mut*ctx, io::
     }
 
     if ctx->time != 0 {
-        time::Time now  = time::system();
+        time::Time now  = time::tick();
         u64 mut now_m = now.to_millis();
         u64 remains = ctx->time - now_m;
         if self->timeout < 0 || (u64)self->timeout > remains {
@@ -196,10 +197,15 @@ fn impl_unix_close(io::Context mut* ctx)
 }
 
 
+fn impl_wake(Async mut *async)
+{
+    async->timeout = 0;
+}
+
 fn impl_make_timeout(Async mut *async, err::Err+et mut*e, time::Time t2) -> io::Io
     where err::checked(*e)
 {
-    time::Time now = time::system();
+    time::Time now = time::tick();
     u64 mut expires = now.to_millis();
     expires += t2.to_millis();
 
@@ -225,7 +231,7 @@ fn impl_timeout_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize m
         return io::Result::Eof;
     }
 
-    time::Time now  = time::system();
+    time::Time now  = time::tick();
     u64 mut now_m = now.to_millis();
     if now_m > ctx->time {
         return io::Result::Ready;

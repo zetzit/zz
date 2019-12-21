@@ -24,7 +24,7 @@ export fn new() -> Address {
     };
 }
 
-export fn is_valid(Address * self) -> bool {
+export fn valid(Address * self) -> bool {
     return self->type != Type::Invalid;
 }
 
@@ -51,7 +51,7 @@ export fn from_str(char * mut s, usize mut slen) -> Address
     }
 
     if s[0] == '[' {
-        s    += 1;
+        s  = s + 1;
         slen -= 1;
         static_attest(safe(s));
         static_attest(len(s) >= slen);
