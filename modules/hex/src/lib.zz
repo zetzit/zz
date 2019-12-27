@@ -11,6 +11,8 @@ static u8 map[] = {
 export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usize
     where len(in)  >= inlen
     where len(out) >= outlen
+    model return <= inlen
+    model return <= len(out)
 {
     usize mut pos;
     u8 mut idx0;
