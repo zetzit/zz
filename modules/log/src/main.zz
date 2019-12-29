@@ -1,0 +1,11 @@
+using log;
+
+export fn main() -> int {
+
+    log::error  ("dude %s", "waht");
+    log::info   ("dude %s", "waht");
+    log::debug  ("dude %s", "waht");
+    log::warn   ("dude %s", "waht");
+
+    return 0;
+}

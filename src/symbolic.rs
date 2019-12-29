@@ -104,8 +104,9 @@ pub struct Symbolic {
     ssa:        Solver,
     builtin:    HashMap<String, Symbol>,
     defs:       HashMap<Name, ast::Def>,
-    current_function_name: String,
-    current_function_ret:  Option<Symbol>,
+    current_module_name:    String,
+    current_function_name:  String,
+    current_function_ret:   Option<Symbol>,
     current_function_model: Vec<ast::Expression>,
     in_loop: bool,
 }
@@ -118,9 +119,7 @@ pub enum ScopeReturn {
 
 impl Symbolic {
     fn execute_module(&mut self, module: &mut flatten::Module, fun: usize) -> Result<(), Error> {
-
-
-
+        self.current_module_name = module.name.human_name();
 
         // built in len theory
         let sym = self.alloc(Name::from("len"), ast::Typed{
@@ -1138,6 +1137,12 @@ impl Symbolic {
                             v:   format!("{}", callloc.line())
                         }
                     },
+                    "module" => {
+                        ast::Expression::LiteralString {
+                            loc: loc.clone(),
+                            v: self.current_module_name.as_bytes().to_vec(),
+                        }
+                    }
                     "function" => {
                         ast::Expression::LiteralString {
                             loc: loc.clone(),
@@ -3007,8 +3012,9 @@ impl Symbolic {
             ssa:     Solver::new(module_name.to_string()),
             builtin: Default::default(),
             defs:    HashMap::new(),
-            current_function_name: String::new(),
-            current_function_ret:  None,
+            current_module_name:    module_name.human_name(),
+            current_function_name:  String::new(),
+            current_function_ret:   None,
             current_function_model: Vec::new(),
             in_loop: false,
         }

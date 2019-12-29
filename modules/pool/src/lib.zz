@@ -1,0 +1,127 @@
+using <string.h>::{memset};
+using <assert.h>::{assert};
+
+export struct Pool+ {
+    u8      blocksize;
+    usize   poolsize;
+
+    u8 mut* used;
+    u8 mut* pool;
+
+
+    u8  mem[];
+}
+
+export fn new(Pool+pt mut *self, u8 mut blocksize)
+    where pt > pt/(usize)blocksize
+{
+    self->blocksize = blocksize;
+    usize usedmemlen = pt / (usize)blocksize / 8;
+
+    self->used  = self->mem;
+    self->pool  = self->mem + usedmemlen;
+    self->poolsize = pt - usedmemlen;
+
+    memset(self->used, 0, usedmemlen);
+}
+
+export fn alloc(Pool+pt mut *self, usize mut size) -> void mut*
+{
+    // one byte at the front and one at the back overhead
+    size += 2;
+
+    usize mut blocks = size/(usize)self->blocksize;
+    if size % (usize)self->blocksize != 0 {
+        blocks += 1;
+    }
+    if blocks > 256 {
+        return 0;
+    }
+
+    for (usize mut i = 0; i < self->poolsize/(usize)self->blocksize ; i++) {
+
+        // optimization with faster byte compare
+        static_attest(i/8 < len(self->used));
+        if self->used[i/8] == 0xff {
+            i+=7;
+            continue;
+        }
+
+
+        static_attest(safe(self->used));
+        static_attest(len(self->used) == self->poolsize/(usize)self->blocksize);
+
+        usize mut i2 = i;
+        bool mut allfree = true;
+        for (usize mut j = 0; j < blocks; j++) {
+
+            if i2 >= self->poolsize/(usize)self->blocksize {
+                allfree = false;
+                break;
+            }
+            if bitarray_test(self->used, i2) {
+                allfree = false;
+                break;
+            }
+
+            i2++;
+        }
+
+        if allfree {
+            void mut * mut mem = 0;
+            unsafe {
+                mem = self->pool + ((usize)self->blocksize * i);
+                memset(mem, 0, size);
+                *(u8 mut*)mem = blocks;
+                mem = (u8 mut*)mem + 1;
+            }
+
+            for (usize mut j = 0; j < blocks; j++) {
+                static_attest((i+j)/8 < len(self->used));
+                bitarray_set(self->used, i+j);
+            }
+            return mem;
+        }
+    }
+    return 0;
+}
+
+export fn free(Pool+pt mut *self, void * unsafe mut ptr) {
+    if ptr == 0 {
+        return;
+    }
+
+    u8 mut blocks;
+    usize mut startblock;
+    unsafe {
+        ptr = ((u8*)ptr) - 1;
+        blocks = *(u8*)ptr;
+        assert((usize)blocks < pt/(usize)self->blocksize);
+        startblock = ((u8*)ptr - self->pool) / (usize)self->blocksize;
+        assert(startblock < pt/(usize)self->blocksize);
+    }
+
+    for (usize mut i = startblock; i < startblock + (usize)blocks ; i++) {
+        static_attest(safe(self->used));
+        static_attest(i/8 < len(self->used));
+        bitarray_clear(self->used, i);
+    }
+}
+
+fn bitarray_set(u8 mut* a, usize index)
+    where len(a) > index/8
+{
+    a[index/8] |= (u8)(1<<(index % 8));
+}
+
+fn bitarray_clear(u8 mut* a, usize index)
+    where len(a) > index/8
+{
+    a[index/8] &= (u8)~(1<<(index % 8));
+}
+
+fn bitarray_test(u8 mut* a, usize index) -> bool
+    where len(a) > index/8
+{
+    return (a[index/8] & (u8)(1<<(index % 8))) > 0;
+}

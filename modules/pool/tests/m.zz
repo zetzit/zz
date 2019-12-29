@@ -1,0 +1,39 @@
+using pool;
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+
+fn main() -> int {
+    for (usize mut i= 0; i < 1000; i++) {
+        m2();
+    }
+    return 0;
+}
+
+fn m2(){
+    pool::Pool+10000 mut p;
+    p.new(32);
+
+    void mut * mut a = 0;
+    for (usize mut i = 0;;i++) {
+        void mut *b = p.alloc(1 + (30 * (i%3)));
+        if b == 0 {
+            printf("memory full after %zu rounds\n", i);
+            break;
+        }
+        if i % 3 == 0 {
+            p.free(b);
+        } else {
+            a = b;
+        }
+    }
+
+    printf("%p\n", a);
+    p.free(a);
+
+    void mut *b = p.alloc(99);
+    assert(b == 0);
+
+    void mut *c = p.alloc(1);
+    printf("last: %p\n", c);
+}
+
