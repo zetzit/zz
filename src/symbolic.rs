@@ -1212,23 +1212,39 @@ impl Symbolic {
                     let mut calledarg = callargs.remove(0);
                     let callptr = self.execute_expr(&mut calledarg)?;
 
-                    // pointers to structs can be used as pointers to their first field
+
                     if self.memory[callptr].typed !=  defined[i].typed {
+
+                        let mut into_type = self.memory[callptr].typed.clone();
+
+                        // pointers to structs can be used as pointers to their first field
                         if let ast::Type::Other(n) = &self.memory[callptr].typed.t {
                             if let Some(ast::Def::Struct {fields, ..}) = self.defs.get(&n) {
                                 if let Some(field) = fields.get(0) {
                                     if field.typed.t == defined[i].typed.t {
-                                        let mut into_type = self.memory[callptr].typed.clone();
                                         into_type.t = field.typed.t.clone();
                                         into_type.tail = ast::Tail::None;
-                                        *calledarg = ast::Expression::Cast {
-                                            into: into_type,
-                                            expr: calledarg.clone(),
-                                            loc:  calledarg.loc().clone(),
-                                        };
                                     }
                                 }
                             }
+                        }
+
+                        // pointers with tail can be used as pointer without tail
+                        match (&defined[i].typed.tail, &self.memory[callptr].typed.tail) {
+                            (ast::Tail::None, ast::Tail::Bind(_,_)) |
+                            (ast::Tail::None, ast::Tail::Static(_,_)) => {
+                                into_type.tail = ast::Tail::None;
+                            }
+                            _ => {
+                            }
+                        }
+
+                        if into_type != self.memory[callptr].typed {
+                            *calledarg = ast::Expression::Cast {
+                                into: into_type,
+                                expr: calledarg.clone(),
+                                loc:  calledarg.loc().clone(),
+                            };
                         }
                     }
                     called.push(calledarg);

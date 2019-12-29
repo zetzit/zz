@@ -126,7 +126,7 @@ impl Emitter {
             }
             ast::Type::ILiteral | ast::Type::ULiteral => {
                 parser::emit_error(
-                    "ICE: untyped ended up in emitter",
+                    "ICE: untyped literal ended up in emitter",
                     &[(name.loc.clone(), format!("this should have been resolved earlier"))]
                     );
                 std::process::exit(9);

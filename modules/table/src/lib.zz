@@ -1,0 +1,57 @@
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+
+struct Slot {
+    bool        used;
+    usize       key;
+    void mut*   value;
+}
+
+export struct Table+ {
+    u8 dummy;
+    Slot slots[];
+}
+
+export fn insert(Table+tt mut* self, usize key, void mut* unsafe value) -> bool {
+    for (usize mut i=0; i < tt; i++) {
+        usize index = (key + i * i) % tt;
+        static_attest(index < tt);
+        if !self->slots[index].used {
+            self->slots[index] = Slot {
+                used:   true,
+                key:    key,
+                value:  value,
+            };
+            return true;
+        }
+    }
+    return false;
+}
+
+export fn get(Table+tt mut* self, usize key) -> void mut*
+{
+    for (usize mut i=0; i < tt; i++) {
+        usize index = (key + i * i) % tt;
+        static_attest(index < tt);
+
+        if self->slots[index].used && (self->slots[index].key == key) {
+            return self->slots[index].value;
+        }
+    }
+    return 0;
+}
+
+export fn remove(Table+tt mut* self, usize key) -> void mut*
+{
+    for (usize mut i=0; i < tt; i++) {
+        usize index = (key + i * i) % tt;
+        static_attest(index < tt);
+
+        if self->slots[index].used && (self->slots[index].key == key) {
+            void mut*v = self->slots[index].value;
+            self->slots[index].used = false;
+            return v;
+        }
+    }
+    return 0;
+}

@@ -11,7 +11,7 @@ fn main() -> int {
 
 fn m2(){
     pool::Pool+10000 mut p;
-    p.new(32);
+    p.new(64);
 
     void mut * mut a = 0;
     for (usize mut i = 0;;i++) {
@@ -28,6 +28,7 @@ fn m2(){
     }
 
     printf("%p\n", a);
+    static_attest(pool::member(a, &p));
     p.free(a);
 
     void mut *b = p.alloc(99);

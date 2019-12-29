@@ -1,6 +1,9 @@
 using <string.h>::{memset};
 using <assert.h>::{assert};
 
+
+theory member(void * m, Pool*p) -> bool;
+
 export struct Pool+ {
     u8      blocksize;
     usize   poolsize;
@@ -25,8 +28,11 @@ export fn new(Pool+pt mut *self, u8 mut blocksize)
     memset(self->used, 0, usedmemlen);
 }
 
-export fn alloc(Pool+pt mut *self, usize mut size) -> void mut*
+export fn alloc(Pool mut *self, usize mut size) -> void mut*
+    model member(return, self)
 {
+    static_attest(member(0, self));
+
     // one byte at the front and one at the back overhead
     size += 2;
 
@@ -86,7 +92,9 @@ export fn alloc(Pool+pt mut *self, usize mut size) -> void mut*
     return 0;
 }
 
-export fn free(Pool+pt mut *self, void * unsafe mut ptr) {
+export fn free(Pool mut *self, void * unsafe mut ptr)
+    where member(ptr, self)
+{
     if ptr == 0 {
         return;
     }
@@ -96,9 +104,9 @@ export fn free(Pool+pt mut *self, void * unsafe mut ptr) {
     unsafe {
         ptr = ((u8*)ptr) - 1;
         blocks = *(u8*)ptr;
-        assert((usize)blocks < pt/(usize)self->blocksize);
+        assert((usize)blocks < self->poolsize/(usize)self->blocksize);
         startblock = ((u8*)ptr - self->pool) / (usize)self->blocksize;
-        assert(startblock < pt/(usize)self->blocksize);
+        assert(startblock < self->poolsize/(usize)self->blocksize);
     }
 
     for (usize mut i = startblock; i < startblock + (usize)blocks ; i++) {
