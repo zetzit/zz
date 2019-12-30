@@ -2,6 +2,7 @@ using <string.h> as c_string;
 using <stdio.h> as stdio;
 using <stdarg.h>::{va_list, va_start, va_end};
 using <stdio.h>::{vsnprintf, printf, FILE};
+using slice::{Slice};
 
 export struct String+ {
     usize   len;
@@ -22,13 +23,15 @@ we need conditions that get checked for every use of a struct automatically
 
 */
 
-
-export fn new() -> String {
-    return String {
-        len: 0,
+export fn slice(String+tail mut * self) -> Slice
+    model return.max == tail
+{
+    return Slice {
+        len: self->len,
+        max: tail,
+        mem: (u8 mut*)self->mem,
     };
 }
-
 
 export fn clear(String+tail mut * self)
     model self->len  == 0

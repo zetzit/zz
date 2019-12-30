@@ -1,0 +1,90 @@
+using <string.h> as c_string;
+
+export struct Slice {
+    usize   len;
+    usize   max;
+    u8 mut* mem;
+}
+
+export fn new(u8 mut*mem, usize size) -> Slice
+    where len(mem) >= size
+{
+    return Slice {
+        len: 0,
+        max: size,
+        mem: mem,
+    };
+}
+
+export fn push(Slice mut * self, u8 b) -> bool
+    where self->max >= 1
+    model self->len <= self->max
+{
+    static_attest(self->max == len(self->mem));
+    static_attest(self->len <= self->max);
+
+    if self->len > self->max - 1 {
+        return false;
+    }
+
+    static_attest(self->len < len(self->mem));
+    self->mem[self->len] = b;
+    self->len += 1;
+
+    return true;
+}
+
+export fn push16(Slice mut * self, u16 b) -> bool
+    where self->max >= 2
+    model self->len <= self->max
+{
+    static_attest(self->max == len(self->mem));
+    static_attest(self->len <= self->max);
+
+    if self->len > self->max - 2 {
+        return false;
+    }
+
+    static_attest(self->len < len(self->mem));
+    c_string::memcpy(self->mem + self->len, &b, 2);
+    self->len += 2;
+
+    return true;
+}
+
+export fn push32(Slice mut * self, u32 b) -> bool
+    where self->max >= 4
+    model self->len <= self->max
+{
+    static_attest(self->max == len(self->mem));
+    static_attest(self->len <= self->max);
+
+    if self->len > self->max - 4 {
+        return false;
+    }
+
+    static_attest(self->len < len(self->mem));
+    c_string::memcpy(self->mem + self->len, &b, 4);
+    self->len += 4;
+
+    return true;
+}
+
+export fn push64(Slice mut * self, u64 b) -> bool
+    where self->max > 8
+    model self->len <= self->max
+{
+    static_attest(self->max == len(self->mem));
+    static_attest(self->len <= self->max);
+
+    if self->len > self->max - 8 {
+        return false;
+    }
+
+    static_attest(self->len < len(self->mem));
+    c_string::memcpy(self->mem + self->len, &b, 8);
+    self->len += 8;
+
+    return true;
+}
+

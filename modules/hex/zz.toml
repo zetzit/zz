@@ -8,6 +8,7 @@ cflags = []
 lflags = []
 
 [dependencies]
+slice = "1"
 
 [variants]
 default = []

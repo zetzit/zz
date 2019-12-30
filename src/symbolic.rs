@@ -108,7 +108,8 @@ pub struct Symbolic {
     current_function_name:  String,
     current_function_ret:   Option<Symbol>,
     current_function_model: Vec<ast::Expression>,
-    in_loop: bool,
+    in_loop:    bool,
+    in_model:   bool,
 }
 
 
@@ -151,7 +152,6 @@ impl Symbolic {
         }};
         self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "len", smt::Type::Unsigned(64));
         self.builtin.insert("len".to_string(), sym);
-
 
         // built in safe theory
         let sym = self.alloc(Name::from("safe"), ast::Typed{
@@ -601,7 +601,11 @@ impl Symbolic {
         let mut locs = Vec::new();
 
         for callsite_effect in &mut self.current_function_model.clone() {
+
+            self.in_model = true;
             let casym = self.execute_expr(callsite_effect)?;
+            self.in_model = false;
+
             if self.memory[casym].t != smt::Type::Bool {
                 return Err(Error::new(format!("expected boolean, got {}", self.memory[casym].typed), vec![
                     (callsite_effect.loc().clone(), format!("model expression must be boolean"))
@@ -1110,7 +1114,6 @@ impl Symbolic {
         }
         Ok(ScopeReturn::NoReturn)
     }
-
 
     fn expand_callargs(
         &mut self,
@@ -2061,13 +2064,16 @@ impl Symbolic {
                                 loc.clone(),
                                 Tags::new(),
                             )?;
+                            self.copy(return_sym_inner, return_sym, loc)?;
 
                             // callsite effects happen in the callsite, but the names are from
                             // the function declaration, so we expose the symbol as a different name
                             for (i, farg) in fargs.iter().enumerate() {
                                 self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
                             }
+
                             let casym = self.execute_expr(callsite_effect)?;
+
                             if !self.ssa.attest((casym, self.memory[casym].temporal), true) {
                                 return Err(Error::new(format!("callsite effect would break SSA"), vec![
                                     (expr.loc().clone(), format!("there might be conflicting constraints"))
@@ -2555,6 +2561,13 @@ impl Symbolic {
             ]))
         }
 
+
+        // this is because the optimization cheat in check check_function_model doesn't apply
+        // anything in between model calls
+        if self.in_model {
+            return Ok(member);
+        }
+
         self.ssa.debug("begin safe ptr check");
         let tmp1 = self.temporary(
             format!("safe({})", self.memory[lhs_sym].name),
@@ -2583,6 +2596,7 @@ impl Symbolic {
         })?;
 
 
+
         match &mut self.memory[lhs_sym].value {
             // we're assuming this is ok because odf the above satefy checks
             Value::Uninitialized | Value::Unconstrained(_) => {
@@ -2596,6 +2610,7 @@ impl Symbolic {
         }
 
         Ok(member)
+
     }
 
 
@@ -2735,12 +2750,6 @@ impl Symbolic {
                 ]));
             }
         };
-        if self.memory[sym].typed.ptr.len() > 0 {
-            return Err(Error::new(format!("ICE: tail value on pointer"), vec![
-                (loc.clone(), format!("tail binding must be on the type itself"))
-            ]));
-        }
-
 
         let member_sym = self.member_access(sym, &field_name, loc)?;
         self.len_into_ssa(member_sym, loc, tailval as usize)?;
@@ -3033,6 +3042,7 @@ impl Symbolic {
             current_function_ret:   None,
             current_function_model: Vec::new(),
             in_loop: false,
+            in_model:false,
         }
     }
 

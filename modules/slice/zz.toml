@@ -1,14 +1,13 @@
 [project]
 version = "0.1.0"
-name = "string"
+name = "slice"
 cincludes = []
 cobjects = []
 pkgconfig = []
 cflags = []
 lflags = []
 
-[dependencies]
-slice = "1"
-
 [variants]
 default = []
+
+[dependencies]

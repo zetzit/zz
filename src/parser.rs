@@ -1468,7 +1468,8 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
     let name = Name::from(decl.next().unwrap().as_str());
 
     let mut tags = Tags::new();
-    let mut ptr = Vec::new();
+    let mut ptr  = Vec::new();
+    let mut tail = Tail::None;
 
     for part in decl {
         let loc = Location{
@@ -1491,6 +1492,23 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
                 let value = part.next().as_ref().map(|s|s.as_str().to_string()).unwrap_or(String::new());
                 tags.insert(name, value, loc);
             }
+            Rule::tail => {
+                let loc = Location{
+                    file: n.1.to_string_lossy().into(),
+                    span: part.as_span(),
+                };
+                let mut part = part.as_str().to_string();
+                part.remove(0);
+                if part.len() > 0 {
+                    if let Ok(n) = part.parse::<u64>() {
+                        tail = Tail::Static(n, loc);
+                    } else {
+                        tail = Tail::Bind(part, loc);
+                    }
+                } else {
+                    tail = Tail::Dynamic
+                }
+            },
             e => panic!("unexpected rule {:?} in anon_type", e),
         }
     }
@@ -1504,7 +1522,7 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
 
     Typed {
         t: Type::Other(name),
-        loc, ptr, tail: Tail::None,
+        loc, ptr, tail,
     }
 }
 

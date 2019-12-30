@@ -1,5 +1,6 @@
 using <string.h>::{memset};
 using <stdio.h>::{printf};
+using slice;
 
 static u8 map[] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567
@@ -46,6 +47,18 @@ export fn print(u8 *data, usize l)
     }
 }
 
+
+export fn dump_slice(slice::Slice *s)
+{
+    static_attest(s->len < len(s->mem));
+    for (usize mut i = 0; i < s->len; i++) {
+        printf("%02x ", s->mem[i]);
+        if i % 16 == 15 {
+            printf("\n");
+        }
+    }
+    printf("\n");
+}
 
 export fn dump(u8 *data, usize l)
     where len(data) >= l

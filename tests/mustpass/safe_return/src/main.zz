@@ -1,0 +1,25 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    int b;
+}
+
+static A x = A{
+    b: 2,
+};
+
+fn bob() -> A *
+    model safe(return)
+    model return->b == 2
+{
+    return &x;
+}
+
+
+export fn main() -> int {
+    int * a = bob();
+    *a;
+
+    return 0;
+}
