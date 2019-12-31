@@ -9,6 +9,7 @@ use crate::z3::Params;
 use crate::z3::SatResult;
 use crate::z3::Solver;
 use crate::z3::Z3_MUTEX;
+use std::ffi::CString;
 
 impl<'ctx> Solver<'ctx> {
     /// Create a new solver. This solver is a "combined solver"
@@ -55,6 +56,25 @@ impl<'ctx> Solver<'ctx> {
             z3_slv: unsafe {
                 let guard = Z3_MUTEX.lock().unwrap();
                 let s = Z3_mk_solver(ctx.z3_ctx);
+                Z3_solver_inc_ref(ctx.z3_ctx, s);
+                s
+            },
+        }
+    }
+
+    pub fn new_for_logic(ctx: &Context, s: String) -> Solver {
+
+
+        Solver {
+            ctx,
+            z3_slv: unsafe {
+
+                let ss = CString::new(s.clone()).unwrap();
+                let p = ss.as_ptr();
+                let sym = Z3_mk_string_symbol(ctx.z3_ctx, p);
+
+                let guard = Z3_MUTEX.lock().unwrap();
+                let s = Z3_mk_solver_for_logic(ctx.z3_ctx, sym);
                 Z3_solver_inc_ref(ctx.z3_ctx, s);
                 s
             },

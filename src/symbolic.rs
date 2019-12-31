@@ -545,7 +545,7 @@ impl Symbolic {
                     Tags::new(),
                 )?;
                 let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                self.ssa.invocation(*lensym, vec![(member_sym, self.memory[member_sym].temporal)], tmp);
+                self.ssa.invocation(*lensym, vec![(member_sym, self.memory[member_sym].temporal)], (tmp, 0));
                 self.ssa.assign(
                     (tmp, self.memory[tmp].temporal),
                     (sym, self.memory[sym].temporal),
@@ -1522,7 +1522,7 @@ impl Symbolic {
                 Tags::new(),
                 )?;
                 let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], tmp1);
+                self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (tmp1, 0));
 
                 let tmp2 = self.temporary(format!("{} < len({})", self.memory[rhs_sym].name, self.memory[lhs_sym].name),
                 ast::Typed{
@@ -1898,7 +1898,7 @@ impl Symbolic {
                         let value = Value::Unconstrained("interpretation of theory".to_string());
                         self.memory[tmp].value = value;
 
-                        self.ssa.invocation(name_sym, syms, tmp);
+                        self.ssa.invocation(name_sym, syms, (tmp,0));
 
                         Ok(tmp)
                     },
@@ -2181,7 +2181,7 @@ impl Symbolic {
                         Tags::new(),
                     )?;
                     let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                    self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], len_of_lhs);
+                    self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (len_of_lhs, 0));
 
 
 
@@ -2232,7 +2232,7 @@ impl Symbolic {
                         Tags::new(),
                     )?;
                     let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                    self.ssa.invocation(*lensym, vec![(tmp, self.memory[tmp].temporal)], len_of_opresult);
+                    self.ssa.invocation(*lensym, vec![(tmp, self.memory[tmp].temporal)], (len_of_opresult, 0));
 
 
                     let opposite_op =  match op {
@@ -2581,7 +2581,7 @@ impl Symbolic {
             Tags::new(),
         )?;
         let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-        self.ssa.invocation(*theosym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], tmp1);
+        self.ssa.invocation(*theosym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (tmp1, 0));
 
         self.ssa.assert(vec![(tmp1, self.memory[tmp1].temporal)], |a,model| match a {
             false  => {
@@ -2798,8 +2798,8 @@ impl Symbolic {
                 Tags::new(),
                 )?;
             let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp_safe_transfer);
-            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], tmp_safe_transfer);
+            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], (tmp_safe_transfer, 0));
+            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], (tmp_safe_transfer, 0));
 
             let tmp_nullterm_transfer = self.temporary(
                 format!("nullterm({}) == nullterm({})", self.memory[rhs].name, self.memory[lhs].name),
@@ -2813,8 +2813,8 @@ impl Symbolic {
                 Tags::new(),
                 )?;
             let theosym = self.builtin.get("nullterm").expect("ICE: nullterm theory not built in");
-            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], tmp_nullterm_transfer);
-            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], tmp_nullterm_transfer);
+            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], (tmp_nullterm_transfer, 0));
+            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], (tmp_nullterm_transfer, 0));
         }
 
         self.memory[lhs].temporal += 1;
@@ -2945,7 +2945,7 @@ impl Symbolic {
             Tags::new(),
         )?;
         let thsym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-        self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], tmp);
+        self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
         self.ssa.literal(tmp, 1, smt::Type::Bool);
         Ok(())
     }
@@ -2966,7 +2966,7 @@ impl Symbolic {
             Tags::new(),
         )?;
         let thsym = self.builtin.get("nullterm").expect("ICE: nullterm theory not built in");
-        self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], tmp);
+        self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp,0));
         self.ssa.literal(tmp, 1, smt::Type::Bool);
         Ok(())
     }
@@ -2984,7 +2984,7 @@ impl Symbolic {
             Tags::new(),
         )?;
         let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-        self.ssa.invocation(*lensym, vec![(sym, self.memory[sym].temporal)], tmp);
+        self.ssa.invocation(*lensym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
         self.ssa.literal(tmp, len as u64, smt::Type::Unsigned(64));
         Ok(())
     }

@@ -1,6 +1,6 @@
 
 
-#ifdef __unix__
+#if defined(__unix__) || defined(__APPLE__)
 #include <netinet/in.h>
 #include <stdint.h>
 #include <string.h>
@@ -221,13 +221,7 @@ io_Result os_net_udp_sendto(
         size_t * memlen,
         net_address_Address const *addr
 );
-void os_net_udp_close(io_Context *self) {
-    if (!self->isvalid) {
-        return;
-    }
-    close(self->fd);
-    self->isvalid = false;
-};
+void os_net_udp_close(io_Context *self);
 void os_net_udp_bind(err_Err *e, size_t et, net_address_Address const* addr, net_udp_Socket *sock);
 void os_net_udp_make_async(err_Err *e, size_t et, net_udp_Socket *sock);
 #endif

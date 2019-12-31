@@ -18,7 +18,7 @@ fn bob() -> A *
 
 
 export fn main() -> int {
-    int * a = bob();
+    A * a = bob();
     *a;
 
     return 0;
