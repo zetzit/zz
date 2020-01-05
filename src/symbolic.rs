@@ -1038,12 +1038,8 @@ impl Symbolic {
                 }
                 ast::Statement::Block(block) => {
                     self.push("block".to_string());
-                    self.ssa.push("block");
-
                     self.execute_scope(&mut block.statements)?;
-
                     self.pop();
-                    self.ssa.pop("end of block");
                 }
                 ast::Statement::For{e1,e2,e3,body} => {
                     self.push("for loop".to_string());

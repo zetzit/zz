@@ -3,7 +3,7 @@ name = "zz"
 version = "0.1.1"
 authors = ["Arvid E. Picciani <aep@exys.org>"]
 edition = '2018'
-license = "MIT"
+license = "MIT/Apache-2.0"
 description = "the zz language"
 repository = "https://github.com/aep/zz"
 readme = "README.md"
@@ -32,10 +32,8 @@ pbr = "1.0.1"
 rayon = "1.1.0"
 tempdir = "0.3"
 
-#for z3
-lazy_static = "1"
 
-[dependencies.z3-sys]
-version = "0.5.0"
 
+[dependencies.rsmt2-zz]
+version = "0.11.0"
 

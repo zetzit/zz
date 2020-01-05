@@ -20,7 +20,6 @@ pub mod pp;
 pub mod symbolic;
 pub mod expand;
 pub mod smt;
-pub mod z3;
 
 use std::path::Path;
 use name::Name;

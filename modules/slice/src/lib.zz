@@ -1,8 +1,13 @@
 using <string.h> as c_string;
 
 export struct Slice {
-    usize   len;
-    usize   max;
+    usize   size;
+    u8 *    mem;
+}
+
+export struct MutSlice {
+    usize   at;
+    usize   size;
     u8 mut* mem;
 }
 
@@ -10,80 +15,89 @@ export fn new(u8 mut*mem, usize size) -> Slice
     where len(mem) >= size
 {
     return Slice {
-        len: 0,
-        max: size,
-        mem: mem,
+        size:   size,
+        mem:    mem,
     };
 }
 
-export fn push(Slice mut * self, u8 b) -> bool
-    where self->max >= 1
-    model self->len <= self->max
+export fn new_mut(u8 mut*mem, usize size) -> MutSlice
+    where len(mem) >= size
 {
-    static_attest(self->max == len(self->mem));
-    static_attest(self->len <= self->max);
+    return MutSlice {
+        at:     0,
+        size:   size,
+        mem:    mem,
+    };
+}
 
-    if self->len > self->max - 1 {
+export fn push(MutSlice mut * self, u8 b) -> bool
+    where self->size >= 1
+    model self->at <= self->size
+{
+    static_attest(self->size == len(self->mem));
+    static_attest(self->at   <= self->size);
+
+    if self->at > self->size - 1 {
         return false;
     }
 
-    static_attest(self->len < len(self->mem));
-    self->mem[self->len] = b;
-    self->len += 1;
+    static_attest(self->at < len(self->mem));
+    self->mem[self->at] = b;
+    self->at += 1;
 
     return true;
 }
 
-export fn push16(Slice mut * self, u16 b) -> bool
-    where self->max >= 2
-    model self->len <= self->max
+export fn push16(MutSlice mut * self, u16 b) -> bool
+    where self->size >= 2
+    model self->at <= self->size
 {
-    static_attest(self->max == len(self->mem));
-    static_attest(self->len <= self->max);
+    static_attest(self->size == len(self->mem));
+    static_attest(self->at <= self->size);
 
-    if self->len > self->max - 2 {
+    if self->at > self->size - 2 {
         return false;
     }
 
-    static_attest(self->len < len(self->mem));
-    c_string::memcpy(self->mem + self->len, &b, 2);
-    self->len += 2;
+    static_attest(self->at < len(self->mem));
+    c_string::memcpy(self->mem + self->at, &b, 2);
+    self->at += 2;
 
     return true;
 }
 
-export fn push32(Slice mut * self, u32 b) -> bool
-    where self->max >= 4
-    model self->len <= self->max
+export fn push32(MutSlice mut * self, u32 b) -> bool
+    where self->size >= 4
+    model self->at <= self->size
 {
-    static_attest(self->max == len(self->mem));
-    static_attest(self->len <= self->max);
+    static_attest(self->size == len(self->mem));
+    static_attest(self->at <= self->size);
 
-    if self->len > self->max - 4 {
+    if self->at > self->size - 4 {
         return false;
     }
 
-    static_attest(self->len < len(self->mem));
-    c_string::memcpy(self->mem + self->len, &b, 4);
-    self->len += 4;
+    static_attest(self->at < len(self->mem));
+    c_string::memcpy(self->mem + self->at, &b, 4);
+    self->at += 4;
 
     return true;
 }
 
-export fn push64(Slice mut * self, u64 b) -> bool
-    where self->max > 8
-    model self->len <= self->max
+export fn push64(MutSlice mut * self, u64 b) -> bool
+    where self->size > 8
+    model self->at <= self->size
 {
-    static_attest(self->max == len(self->mem));
-    static_attest(self->len <= self->max);
+    static_attest(self->size == len(self->mem));
+    static_attest(self->at <= self->size);
 
-    if self->len > self->max - 8 {
+    if self->at > self->size - 8 {
         return false;
     }
 
-    static_attest(self->len < len(self->mem));
-    c_string::memcpy(self->mem + self->len, &b, 8);
-    self->len += 8;
+    static_attest(self->at < len(self->mem));
+    c_string::memcpy(self->mem + self->at, &b, 8);
+    self->at += 8;
 
     return true;
 }

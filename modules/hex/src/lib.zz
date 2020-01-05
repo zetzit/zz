@@ -50,8 +50,8 @@ export fn print(u8 *data, usize l)
 
 export fn dump_slice(slice::Slice *s)
 {
-    static_attest(s->len < len(s->mem));
-    for (usize mut i = 0; i < s->len; i++) {
+    static_attest(s->size < len(s->mem));
+    for (usize mut i = 0; i < s->size; i++) {
         printf("%02x ", s->mem[i]);
         if i % 16 == 15 {
             printf("\n");
