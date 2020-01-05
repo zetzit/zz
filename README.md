@@ -11,10 +11,12 @@ You can also use it to build cross platform libraries. The build and linking con
 A major innovative feature is that all code is formally proven using math on symbolic execution.
 You can extract the mathematical expressions and reuse them in other proving tools or go through it manually if you're a math nerd.
 
+[![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
+
 ### quick quick start
 
 1. [install rust](https://www.rust-lang.org/tools/install) for bootstrapping
-1. install an SMT solver, currently [yices2](https://github.com/SRI-CSL/yices2) is assumed to be in PATH
+1. install an SMT solver, either [yices2](https://github.com/SRI-CSL/yices2) or [z3](https://github.com/Z3Prover/z3)
 2. cd examples/hello
 3. cargo run run
 

@@ -740,8 +740,15 @@ impl Solver {
         //Config::set_global_param_value(":parallel.enable", "true");
         //config.set_model_generation(true);
 
-        //let mut conf = rsmt2::SmtConf::z3();
-        let mut conf = rsmt2::SmtConf::yices_2();
+
+
+        let mut conf = if which::which("yices_smt2_mt").is_ok() {
+            rsmt2::SmtConf::yices_2()
+        } else if which::which("z3").is_ok() {
+            rsmt2::SmtConf::z3()
+        } else {
+            panic!("z3 or yices_smt2_mt required in PATH")
+        };
 
 
         std::fs::create_dir_all("./target/ssa/").unwrap();

@@ -10,7 +10,7 @@ script:
 
 addons:
   apt:
-    packages: libz3-dev
+    packages: z3
   homebrew:
     packages: z3
     update: true
