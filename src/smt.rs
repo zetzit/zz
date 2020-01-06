@@ -1,10 +1,9 @@
 use crate::symbolic::{Symbol, TemporalSymbol};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fs::File;
 use std::io::Write;
 use std::cell::{RefCell};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize};
 use super::parser::{emit_warn};
 use rsmt2_zz as rsmt2;
 pub static TIMEOUT: AtomicUsize = AtomicUsize::new(5000);
@@ -158,7 +157,7 @@ impl Solver {
 
         match t {
             Type::Signed(size) | Type::Unsigned(size) => {
-                write!(self.solver.borrow_mut(), "(declare-fun {} ({}) (_ BitVec 64)); theory {}\n", lname, debug_args, name).unwrap();
+                write!(self.solver.borrow_mut(), "(declare-fun {} ({}) (_ BitVec {})); theory {}\n", lname, debug_args, size, name).unwrap();
             }
             Type::Bool => {
                 write!(self.solver.borrow_mut(), "(declare-fun {} ({}) Bool); theory {}\n", lname, debug_args, name).unwrap();
@@ -274,10 +273,10 @@ impl Solver {
 
     pub fn infix_op_will_wrap(
         &self,
-        lhs:    TemporalSymbol,
-        rhs:    TemporalSymbol,
-        op:     crate::ast::InfixOperator,
-        t:      Type,
+        _lhs:    TemporalSymbol,
+        _rhs:    TemporalSymbol,
+        _op:     crate::ast::InfixOperator,
+        _t:      Type,
     ) -> bool {
         return false;
 
@@ -521,7 +520,7 @@ impl Solver {
 
 
     // must call from within assert or value
-    pub fn extract(&self, model: &ModelRef, lhs: TemporalSymbol) -> Option<u64> {
+    pub fn extract(&self, _model: &ModelRef, lhs: TemporalSymbol) -> Option<u64> {
         let smt_lhs  = self.var(&lhs);
         let value = self.solver.borrow_mut().get_values(&[smt_lhs]).unwrap().get(0).unwrap().1.clone();
 
@@ -742,7 +741,7 @@ impl Solver {
 
 
 
-        let mut conf = if which::which("yices_smt2_mt").is_ok() {
+        let conf = if which::which("yices_smt2_mt").is_ok() {
             rsmt2::SmtConf::yices_2()
         } else if which::which("z3").is_ok() {
             rsmt2::SmtConf::z3()

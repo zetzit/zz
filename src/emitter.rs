@@ -124,7 +124,7 @@ impl Emitter {
                 }
                 s
             }
-            ast::Type::ILiteral | ast::Type::ULiteral => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(name.loc.clone(), format!("this should have been resolved earlier"))]
@@ -475,7 +475,7 @@ impl Emitter {
 
 
     pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
-        let (fields, packed, tail, union) = match &ast.def {
+        let (fields, packed, _tail, union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
         };

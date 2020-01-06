@@ -148,6 +148,9 @@ pub struct Pointer {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
 
+
+    Elided,
+
     // usigned int of x bytes
     U8,
     U16,
@@ -187,7 +190,8 @@ pub enum Type {
 impl Type {
     pub fn signed(&self) -> bool {
         match self {
-            Type::U8
+            Type::Elided
+            | Type::U8
             | Type::U16
             | Type::U32
             | Type::U64
@@ -233,6 +237,7 @@ impl PartialEq for Typed{
 impl std::fmt::Display for Typed{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.t {
+            Type::Elided        => write!(f, "elided"),
             Type::U8            => write!(f, "u8"),
             Type::U16           => write!(f, "u16"),
             Type::U32           => write!(f, "u32"),

@@ -126,6 +126,7 @@ impl Scope{
         }
 
         match name.to_string().as_str() {
+            "let"   => { t.t = ast::Type::Elided;   return; },
             "u8"    => { t.t = ast::Type::U8;       return; },
             "u16"   => { t.t = ast::Type::U16;      return; },
             "u32"   => { t.t = ast::Type::U32;      return; },
@@ -710,7 +711,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     }
                 }
             }
-            ast::Def::Enum{names,..} => {
+            ast::Def::Enum{..} => {
             }
             ast::Def::Macro{body, ..} => {
                 abs_block(body, &scope,all_modules, &md.name);

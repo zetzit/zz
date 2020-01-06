@@ -1,0 +1,9 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    let b;
+
+    printf("hello type_elision_unknown\n");
+    return 0;
+}

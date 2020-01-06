@@ -4,7 +4,7 @@ use crate::name::Name;
 use std::collections::HashMap;
 use crate::ast;
 use ast::Tags;
-use super::parser::{emit_warn, emit_debug};
+use super::parser::{emit_debug};
 
 
 
@@ -50,7 +50,7 @@ impl Stack {
         self.stack.last_mut().unwrap()
     }
 
-    fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, tags: ast::Tags) -> Result<(), Error> {
+    fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, _tags: ast::Tags) -> Result<(), Error> {
 
         match format!("{}", name).as_str() {
             "len" | "theory" | "safe" => {
@@ -89,12 +89,12 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
 
     // declaration run
-    for (d,_,defined_here) in &mut module.d {
+    for (d,_,_defined_here) in &mut module.d {
         stack.defs.insert(Name::from(&d.name), d.def.clone());
 
         match &mut d.def {
-            ast::Def::Theory{args, ret, attr} => {
-                let sym = stack.alloc(
+            ast::Def::Theory{..} => {
+                stack.alloc(
                     Name::from(&d.name),
                     ast::Typed{
                         t:      ast::Type::Other(Name::from(&d.name.clone())),
@@ -106,7 +106,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Tags::new()
                 )?;
             },
-            ast::Def::Function{args, body, vararg, ret, callassert, calleffect, ..} => {
+            ast::Def::Function{args, callassert, ..} => {
                 stack.alloc(
                     Name::from(&d.name),
                     ast::Typed{
@@ -148,7 +148,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     }
                 }
             },
-            ast::Def::Static {tags, typed, expr, array, ..} => {
+            ast::Def::Static {tags, typed, array, ..} => {
                 let mut typed = typed.clone();
                 if array.is_some() {
                     typed.ptr.push(ast::Pointer{
@@ -163,14 +163,14 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     tags.clone(),
                 )?;
             },
-            ast::Def::Const { typed, expr} => {
+            ast::Def::Const { typed, .. } => {
                 stack.alloc(
                     Name::from(&d.name),
                     typed.clone(),
                     d.loc.clone(), Tags::new()
                 )?;
             },
-            ast::Def::Fntype {ret,args,attr,vararg,..} => {
+            ast::Def::Fntype {..} => {
                 stack.alloc(
                     Name::from(&d.name),
                     ast::Typed{
@@ -182,7 +182,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     d.loc.clone(), Tags::new()
                 )?;
             },
-            ast::Def::Struct {fields, packed, tail, union, impls } => {
+            ast::Def::Struct {fields, union, ..} => {
                 stack.alloc(
                     Name::from(&d.name),
                     ast::Typed{
@@ -199,7 +199,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     }
                 }
             },
-            ast::Def::Enum{names} => {
+            ast::Def::Enum{..} => {
                 stack.alloc(
                     Name::from(&d.name),
                     ast::Typed{
@@ -211,6 +211,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     d.loc.clone(), Tags::new()
                 )?;
 
+                /*
                 let mut value = 0;
                 for (name, val) in names {
                     let mut localname = Name::from(&d.name);
@@ -234,8 +235,9 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     )?;
                     value += 1;
                 }
+                */
             },
-            ast::Def::Macro{args, body} => {
+            ast::Def::Macro{..} => {
                 stack.alloc(
                     Name::from(&d.name),
                     ast::Typed{
@@ -256,8 +258,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
     // definition run
     for (d,_,defined_here) in &mut module.d {
         match &mut d.def {
-            ast::Def::Theory{args, ret, attr} => {},
-            ast::Def::Function{args, body, vararg, ret, callassert, calleffect, ..} => {
+            ast::Def::Theory{..} => {},
+            ast::Def::Function{args, body,  ..} => {
                 if !*defined_here {
                     continue;
                 }
@@ -290,7 +292,7 @@ impl Stack {
         let mut len = body.len();
         while i < len {
             match body[i].as_mut() {
-                ast::Statement::Var{loc, typed, tags, name, array, assign} => {
+                ast::Statement::Var{loc, typed, tags, name, array, ..} => {
                     let mut typed = typed.clone();
                     if array.is_some() {
                         typed.ptr.push(ast::Pointer{
@@ -302,15 +304,15 @@ impl Stack {
                 }
                 ast::Statement::If{branches}        => {
                     self.push("if".to_string());
-                    for (loc, expr, block) in branches {
+                    for (_loc, _expr, block) in branches {
                         self.push("branch".to_string());
                         self.expand_scope(&mut block.statements)?;
                         self.pop();
                     }
                     self.pop();
                 }
-                ast::Statement::Expr{expr, ..}      => {}
-                ast::Statement::Return{loc, expr}   => {
+                ast::Statement::Expr{..}      => {}
+                ast::Statement::Return{loc, .. }   => {
                     let r = self.drop_fn(&loc)?;
                     for stm in r.into_iter().rev() {
                         body.insert(i, stm);
@@ -320,15 +322,15 @@ impl Stack {
                 }
                 ast::Statement::Label{..}           => {}
                 ast::Statement::Mark{..} => {},
-                ast::Statement::Switch{expr, cases, default, ..} => {
+                ast::Statement::Switch{cases,  ..} => {
                     for (_, block) in cases {
                         self.push("case".to_string());
                         self.expand_scope(&mut block.statements)?;
                         self.pop();
                     }
                 }
-                ast::Statement::Assign{loc, lhs, op, rhs} => {}
-                ast::Statement::Continue{loc} => {}
+                ast::Statement::Assign{..} => {}
+                ast::Statement::Continue{..} => {}
                 ast::Statement::Break{loc} => {
                     let r = self.drop(&loc)?;
                     for stm in r.into_iter().rev() {
@@ -343,7 +345,7 @@ impl Stack {
                     block.statements.extend(self.drop(&block.end)?);
                     self.pop();
                 }
-                ast::Statement::For{e1,e2,e3,body} => {
+                ast::Statement::For{e1,e3,body, ..} => {
                     self.push("for loop".to_string());
                     self.expand_scope(e1)?;
                     self.expand_scope(e3)?;
@@ -351,7 +353,7 @@ impl Stack {
                     body.statements.extend(self.drop(&body.end)?);
                     self.pop();
                 }
-                ast::Statement::While{expr, body} => {
+                ast::Statement::While{body, ..} => {
                     self.push("while loop".to_string());
                     self.expand_scope(&mut body.statements)?;
                     body.statements.extend(self.drop(&body.end)?);

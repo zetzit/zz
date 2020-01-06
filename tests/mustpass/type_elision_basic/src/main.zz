@@ -1,0 +1,13 @@
+using <stdio.h>::{printf};
+
+fn bob() -> int {
+    return 1;
+}
+
+export fn main() -> int {
+
+    let mut a = bob();
+    a = 0;
+
+    return a;
+}

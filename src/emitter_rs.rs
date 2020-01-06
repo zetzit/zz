@@ -3,7 +3,7 @@ use std::fs;
 use super::flatten;
 use super::ast;
 use super::make;
-use std::io::{Write, Read};
+use std::io::{Write};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use super::name::Name;
@@ -25,7 +25,7 @@ pub struct Emitter{
     cur_loc:        Option<ast::Location>,
 }
 
-pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
+pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
     format!("target/{}/rs/{}.rs", stage, module.name)
 }
 
@@ -34,7 +34,7 @@ impl Emitter {
 
         std::fs::create_dir_all(format!("target/{}/rs/", stage)).unwrap();
         let p = outname(project, &stage, &module);
-        let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
+        let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
         Emitter{
             p,
@@ -75,7 +75,7 @@ impl Emitter {
             ast::Type::Bool => "bool".to_string(),
             ast::Type::F32  => "f32".to_string(),
             ast::Type::F64  => "f64".to_string(),
-            ast::Type::Other(ref n)   => "u8".to_string(),
+            ast::Type::Other(ref _n)   => "u8".to_string(),
                 /*
                 let mut s = self.to_local_name(&n);
                 match &name.tail {
@@ -87,7 +87,7 @@ impl Emitter {
                 s
             }
                 */
-            ast::Type::ILiteral | ast::Type::ULiteral => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided => {
                 parser::emit_error(
                     "ICE: untyped ended up in emitter",
                     &[(name.loc.clone(), format!("this should have been resolved earlier"))]
@@ -187,7 +187,7 @@ impl Emitter {
 
     pub fn emit_static(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
-        let (typed, expr, tags, storage, array) = match &ast.def {
+        let (_typed, _expr, _tags, storage, _array) = match &ast.def {
             ast::Def::Static{typed, expr, tags, storage, array} => (typed, expr, tags, storage, array),
             _ => unreachable!(),
         };
@@ -206,7 +206,7 @@ impl Emitter {
 
     pub fn emit_const(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
-        let (typed, expr) = match &ast.def {
+        let (_typed, _expr) = match &ast.def {
             ast::Def::Const{typed, expr} => (typed, expr),
             _ => unreachable!(),
         };
@@ -234,8 +234,8 @@ impl Emitter {
     }
 
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
-        let (fields, packed, tail, union) = match &ast.def {
+    pub fn emit_struct(&mut self, ast: &ast::Local, _def_here: bool, _tail_variant: Option<u64>) {
+        let (_fields, _packed, _tail, _union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
         };
@@ -265,7 +265,7 @@ impl Emitter {
     }
 
     pub fn emit_fntype(&mut self, ast: &ast::Local) {
-        let (ret, args, vararg, attr) = match &ast.def {
+        let (_ret, _args, _vararg, _attr) = match &ast.def {
             ast::Def::Fntype{ret, args, vararg, attr, ..} => (ret, args, *vararg, attr),
             _ => unreachable!(),
         };
@@ -273,7 +273,7 @@ impl Emitter {
     }
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {
-        let (ret, args, _body, vararg, attr) = match &ast.def {
+        let (ret, args, _body, _vararg, _attr) = match &ast.def {
             ast::Def::Function{ret, args, body, vararg, attr, ..} => (ret, args, body, *vararg, attr),
             _ => unreachable!(),
         };
@@ -306,9 +306,9 @@ impl Emitter {
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
-            ast::Expression::ArrayInit{fields,loc} => {
+            ast::Expression::ArrayInit{..} => {
             },
-            ast::Expression::StructInit{typed, fields,loc} => {
+            ast::Expression::StructInit{..} => {
             },
             ast::Expression::UnaryPost{expr, loc, op} => {
                 write!(self.f, "(").unwrap();
@@ -334,7 +334,7 @@ impl Emitter {
                 self.emit_expr(expr);
                 write!(self.f, ")").unwrap();
             },
-            ast::Expression::Cast{into,expr,..} => {
+            ast::Expression::Cast{..} => {
             },
             ast::Expression::Name(name) => {
                 self.emit_loc(&name.loc);

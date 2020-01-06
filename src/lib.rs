@@ -26,7 +26,6 @@ use name::Name;
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 
 
 pub struct Error {
@@ -104,7 +103,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     if let Some(deps) = &project.dependencies {
         for (name, dep) in deps {
             match dep {
-                toml::Value::String(v) => {
+                toml::Value::String(_) => {
                     getdep(name, &mut modules, &mut project.project, &mut searchpaths);
                 },
                 _ => (),
@@ -181,7 +180,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             }
 
             let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
-            let header  = header.emit();
+            header.emit();
 
             let rsbridge = emitter_rs::Emitter::new(&project.project, stage.clone(), module.clone());
             rsbridge.emit();
@@ -325,7 +324,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>, rootproj: &mu
         }
     };
 
-    let pp = std::env::current_dir().unwrap();
+    //let pp = std::env::current_dir().unwrap();
     //std::env::set_current_dir(&found).unwrap();
     let (root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
@@ -358,7 +357,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>, rootproj: &mu
     if let Some(deps) = &project.dependencies {
         for (name, dep) in deps {
             match dep {
-                toml::Value::String(v) => {
+                toml::Value::String(_) => {
                     getdep(name, modules, rootproj, searchpaths);
                 },
                 _ => (),

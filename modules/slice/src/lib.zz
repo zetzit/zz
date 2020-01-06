@@ -5,6 +5,24 @@ export struct Slice {
     u8 *    mem;
 }
 
+
+export fn eq(Slice *self, Slice *other) -> bool {
+    if self->size != other->size {
+        return false;
+    }
+    return (c_string::memcmp(self->mem, other->mem, self->size) == 0);
+}
+
+export fn eq_cstr(Slice *self, char *other) -> bool
+    where nullterm(other)
+{
+    usize othersize = (usize)c_string::strlen(other);
+    if self->size != othersize {
+        return false;
+    }
+    return (c_string::memcmp(self->mem, other, self->size) == 0);
+}
+
 export struct MutSlice {
     usize   at;
     usize   size;

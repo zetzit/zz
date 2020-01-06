@@ -255,7 +255,7 @@ fn main() {
             }
 
             if exes.len() == 0 {
-                if let Some(v) = submatches.value_of("testname") {
+                if let Some(_) = submatches.value_of("testname") {
                     eprintln!("no such test name");
                 } else {
                     eprintln!("no tests");
@@ -311,7 +311,7 @@ fn main() {
                 .arg(format!("./target/{}/bin/{}", stage, exes[0].0))
                 .spawn()
                 .expect("failed to execute process");
-            child.wait();
+            child.wait().unwrap();
 
             println!("\n\nfuzzer output in {}", outdir);
             return;

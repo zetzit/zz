@@ -402,10 +402,6 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             let array = match part.next() {
                                 None => None,
                                 Some(array) => {
-                                    let loc  = Location{
-                                        file: n.to_string_lossy().into(),
-                                        span: array.as_span(),
-                                    };
                                     match array.into_inner().next() {
                                         Some(expr) => {
                                             Some(Some(parse_expr((file_str, n), expr)))
@@ -623,10 +619,6 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
         _ => { panic!("parse_expr call called with {:?}", decl); }
     };
 
-    let loc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: decl.as_span(),
-    };
 
     let climber = PrecClimber::new(vec![
         //12
@@ -662,6 +654,11 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
     ]);
 
     let reduce = |lhs: Expression, op: pest::iterators::Pair<'static, Rule>, rhs: Expression | {
+
+        let loc = Location{
+            file: n.1.to_string_lossy().into(),
+            span: op.as_span(),
+        };
 
         if op.as_rule()  == Rule::memberaccess {
             if let Expression::Name(typed) = &rhs {
@@ -959,10 +956,6 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         Rule::struct_init => {
             let mut expr = expr.into_inner();
             let part  = expr.next().unwrap();
-            let typloc = Location{
-                file: n.1.to_string_lossy().into(),
-                span: part.as_span(),
-            };
 
             let typed = parse_anon_type(n, part);
 
@@ -1008,10 +1001,6 @@ pub(crate) fn parse_statement(
             let part    = stm.next().unwrap();
             let lhs     = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let tagloc = Location{
-                file: n.1.to_string_lossy().into(),
-                span: part.as_span(),
-            };
             let mut part = part.into_inner();
             let key   = part.next().unwrap().as_str().into();
             let value = part.next().map(|s|s.as_str().into()).unwrap_or(String::new());
@@ -1356,7 +1345,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
     //the actual type name is always on the left hand side
     let mut decl = decl.into_inner();
     let mut lhsdecl = decl.next().unwrap().into_inner();
-    let mut typename = Name::from(lhsdecl.next().unwrap().as_str());
+    let typename = Name::from(lhsdecl.next().unwrap().as_str());
     for lhs in lhsdecl {
         match lhs.as_rule() {
             Rule::tail => {
@@ -1580,7 +1569,7 @@ fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rul
         file: n.1.to_string_lossy().into(),
         span: expr.as_span(),
     };
-    let mut expr = expr.into_inner();
+    let expr = expr.into_inner();
     //let name = expr.next().unwrap();
     //let nameloc = Location{
     //    file: n.1.to_string_lossy().into(),
