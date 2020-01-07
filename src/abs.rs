@@ -1,7 +1,7 @@
 /// make all names in a module absolute
 
 use super::ast;
-use super::parser::emit_error;
+use super::parser::{emit_error, emit_warn};
 use std::collections::HashMap;
 use super::name::Name;
 use super::loader;
@@ -245,37 +245,46 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
 
     } else {
 
+
         // root/current_module/../search
         let mut search = imported_from.clone();
         search.pop();
         search.0.extend(import.name.0.clone());
         if all_modules.contains_key(&search) {
-            debug!("  import rel {} => {}", import.name, search);
-            return search;
+            if &search != imported_from {
+                debug!("  import rel {} => {}", import.name, search);
+                return search;
+            }
         }
 
         // /search
         let mut search = import.name.clone();
         search.0.insert(0, String::new());
         if all_modules.contains_key(&search) {
-            debug!("  import aabs {} => {}", import.name, search);
-            return search;
+            if &search != imported_from {
+                debug!("  import aabs {} => {}", import.name, search);
+                return search;
+            }
         }
 
         // /root/current/search
         let mut search = imported_from.clone();
         search.0.extend(import.name.0.clone());
         if all_modules.contains_key(&search) {
-            debug!("  import aabs/lib {} => {}", import.name, search);
-            return search;
+            if &search != imported_from {
+                debug!("  import aabs/lib {} => {}", import.name, search);
+                return search;
+            }
         }
 
         // self
         let mut search = import.name.clone();
         search.0.insert(0, String::new());
         if &search == imported_from  {
-            debug!("  import self abs {} => {}", import.name, search);
-            return search;
+            if &search != imported_from {
+                debug!("  import self abs {} => {}", import.name, search);
+                return search;
+            }
         }
 
         // self literal
@@ -286,8 +295,10 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
             let mut search = imported_from.clone();
             search.0.extend(search2.0);
 
-            debug!("  import self {} => {}", import.name, search);
-            return search;
+            if &search != imported_from {
+                debug!("  import self {} => {}", import.name, search);
+                return search;
+            }
         }
     }
 
@@ -305,6 +316,9 @@ fn check_abs_available(
     selfname: &Name
 ) {
     if !fqn.is_absolute() && fqn.len() > 1 {
+        emit_warn(format!("relative name {} not resolved. likely due to previous error", fqn), &[
+            (loc.clone(), "this type is unresolved"),
+        ]);
         ABORT.store(true, Ordering::Relaxed);
         return;
     }
@@ -376,13 +390,15 @@ fn check_abs_available(
 
 
     for import2 in &module.imports {
+        let importname = abs_import(&module.name, &import2, all_modules);
+
         if import2.vis == ast::Visibility::Object {
             continue;
         }
         for (local3, local3_as) in &import2.local {
             if let Some(local3_as) = &local3_as  {
                 if local3_as == &local_name {
-                    *fqn = Name::from(&format!("{}::{}", import2.name, local3));
+                    *fqn = Name::from(&format!("{}::{}", importname, local3));
                     return check_abs_available(
                         fqn,
                         this_vis,
@@ -392,7 +408,7 @@ fn check_abs_available(
                 }
             }
             if local3 == &local_name {
-                *fqn = Name::from(&format!("{}::{}", import2.name, local3));
+                *fqn = Name::from(&format!("{}::{}", importname, local3));
                 return check_abs_available(
                     fqn,
                     this_vis,
@@ -866,7 +882,7 @@ fn abs_args(
     for mut arg in oargs {
         scope.abs(&mut arg.typed, false);
         scope.tags(&mut arg.tags);
-        if let ast::Type::Other(ref mut name) = &mut arg.typed.t{
+        if let ast::Type::Other(ref mut name) = &mut arg.typed.t {
             check_abs_available(name, astvis, all_modules, &arg.typed.loc, mdname);
         }
 

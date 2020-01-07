@@ -53,7 +53,7 @@ impl Stack {
     fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, _tags: ast::Tags) -> Result<(), Error> {
 
         match format!("{}", name).as_str() {
-            "len" | "theory" | "safe" => {
+            "len" | "theory" | "safe" | "nullterm" => {
                 if self.stack.len() > 1 {
                     return Err(Error::new(format!("redeclaration of builtin theory '{}'", name), vec![
                         (loc.clone(), "this declaration would shadow a builtin".to_string()),
@@ -232,9 +232,6 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
         match &mut d.def {
             ast::Def::Theory{..} => {},
             ast::Def::Function{args, body, callassert, callattests, calleffect, ..} => {
-                if !*defined_here {
-                    continue;
-                }
 
                 for farg in args.iter_mut() {
                     if farg.typed.ptr.len() > 0 {
@@ -321,6 +318,9 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
 
 
+                if !*defined_here {
+                    continue;
+                }
 
 
                 stack.push(format!("{}", d.name));

@@ -1,0 +1,102 @@
+using <string.h> as c_string;
+using slice::{Slice};
+
+
+export struct MutSlice {
+    Slice   slice;
+    usize   at;
+}
+
+
+export fn borrow(MutSlice mut*self) -> MutSlice *
+    where self->slice.size == len(self->slice.mem)
+    where self->at <= self->slice.size
+    model safe(return)
+    model return->slice.size == self->slice.size
+    model return->at == self->at
+    model return->slice.size == len(return->slice.mem)
+    model return->at <= return->slice.size
+{
+    let r = self;
+    static_attest(r->slice.size == self->slice.size);
+    static_attest(r->at == self->at);
+    return r;
+}
+
+export fn new(u8 mut*mem, usize size) -> MutSlice
+    where len(mem) >= size
+    model return.slice.size == size
+    model return.slice.size == len(return.slice.mem)
+    model return.at == 0
+{
+
+    let r = MutSlice {
+        slice: Slice {
+            size:   size,
+            mem:    mem,
+        },
+        at:     0,
+    };
+    static_attest(r.slice.size == len(r.slice.mem));
+    return r;
+}
+
+export fn push(MutSlice mut * self, u8 b) -> bool
+    where self->slice.size >= 1
+    model self->at <= self->slice.size
+{
+    u8 mut* mem = (u8 mut*)self->slice.mem;
+    if self->at > self->slice.size - 1 {
+        return false;
+    }
+
+    mem[self->at] = b;
+    self->at += 1;
+
+    return true;
+}
+
+export fn push16(MutSlice mut * self, u16 b) -> bool
+    where self->slice.size >= 2
+    model self->at <= self->slice.size
+{
+    u8 mut* mem = (u8 mut*)self->slice.mem;
+    if self->at > self->slice.size - 2 {
+        return false;
+    }
+
+    c_string::memcpy(mem + self->at, &b, 2);
+    self->at += 2;
+
+    return true;
+}
+
+export fn push32(MutSlice mut * self, u32 b) -> bool
+    where self->slice.size >= 4
+    model self->at <= self->slice.size
+{
+    u8 mut* mem = (u8 mut*)self->slice.mem;
+    if self->at > self->slice.size - 4 {
+        return false;
+    }
+
+    c_string::memcpy(mem + self->at, &b, 4);
+    self->at += 4;
+
+    return true;
+}
+
+export fn push64(MutSlice mut * self, u64 b) -> bool
+    where self->slice.size > 8
+{
+    u8 mut* mem = (u8 mut*)self->slice.mem;
+    if self->at > self->slice.size - 8 {
+        return false;
+    }
+
+    c_string::memcpy(mem + self->at, &b, 8);
+    self->at += 8;
+
+    return true;
+}
+
