@@ -1,0 +1,12 @@
+pub struct A {
+}
+
+
+pub fn a() -> int{
+    return 0;
+}
+
+
+
+pub fn m(A * self) {
+}

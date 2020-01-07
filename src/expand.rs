@@ -106,7 +106,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Tags::new()
                 )?;
             },
-            ast::Def::Function{args, callassert, ..} => {
+            ast::Def::Function{args, callassert, callattests, calleffect, ..} => {
                 stack.alloc(
                     Name::from(&d.name),
                     ast::Typed{
@@ -119,34 +119,6 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Tags::new()
                 )?;
 
-                // safe is implicit unless the arg is marked unsafe
-                for farg in args.iter() {
-                    if farg.typed.ptr.len() > 0 {
-                        if !farg.tags.contains("unsafe") {
-                            let loc = farg.typed.ptr[0].loc.clone();
-                            let ast_safe = ast::Expression::Name(ast::Typed{
-                                t:      ast::Type::Other(Name::from("safe")),
-                                ptr:    Vec::new(),
-                                loc:    loc.clone(),
-                                tail:   ast::Tail::None,
-                            });
-                            let ast_argname = ast::Expression::Name(ast::Typed{
-                                t:      ast::Type::Other(Name::from(&farg.name)),
-                                ptr:    Vec::new(),
-                                loc:    loc.clone(),
-                                tail:   ast::Tail::None,
-                            });
-                            let ast_call = ast::Expression::Call{
-                                loc:    loc.clone(),
-                                name:   Box::new(ast_safe),
-                                args:   vec![Box::new(ast_argname)],
-                                expanded:   true,
-                                emit:       ast::EmitBehaviour::Default,
-                            };
-                            callassert.insert(0, ast_call.clone());
-                        }
-                    }
-                }
             },
             ast::Def::Static {tags, typed, array, ..} => {
                 let mut typed = typed.clone();
@@ -259,10 +231,97 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
     for (d,_,defined_here) in &mut module.d {
         match &mut d.def {
             ast::Def::Theory{..} => {},
-            ast::Def::Function{args, body,  ..} => {
+            ast::Def::Function{args, body, callassert, callattests, calleffect, ..} => {
                 if !*defined_here {
                     continue;
                 }
+
+                for farg in args.iter_mut() {
+                    if farg.typed.ptr.len() > 0 {
+
+                        if Name::from(&d.name).0.last() != Some(&"borrow".to_string()) {
+                            if let ast::Type::Other(name) = &farg.typed.t {
+                                if let Some(ast::Def::Struct{impls,..}) = stack.defs.get(name) {
+                                    if let Some((fnname,_)) = impls.get("borrow") {
+                                        if let Some(ast::Def::Function{calleffect: calleffect2, callassert: callassert2, ..})
+                                                = stack.defs.get(fnname) {
+
+                                            // borrow where clauses are checked by expression expansion
+                                            // but copy them to the body as asserts
+                                            for effect in callassert2 {
+                                                let mut effect = effect.clone();
+                                                replace_named(
+                                                    &mut effect,
+                                                    &ast::Type::Other(Name::from("self")),
+                                                    &ast::Type::Other(Name::from(&farg.name)),
+                                                );
+                                                replace_named(
+                                                    &mut effect,
+                                                    &ast::Type::Other(Name::from("return")),
+                                                    &ast::Type::Other(Name::from(&farg.name)),
+                                                );
+                                                callattests.insert(0, effect.clone());
+                                            }
+
+                                            // functions borrowing something must behave like the  borrow
+                                            for effect in calleffect2 {
+                                                let mut effect = effect.clone();
+                                                replace_named(
+                                                    &mut effect,
+                                                    &ast::Type::Other(Name::from("self")),
+                                                    &ast::Type::Other(Name::from(&farg.name)),
+                                                );
+                                                replace_named(
+                                                    &mut effect,
+                                                    &ast::Type::Other(Name::from("return")),
+                                                    &ast::Type::Other(Name::from(&farg.name)),
+                                                );
+                                                calleffect.insert(0, effect);
+                                            }
+                                        } else {
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // if the function is an attestation of borrow
+                            // make sure we don't expand its args recursively
+                            farg.tags.insert("no-borrow-expand".to_string(), String::new(), ast::Location::builtin());
+                        }
+
+
+                        // safe is implicit unless the arg is marked unsafe
+                        if !farg.tags.contains("unsafe") {
+                            let loc = farg.typed.ptr[0].loc.clone();
+                            let ast_safe = ast::Expression::Name(ast::Typed{
+                                t:      ast::Type::Other(Name::from("safe")),
+                                ptr:    Vec::new(),
+                                loc:    loc.clone(),
+                                tail:   ast::Tail::None,
+                            });
+                            let ast_argname = ast::Expression::Name(ast::Typed{
+                                t:      ast::Type::Other(Name::from(&farg.name)),
+                                ptr:    Vec::new(),
+                                loc:    loc.clone(),
+                                tail:   ast::Tail::None,
+                            });
+                            let ast_call = ast::Expression::Call{
+                                loc:    loc.clone(),
+                                name:   Box::new(ast_safe),
+                                args:   vec![Box::new(ast_argname)],
+                                expanded:   true,
+                                emit:       ast::EmitBehaviour::Default,
+                            };
+                            callassert.insert(0, ast_call.clone());
+                        }
+
+
+                    }
+                }
+
+
+
+
 
                 stack.push(format!("{}", d.name));
 
@@ -286,13 +345,67 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 }
 
 impl Stack {
+    fn expand_expr(&mut self, _expr: &mut ast::Expression) -> Result<(), Error> {
+        // doesnt do anything yet
+        return Ok(());
+
+        /*
+
+
+        match expr {
+            ast::Expression::Name(_) => {}
+            ast::Expression::MemberAccess {ref mut lhs, ..} => {
+                self.expand_expr(lhs)?;
+            }
+            ast::Expression::ArrayAccess {ref mut lhs, ref mut rhs,..} => {
+                self.expand_expr(lhs)?;
+                self.expand_expr(rhs)?;
+            }
+            ast::Expression::LiteralString {..} => {},
+            ast::Expression::LiteralChar {..} => {},
+            ast::Expression::Literal{..} => {},
+            ast::Expression::Call{ref mut name, ref mut args,..} => {
+                self.expand_expr(name)?;
+                for arg in args {
+                    self.expand_expr(arg)?;
+                }
+            }
+            ast::Expression::Infix {ref mut lhs, ref mut rhs, ..} => {
+                self.expand_expr(lhs)?;
+                self.expand_expr(rhs)?;
+            }
+            ast::Expression::Cast {ref mut expr,..} => {
+                self.expand_expr(expr)?;
+            }
+            ast::Expression::UnaryPost {ref mut expr, ..} => {
+                self.expand_expr(expr)?;
+            }
+            ast::Expression::UnaryPre {ref mut expr, ..} => {
+                self.expand_expr(expr)?;
+            }
+            ast::Expression::StructInit {ref mut fields,..} => {
+                for (_, expr) in fields {
+                    self.expand_expr(expr)?;
+                }
+            }
+            ast::Expression::ArrayInit {ref mut fields, ..} => {
+                for expr in fields {
+                    self.expand_expr(expr)?;
+                }
+            },
+        }
+        Ok(())
+
+        */
+    }
+
     fn expand_scope(&mut self, body: &mut Vec<Box<ast::Statement>>) -> Result<(), Error> {
 
         let mut i   = 0;
         let mut len = body.len();
         while i < len {
             match body[i].as_mut() {
-                ast::Statement::Var{loc, typed, tags, name, array, ..} => {
+                ast::Statement::Var{loc, typed, tags, name, array, assign, ..} => {
                     let mut typed = typed.clone();
                     if array.is_some() {
                         typed.ptr.push(ast::Pointer{
@@ -301,6 +414,9 @@ impl Stack {
                         });
                     }
                     self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone())?;
+                    if let Some(expr) = assign {
+                        self.expand_expr(expr)?;
+                    }
                 }
                 ast::Statement::If{branches}        => {
                     self.push("if".to_string());
@@ -311,14 +427,21 @@ impl Stack {
                     }
                     self.pop();
                 }
-                ast::Statement::Expr{..}      => {}
-                ast::Statement::Return{loc, .. }   => {
+                ast::Statement::Expr{expr,..}      => {
+                    self.expand_expr(expr)?;
+                }
+                ast::Statement::Return{loc,expr, .. }   => {
+                    if let Some(expr) = expr {
+                        self.expand_expr(expr)?;
+                    }
+
                     let r = self.drop_fn(&loc)?;
                     for stm in r.into_iter().rev() {
                         body.insert(i, stm);
                         i   += 1;
                         len += 1;
                     }
+
                 }
                 ast::Statement::Label{..}           => {}
                 ast::Statement::Mark{..} => {},
@@ -329,7 +452,11 @@ impl Stack {
                         self.pop();
                     }
                 }
-                ast::Statement::Assign{..} => {}
+                ast::Statement::Assign{lhs, rhs,..} => {
+                    self.expand_expr(lhs)?;
+                    self.expand_expr(rhs)?;
+                }
+
                 ast::Statement::Continue{..} => {}
                 ast::Statement::Break{loc} => {
                     let r = self.drop(&loc)?;
@@ -345,19 +472,23 @@ impl Stack {
                     block.statements.extend(self.drop(&block.end)?);
                     self.pop();
                 }
-                ast::Statement::For{e1,e3,body, ..} => {
+                ast::Statement::For{e1,e2,e3,body, ..} => {
                     self.push("for loop".to_string());
                     self.expand_scope(e1)?;
+                    if let Some(expr) = e2 {
+                        self.expand_expr(expr)?;
+                    }
                     self.expand_scope(e3)?;
                     self.expand_scope(&mut body.statements)?;
                     body.statements.extend(self.drop(&body.end)?);
                     self.pop();
                 }
-                ast::Statement::While{body, ..} => {
+                ast::Statement::While{body, expr, ..} => {
                     self.push("while loop".to_string());
                     self.expand_scope(&mut body.statements)?;
                     body.statements.extend(self.drop(&body.end)?);
                     self.pop();
+                    self.expand_expr(expr)?;
                 }
                 ast::Statement::CBlock{..} => {}
             }
@@ -467,4 +598,56 @@ impl Stack {
     }
 
 
+}
+
+
+
+
+fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewith: &ast::Type) {
+    match expr {
+        ast::Expression::Name(ref mut t) => {
+            if &t.t == replacefrom {
+                t.t = replacewith.clone();
+            }
+        }
+        ast::Expression::MemberAccess {ref mut lhs, ..} => {
+            replace_named(lhs, replacefrom, replacewith);
+        }
+        ast::Expression::ArrayAccess {ref mut lhs, ref mut rhs,..} => {
+            replace_named(lhs, replacefrom, replacewith);
+            replace_named(rhs, replacefrom, replacewith);
+        }
+        ast::Expression::LiteralString {..} => {},
+        ast::Expression::LiteralChar {..} => {},
+        ast::Expression::Literal{..} => {},
+        ast::Expression::Call{ref mut name, ref mut args,..} => {
+            replace_named(name, replacefrom, replacewith);
+            for arg in args {
+                replace_named(arg, replacefrom, replacewith);
+            }
+        }
+        ast::Expression::Infix {ref mut lhs, ref mut rhs, ..} => {
+            replace_named(lhs, replacefrom, replacewith);
+            replace_named(rhs, replacefrom, replacewith);
+        }
+        ast::Expression::Cast {ref mut expr,..} => {
+            replace_named(expr, replacefrom, replacewith);
+        }
+        ast::Expression::UnaryPost {ref mut expr, ..} => {
+            replace_named(expr, replacefrom, replacewith);
+        }
+        ast::Expression::UnaryPre {ref mut expr, ..} => {
+            replace_named(expr, replacefrom, replacewith);
+        }
+        ast::Expression::StructInit {ref mut fields,..} => {
+            for (_, expr) in fields {
+                replace_named(expr, replacefrom, replacewith);
+            }
+        }
+        ast::Expression::ArrayInit {ref mut fields, ..} => {
+            for expr in fields {
+                replace_named(expr, replacefrom, replacewith);
+            }
+        },
+    }
 }

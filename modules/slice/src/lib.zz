@@ -5,8 +5,15 @@ export struct Slice {
     u8 *    mem;
 }
 
+export fn borrow(Slice *self) -> Slice *
+    where len(self->mem)    == self->size
+    model len(return->mem)  == return->size
+{
+    return self;
+}
 
-export fn eq(Slice *self, Slice *other) -> bool {
+export fn eq(Slice *self, Slice *other) -> bool
+{
     if self->size != other->size {
         return false;
     }
@@ -31,11 +38,15 @@ export struct MutSlice {
 
 export fn new(u8 mut*mem, usize size) -> Slice
     where len(mem) >= size
+    model len(return.mem) == return.size
+    model len(return.mem) == size
 {
-    return Slice {
+    let r = Slice {
         size:   size,
         mem:    mem,
     };
+    static_attest(len(r.mem) == r.size);
+    return r;
 }
 
 export fn new_mut(u8 mut*mem, usize size) -> MutSlice

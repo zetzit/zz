@@ -213,6 +213,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                                 vararg,
                                 callassert,
                                 calleffect,
+                                callattests: Vec::new(),
                             }
                         });
                     }
@@ -459,6 +460,9 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         },
                         Rule::exported => {
                             vis = Visibility::Export;
+                        }
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
                         }
                         Rule::importalias => {
                             alias = Some(part.into_inner().next().unwrap().as_str().to_string());

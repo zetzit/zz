@@ -334,11 +334,23 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 for local2 in &module.locals {
                     if local2.name == local_name {
                         local = Some(local2);
-                        break;
+                    } else {
+                        //TODO
+                        //the individual import is from a time where things worked differently.
+                        //it's actually easier now to just pull in the entire module
+                        //so we get impl functions
+                        //which we're going to do here as a quick fix
+                        let mut nnn = module_name.clone();
+                        nnn.push(local2.name.clone());
+                        incomming.push((nnn, loc.clone()));
                     }
+
                 };
 
+
+                flat.deps.insert(module_name.clone());
             };
+
 
             // should have been cought by abs
             let local = match local {

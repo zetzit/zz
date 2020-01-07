@@ -15,7 +15,7 @@ fn borrow(Always1 * self) -> Always1 *
 }
 
 
-fn new(Always1 mut * uninitialized self)
+fn new(Always1 mut uninitialized * self)
     model self->a == 1
 {
     self->a = 1;

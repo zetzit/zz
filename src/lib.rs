@@ -274,7 +274,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
                 if !used.insert(n.clone()) {
                     continue
                 }
-                let n = cfiles.get(&n).unwrap();
+                let n = cfiles.get(&n).expect(&format!("ICE: dependency {} module doesnt exist", n));
                 for d in &n.deps {
                     need.push(d.clone());
                 }

@@ -27,11 +27,12 @@ pub struct Solver {
     theories:       HashMap<Symbol, String>,
     debug_loc:      crate::ast::Location,
 
-
     branches:       Vec<Vec<String>>,
 
     symbol_stack:   RefCell<Vec<Vec<(TemporalSymbol, String, Type)>>>,
     ded_syms:       HashMap<Symbol, String>,
+
+    assert_counter: usize,
 }
 
 
@@ -240,10 +241,12 @@ impl Solver {
         let smt_lhs = self.var_as(&lhs, t.clone());
         let smt_rhs = self.var_as(&rhs, t.clone());
 
-        self.solver.borrow_mut().assert(&format!("(= {} {}) ",
+        write!(self.solver.borrow_mut(), "(assert (! (= {} {}) :named A{}))",
             smt_lhs,
             smt_rhs,
-        )).unwrap();
+            self.assert_counter,
+        ).unwrap();
+        self.assert_counter += 1;
 
         self.checkpoint();
     }
@@ -498,13 +501,17 @@ impl Solver {
     }
 
     pub fn attest(&mut self, lhs: TemporalSymbol, compare: bool) -> bool {
-        let smt_lhs  = self.var(&lhs);
+        let mut smt = self.var(&lhs);
 
-        if compare {
-            self.solver.borrow_mut().assert(&smt_lhs).unwrap();
-        } else {
-            self.solver.borrow_mut().assert(&format!("(not {})", smt_lhs)).unwrap();
+        if !compare {
+            smt = format!("(not {})", smt);
         }
+
+        write!(self.solver.borrow_mut(), "(assert (! {} :named A{}))",
+            smt,
+            self.assert_counter,
+        ).unwrap();
+        self.assert_counter += 1;
 
         self.solve()
         //#[cfg(debug_assertions)]
@@ -757,7 +764,8 @@ impl Solver {
         let mut solver = rsmt2::Solver::new(conf, Rsmt2Junk).unwrap();
         solver.path_tee(outfile).unwrap();
 
-        solver.set_logic(rsmt2::Logic::QF_UFBV).unwrap();
+        write!(solver,"(set-option :produce-unsat-cores true)\n").unwrap();
+        write!(solver,"(set-logic QF_UFBV)\n").unwrap();
         //write!(solver,"(set-option :parallel.enable true)\n").unwrap();
         //write!(solver,"(set-option :timeout {})\n", TIMEOUT.load(Ordering::Relaxed) as u64).unwrap();
 
@@ -770,6 +778,7 @@ impl Solver {
             branches:       Vec::new(),
             symbol_stack:   RefCell::new(vec![Vec::new()]),
             ded_syms:       HashMap::new(),
+            assert_counter: 0,
         }
     }
 

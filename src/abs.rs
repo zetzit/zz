@@ -297,7 +297,13 @@ fn abs_import(imported_from: &Name, import: &ast::Import, all_modules: &HashMap<
     std::process::exit(9);
 }
 
-fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &HashMap<Name, loader::Module>, loc: &ast::Location, selfname: &Name) {
+fn check_abs_available(
+    fqn: &mut Name,
+    this_vis: &ast::Visibility,
+    all_modules: &HashMap<Name, loader::Module>,
+    loc: &ast::Location,
+    selfname: &Name
+) {
     if !fqn.is_absolute() && fqn.len() > 1 {
         ABORT.store(true, Ordering::Relaxed);
         return;
@@ -305,7 +311,7 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
 
 
     let mut module_name = fqn.clone();
-    let local_name = module_name.pop().unwrap();
+    let mut local_name = module_name.pop().unwrap();
 
     if module_name.len() < 2 {
         return;
@@ -315,13 +321,31 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
         //TODO
         return
     }
+
+    if &module_name == selfname {
+        return;
+    }
+
+    if all_modules.get(&module_name).is_none() && module_name.0.len() > 2 {
+        let mut mn2 = module_name.clone();
+        let was_actually_local = mn2.pop().unwrap();
+        if &mn2 == selfname {
+            return;
+        }
+        if all_modules.get(&mn2).is_some() {
+            module_name.pop();
+            local_name = was_actually_local;
+        }
+
+    }
+
     if &module_name == selfname {
         return;
     }
 
     let module = match all_modules.get(&module_name) {
         None => {
-            emit_error(format!("cannot find module '{}' while type checking module '{}'", module_name, selfname), &[
+            emit_error(format!("cannot find module '{}' during abs of module '{}'", module_name, selfname), &[
                    (loc.clone(), "expected to be in scope here"),
             ]);
             std::process::exit(9);
@@ -349,6 +373,35 @@ fn check_abs_available(fqn: &Name, this_vis: &ast::Visibility, all_modules: &Has
             return;
         }
     };
+
+
+    for import2 in &module.imports {
+        if import2.vis == ast::Visibility::Object {
+            continue;
+        }
+        for (local3, local3_as) in &import2.local {
+            if let Some(local3_as) = &local3_as  {
+                if local3_as == &local_name {
+                    *fqn = Name::from(&format!("{}::{}", import2.name, local3));
+                    return check_abs_available(
+                        fqn,
+                        this_vis,
+                        all_modules,
+                        loc,
+                        selfname);
+                }
+            }
+            if local3 == &local_name {
+                *fqn = Name::from(&format!("{}::{}", import2.name, local3));
+                return check_abs_available(
+                    fqn,
+                    this_vis,
+                    all_modules,
+                    loc,
+                    selfname);
+            }
+        }
+    }
 
     emit_error(format!("module '{}' does not contain '{}'", module_name, local_name), &[
         (loc.clone(), "imported here"),
@@ -395,8 +448,11 @@ fn abs_expr(
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, scope, inbody, all_modules, self_md_name);
         }
-        ast::Expression::Name(name)  => {
-            scope.abs(name, inbody);
+        ast::Expression::Name(ref mut t)  => {
+            scope.abs(t, inbody);
+            if let ast::Type::Other(ref mut name) = &mut t.t {
+                check_abs_available(name, &ast::Visibility::Object, all_modules, &t.loc, self_md_name);
+            }
         },
         ast::Expression::Literal {..} | ast::Expression::LiteralString {..} | ast::Expression::LiteralChar {..} => {
         }
@@ -474,7 +530,9 @@ fn abs_statement(
                 }
             }
             scope.abs(typed, false);
-            //check_abs_available(&typed.name, &ast.vis, all_modules, &typed.loc, &md.name);
+            if let ast::Type::Other(ref mut name) = &mut typed.t {
+                check_abs_available(name, &ast::Visibility::Object, all_modules, &typed.loc, self_md_name);
+            }
         },
         ast::Statement::Expr{expr, ..} => {
             abs_expr(expr, &scope, inbody, all_modules, self_md_name);
@@ -517,6 +575,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
     let mut scope = Scope::default();
     scope.push();
 
+    let mut newimports = Vec::new();
     for import in &mut md.imports {
 
         let mut fqn  = abs_import(&md.name, &import, all_modules);
@@ -547,10 +606,17 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
         if import.local.len() == 0 {
             scope.insert(local_module_name, fqn.clone(), &import.loc, true, true);
         } else {
-            for (local, import_as) in &import.local {
-                let mut nn = fqn.clone();
-                nn.push(local.clone());
-                check_abs_available(&nn, &import.vis, all_modules, &import.loc, &md.name);
+            let mut new_import_local = Vec::new();
+            for (local, import_as) in std::mem::replace(&mut import.local, Vec::new()) {
+                let mut nn_o = fqn.clone();
+                nn_o.push(local.clone());
+                let mut nn = nn_o.clone();
+                check_abs_available(&mut nn, &import.vis, all_modules, &import.loc, &md.name);
+                if nn_o == nn {
+                    new_import_local.push((local.clone(), import_as.clone()));
+                } else {
+                }
+
 
                 let localname = if let Some(n) = import_as {
                     n.clone()
@@ -563,11 +629,14 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     // add to scope
                     scope.insert(localname, nn, &import.loc, false, false);
                 }
+
             }
+            import.local = new_import_local;
         }
 
         import.name = fqn;
     }
+    md.imports.extend(newimports);
 
 
     let mut new_locals = Vec::new();
@@ -626,23 +695,23 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
             ast::Def::Static{typed,expr,..} => {
                 abs_expr(expr, &scope, false, all_modules, &md.name);
                 scope.abs(typed, false);
-                if let ast::Type::Other(name) = &typed.t{
-                    check_abs_available(&name, &ast.vis, all_modules, &typed.loc, &md.name);
+                if let ast::Type::Other(ref mut name) = &mut typed.t{
+                    check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
                 }
             }
             ast::Def::Const{typed, expr,..} => {
                 abs_expr(expr, &scope, false,all_modules, &md.name);
                 scope.abs(typed, false);
-                if let ast::Type::Other(name) = &typed.t{
-                    check_abs_available(&name, &ast.vis, all_modules, &typed.loc, &md.name);
+                if let ast::Type::Other(ref mut name) = &mut typed.t{
+                    check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
                 }
             }
             ast::Def::Function{ret, args, ref mut body, callassert, calleffect, ..} => {
                 scope.push();
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
-                    if let ast::Type::Other(name) = &ret.typed.t{
-                        check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    if let ast::Type::Other(ref mut name) = &mut ret.typed.t{
+                        check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
                 }
 
@@ -661,8 +730,8 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
             ast::Def::Fntype{ret, args, ..} => {
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
-                    if let ast::Type::Other(name) = &ret.typed.t{
-                        check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    if let ast::Type::Other(ref mut name) = &mut ret.typed.t{
+                        check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
                 }
                 scope.push();
@@ -672,15 +741,15 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
             ast::Def::Theory{ret, args, ..} => {
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
-                    if let ast::Type::Other(name) = &ret.typed.t{
-                        check_abs_available(&name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                    if let ast::Type::Other(ref mut name) = &mut ret.typed.t{
+                        check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
                 }
                 for arg in args {
                     scope.abs(&mut arg.typed, false);
                     scope.tags(&mut arg.tags);
-                    if let ast::Type::Other(name) = &arg.typed.t{
-                        check_abs_available(&name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                    if let ast::Type::Other(ref mut name) = &mut arg.typed.t{
+                        check_abs_available(name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
                     }
                 }
             }
@@ -689,8 +758,8 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                 let fieldslen = fields.len();
                 for (i, field) in fields.iter_mut().enumerate() {
                     scope.abs(&mut field.typed, false);
-                    if let ast::Type::Other(name) = &field.typed.t{
-                        check_abs_available(&name, &ast.vis, all_modules, &field.typed.loc, &md.name);
+                    if let ast::Type::Other(ref mut name) = &mut field.typed.t{
+                        check_abs_available(name, &ast.vis, all_modules, &field.typed.loc, &md.name);
                     }
                     if let Some(ref mut array) = &mut field.array {
                         if let Some(array) = array {
@@ -797,8 +866,8 @@ fn abs_args(
     for mut arg in oargs {
         scope.abs(&mut arg.typed, false);
         scope.tags(&mut arg.tags);
-        if let ast::Type::Other(name) = &arg.typed.t{
-            check_abs_available(&name, astvis, all_modules, &arg.typed.loc, mdname);
+        if let ast::Type::Other(ref mut name) = &mut arg.typed.t{
+            check_abs_available(name, astvis, all_modules, &arg.typed.loc, mdname);
         }
 
         args.push(arg.clone());

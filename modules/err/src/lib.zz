@@ -6,7 +6,7 @@ using <stdarg.h>::{va_list, va_start};
 using string::{String};
 using string;
 
-theory checked(Err * self) -> bool;
+pub theory checked(Err * self) -> bool;
 
 export struct Err+ {
     u8      mut error;

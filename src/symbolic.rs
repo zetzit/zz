@@ -434,8 +434,8 @@ impl Symbolic {
         let (fun,_,_) = &mut module.d[fun];
 
         match &mut fun.def {
-            ast::Def::Function{args, body, ret, callassert, calleffect, ..} => {
-                self.execute_function(&fun.name, args, ret.as_ref(), body, callassert, calleffect)?;
+            ast::Def::Function{args, body, ret, callassert, calleffect, callattests, ..} => {
+                self.execute_function(&fun.name, args, ret.as_ref(), body, callassert, calleffect, callattests)?;
                 if !self.ssa.solve() {
                     return Err(self.trace(format!("function is unprovable"), vec![
                         (fun.loc.clone(), format!("this function body is impossible to prove"))
@@ -457,6 +457,7 @@ impl Symbolic {
         body: &mut ast::Block,
         callassert: &mut Vec<ast::Expression>,
         calleffect: &mut Vec<ast::Expression>,
+        callattests: &mut Vec<ast::Expression>,
     ) -> Result<(), Error> {
 
         self.push(format!("function {}", name));
@@ -558,7 +559,7 @@ impl Symbolic {
             prev = Some(sym);
         }
 
-        for callassert in callassert {
+        for callassert in callassert.iter_mut().chain(callattests.iter_mut()) {
             let sym = self.execute_expr(callassert)?;
             if self.memory[sym].t != smt::Type::Bool {
                 return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
@@ -1136,9 +1137,10 @@ impl Symbolic {
 
     fn expand_callargs(
         &mut self,
-        defined: &Vec<ast::NamedArg>,
-        called: &mut Vec<Box<ast::Expression>>,
-        callloc: &ast::Location,
+        defined:        &Vec<ast::NamedArg>,
+        called:         &mut Vec<Box<ast::Expression>>,
+        callloc:        &ast::Location,
+        for_a_theory:   bool,
     ) -> Result<(), Error>
     {
         let mut callargs = std::mem::replace(called, Vec::new());
@@ -1269,6 +1271,46 @@ impl Symbolic {
                             };
                         }
                     }
+                    let callptr = self.execute_expr(&mut calledarg)?;
+
+                    if self.memory[callptr].typed.ptr.len() > 0 {
+                        // if there's a borrow impl, call it
+                        // unless the arg is uninitialized
+                        // or we're calling a theory
+
+
+                        let stags = defined[i].typed.ptr.first().expect("ICE: pointer arg mismatch").tags.clone();
+
+                        if !for_a_theory
+                            && stags.get("uninitialized").is_none()
+                            && defined[i].tags.get("no-borrow-expand").is_none()  {
+
+                            if let ast::Type::Other(name) = &self.memory[callptr].typed.t {
+                                if let Some(ast::Def::Struct{impls,..}) = self.defs.get(name) {
+                                    if let Some((fnname,_)) = impls.get("borrow") {
+
+                                        *calledarg = ast::Expression::Cast {
+                                            into: self.memory[callptr].typed.clone(),
+                                            loc:  calledarg.loc().clone(),
+                                            expr: Box::new(ast::Expression::Call {
+                                                loc:        calledarg.loc().clone(),
+                                                name:       Box::new(ast::Expression::Name(ast::Typed{
+                                                    t:      ast::Type::Other(fnname.clone()),
+                                                    loc:    calledarg.loc().clone(),
+                                                    ptr:    Vec::new(),
+                                                    tail:   ast::Tail::None,
+                                                })),
+                                                args:       vec![calledarg.clone()],
+                                                expanded:   false,
+                                                emit:       ast::EmitBehaviour::Default,
+                                            }),
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     called.push(calledarg);
                 }
             }
@@ -1889,7 +1931,7 @@ impl Symbolic {
                         let ret = ret.clone();
                         if !*expanded {
                             *expanded = true;
-                            self.expand_callargs(&fargs, args, loc, )?;
+                            self.expand_callargs(&fargs, args, loc, true, )?;
                         }
                         if args.len() != fargs.len() {
                             return Err(self.trace("call argument count mismatch".to_string(), vec![
@@ -1957,7 +1999,7 @@ impl Symbolic {
 
                         if !*expanded {
                             *expanded = true;
-                            self.expand_callargs(&fargs, args, loc)?;
+                            self.expand_callargs(&fargs, args, loc, false)?;
                         }
 
                         if (args.len() > fargs.len() && !vararg) || args.len() < fargs.len() {

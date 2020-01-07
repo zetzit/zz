@@ -1,0 +1,11 @@
+using <stdio.h>::{printf};
+
+
+using b;
+
+export fn main() -> int {
+    b::A x;
+    x.m();
+
+    return b::f();
+}

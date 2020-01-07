@@ -89,6 +89,9 @@ pub enum Def {
         vararg:     bool,
         callassert: Vec<Expression>,
         calleffect: Vec<Expression>,
+
+        // never checked, only asserted into smt
+        callattests: Vec<Expression>,
     },
     Theory {
         ret:        Option<AnonArg>,

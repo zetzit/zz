@@ -2,7 +2,7 @@ using <string.h>::{memset};
 using <assert.h>::{assert};
 
 
-theory member(void * m, Pool*p) -> bool;
+pub theory member(void * m, Pool*p) -> bool;
 
 export struct Pool+ {
     u8      blocksize;
