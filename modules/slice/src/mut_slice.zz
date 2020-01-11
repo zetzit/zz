@@ -41,16 +41,24 @@ export fn new(u8 mut*mem, usize size) -> MutSlice
     return r;
 }
 
+
+export inline fn mem(MutSlice mut * self) -> u8 mut*
+    model len(return) >= self->slice.size
+{
+    u8 mut* m = (u8 mut *)self->slice.mem;
+    static_attest(len(m) >= self->slice.size);
+    return m;
+}
+
 export fn push(MutSlice mut * self, u8 b) -> bool
     where self->slice.size >= 1
     model self->at <= self->slice.size
 {
-    u8 mut* mem = (u8 mut*)self->slice.mem;
     if self->at > self->slice.size - 1 {
         return false;
     }
 
-    mem[self->at] = b;
+    self->mem()[self->at] = b;
     self->at += 1;
 
     return true;
@@ -60,12 +68,11 @@ export fn push16(MutSlice mut * self, u16 b) -> bool
     where self->slice.size >= 2
     model self->at <= self->slice.size
 {
-    u8 mut* mem = (u8 mut*)self->slice.mem;
     if self->at > self->slice.size - 2 {
         return false;
     }
 
-    c_string::memcpy(mem + self->at, &b, 2);
+    c_string::memcpy(self->mem() + self->at, &b, 2);
     self->at += 2;
 
     return true;
@@ -75,12 +82,11 @@ export fn push32(MutSlice mut * self, u32 b) -> bool
     where self->slice.size >= 4
     model self->at <= self->slice.size
 {
-    u8 mut* mem = (u8 mut*)self->slice.mem;
     if self->at > self->slice.size - 4 {
         return false;
     }
 
-    c_string::memcpy(mem + self->at, &b, 4);
+    c_string::memcpy(self->mem() + self->at, &b, 4);
     self->at += 4;
 
     return true;
@@ -89,12 +95,11 @@ export fn push32(MutSlice mut * self, u32 b) -> bool
 export fn push64(MutSlice mut * self, u64 b) -> bool
     where self->slice.size > 8
 {
-    u8 mut* mem = (u8 mut*)self->slice.mem;
     if self->at > self->slice.size - 8 {
         return false;
     }
 
-    c_string::memcpy(mem + self->at, &b, 8);
+    c_string::memcpy(self->mem() + self->at, &b, 8);
     self->at += 8;
 
     return true;

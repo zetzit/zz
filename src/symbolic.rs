@@ -1234,24 +1234,37 @@ impl Symbolic {
 
                 if callargs.len() > 0 {
                     let mut calledarg = callargs.remove(0);
-                    let callptr = self.execute_expr(&mut calledarg)?;
+                    let mut callptr = self.execute_expr(&mut calledarg)?;
 
 
                     if self.memory[callptr].typed !=  defined[i].typed {
 
-                        let mut into_type = self.memory[callptr].typed.clone();
 
                         // pointers to structs can be used as pointers to their first field
+                        // this is valid C, where you would use cast,
+                        // but we use member access to avoid confusing the prover
                         if let ast::Type::Other(n) = &self.memory[callptr].typed.t {
                             if let Some(ast::Def::Struct {fields, ..}) = self.defs.get(&n) {
                                 if let Some(field) = fields.get(0) {
                                     if field.typed.t == defined[i].typed.t {
-                                        into_type.t = field.typed.t.clone();
-                                        into_type.tail = ast::Tail::None;
+                                        println!("member {} << {} {}", defined[i].typed, field.typed, field.name);
+                                        *calledarg =  ast::Expression::UnaryPre{
+                                            loc:    calledarg.loc().clone(),
+                                            op:     ast::PrefixOperator::AddressOf,
+                                            expr: Box::new( ast::Expression::MemberAccess {
+                                                loc:    calledarg.loc().clone(),
+                                                lhs:    Box::new(*calledarg),
+                                                op:     "->".to_string(),
+                                                rhs:    field.name.clone(),
+                                            }),
+                                        };
+                                        callptr = self.execute_expr(&mut calledarg)?;
                                     }
                                 }
                             }
                         }
+
+                        let mut into_type = self.memory[callptr].typed.clone();
 
                         // pointers with tail can be used as pointer without tail
                         match (&defined[i].typed.tail, &self.memory[callptr].typed.tail) {
@@ -1350,7 +1363,8 @@ impl Symbolic {
         let field = match field  {
             Some(f) => f,
             None => {
-                return Err(self.trace(format!("{} does not a have a field named {}", self.memory[lhs_sym].typed, rhs), vec![
+                return Err(self.trace(format!("{} of type {} does not a have a field named {}",
+                    self.memory[lhs_sym].name, self.memory[lhs_sym].typed, rhs), vec![
                     (loc.clone(), format!("cannot access struct here")),
                 ]));
             }
@@ -2009,8 +2023,20 @@ impl Symbolic {
                             ]));
                         }
                         let mut syms = Vec::new();
-                        for arg in args.iter_mut() {
+                        for (i, arg) in args.iter_mut().enumerate() {
                             let s = self.execute_expr(arg)?;
+                            /*
+                            // TODO doesnt respect casting yet
+
+                            if let Some(farg) = fargs.get(i) {
+                                if self.memory[s].typed != farg.typed {
+                                    return Err(self.trace("call argument type mismatch".to_string(), vec![
+                                        (arg.loc().clone(), format!("type {} cannot be used as argument of type {}",
+                                            &self.memory[name_sym].typed, farg.typed))
+                                    ]));
+                                }
+                            }
+                            */
                             syms.push((s,self.memory[s].temporal));
                         }
 

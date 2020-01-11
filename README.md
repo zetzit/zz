@@ -128,6 +128,39 @@ by default, everything is const. this is the opposite of C. the mut keyword is u
 
 
 
+#### polymorphism
+
+
+ZZ follows the C model of polymorphism: any struct can be cast to the same type as its first member.
+In ZZ the cast is implicit because it is always safe.
+
+
+```
+struct Vehicle {
+    int wheels;
+}
+
+struct Car {
+    Vehicle base;
+}
+
+fn allowed_entry(Vehicle *self) -> bool {
+    return self->wheels <= 2;
+}
+
+
+fn main() {
+    Car c{
+        base: Vehicle {
+            wheels: 4,
+        }
+    };
+    assert(!c.allowed_entry());
+}
+
+
+```
+
 
 #### where and model
 

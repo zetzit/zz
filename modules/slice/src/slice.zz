@@ -7,6 +7,7 @@ export struct Slice {
 
 export fn borrow(Slice *self) -> Slice *
     where len(self->mem)    == self->size
+    model safe(return)
     model len(return->mem)  == return->size
 {
     return self;

@@ -1,0 +1,25 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    int n;
+}
+
+
+struct B {
+    A a;
+}
+
+fn x(A*self)
+    where self->n == 0
+{
+}
+
+export fn main() -> int {
+
+    B b = {0};
+    static_attest(b.a.n == 0);
+    b.x();
+
+    return 0;
+}
