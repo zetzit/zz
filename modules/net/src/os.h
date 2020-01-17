@@ -120,7 +120,16 @@ static inline io_Result os_net_udp_sendto(
         net_address_Address const *addr
 )
 {
-    unsigned alen = sizeof(struct sockaddr_in6);
+    unsigned alen = 0;
+    switch (addr->type) {
+        case net_address_Type_Ipv4:
+            alen = sizeof(struct sockaddr_in);
+            break;
+        case net_address_Type_Ipv6:
+            alen = sizeof(struct sockaddr_in6);
+            break;
+    }
+
 
     int r = sendto(
         self->ctx.fd,
@@ -155,12 +164,16 @@ static inline void os_net_udp_close(io_Context *self) {
 
 static inline void os_net_udp_bind(err_Err *e, size_t et, net_address_Address const* addr, net_udp_Socket *sock)
 {
+
+    size_t sockaddrsize = 0;
     switch (addr->type) {
         case net_address_Type_Ipv6:
             sock->ctx.fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+            sockaddrsize = sizeof(struct sockaddr_in6);
             break;
         case net_address_Type_Ipv4:
             sock->ctx.fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            sockaddrsize = sizeof(struct sockaddr_in);
             break;
         default:
             break;
@@ -171,7 +184,7 @@ static inline void os_net_udp_bind(err_Err *e, size_t et, net_address_Address co
         return;
     }
 
-    int r = bind(sock->ctx.fd, (struct  sockaddr*)(&addr->os), sizeof(struct sockaddr_in6));
+    int r = bind(sock->ctx.fd, (struct  sockaddr*)(&addr->os), sockaddrsize);
     if (r != 0) {
         err_fail_with_errno(e, et, __FILE__, "os_net_udp_open", __LINE__, "bind");
     }

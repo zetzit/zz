@@ -1247,7 +1247,6 @@ impl Symbolic {
                             if let Some(ast::Def::Struct {fields, ..}) = self.defs.get(&n) {
                                 if let Some(field) = fields.get(0) {
                                     if field.typed.t == defined[i].typed.t {
-                                        println!("member {} << {} {}", defined[i].typed, field.typed, field.name);
                                         *calledarg =  ast::Expression::UnaryPre{
                                             loc:    calledarg.loc().clone(),
                                             op:     ast::PrefixOperator::AddressOf,
