@@ -1291,7 +1291,16 @@ impl Symbolic {
                         // or we're calling a theory
 
 
-                        let stags = defined[i].typed.ptr.first().expect("ICE: pointer arg mismatch").tags.clone();
+                        let stags = match defined[i].typed.ptr.first() {
+                            Some(v) => v.tags.clone(),
+                            None => {
+                                return Err(self.trace( format!("pointer depth mismatch"), vec![
+                                    (calledarg.loc().clone(), format!("expected type {} got {}",
+                                                                      defined[i].typed,
+                                                                      self.memory[callptr].typed))
+                                ]));
+                            }
+                        };
 
                         if !for_a_theory
                             && stags.get("uninitialized").is_none()

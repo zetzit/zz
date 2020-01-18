@@ -10,6 +10,7 @@ use std::process::Command;
 use std::sync::atomic::{Ordering};
 use zz;
 use std::io::{Read, Write};
+use std::time::{Duration, Instant};
 
 fn main() {
     if let Err(_) = std::env::var("RUST_LOG") {
@@ -38,9 +39,12 @@ fn main() {
             .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
         )
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
+        .subcommand(SubCommand::with_name("bench").about("benchmark tests/*.zz")
+                    .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
+        )
         .subcommand(SubCommand::with_name("test").about("execute tests/*.zz")
                     .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
-                    )
+        )
         .subcommand(SubCommand::with_name("init").about("init zz project in current directory"))
         .subcommand(
             SubCommand::with_name("run").about("build and run")
@@ -69,7 +73,9 @@ fn main() {
                 std::fs::remove_dir_all("target").unwrap();
             }
         },
-        ("test", Some(submatches)) => {
+        ("test", Some(submatches))  | ("bench", Some(submatches)) => {
+            let bench = matches.subcommand().0 == "bench";
+
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::test();
             zz::build(true, false, variant, stage.clone(), false);
@@ -140,55 +146,69 @@ fn main() {
                         cases.push(("default".to_string(), None, None, 0));
                     }
 
-
-                    for case in cases {
+                    for case in &cases {
                         println!("running \"./target/{}/bin/{}\"\n", stage, artifact.name);
-                        let mut child = Command::new(format!("./target/{}/bin/{}", stage, artifact.name))
-                            .stdin(std::process::Stdio::piped())
-                            .stdout(std::process::Stdio::piped())
-                            .spawn()
-                            .expect("failed to execute process");
+                        let start = Instant::now();
+                        let mut average = 0;
+                        loop {
+                            let istart = Instant::now();
+                            let mut child = Command::new(format!("./target/{}/bin/{}", stage, artifact.name))
+                                .stdin(std::process::Stdio::piped())
+                                .stdout(std::process::Stdio::piped())
+                                .spawn()
+                                .expect("failed to execute process");
 
-                        if let Some(i) = case.1 {
-                            let stdin = child.stdin.as_mut().expect("Failed to open stdin");
-                            stdin.write_all(&i).unwrap();
-                        }
+                            if let Some(i) = &case.1 {
+                                let stdin = child.stdin.as_mut().expect("Failed to open stdin");
+                                stdin.write_all(&i).unwrap();
+                            }
+                            let output = child.wait_with_output().expect("Failed to read stdout");
+                            average = (average + istart.elapsed().as_millis()) / 2;
 
-                        let output = child.wait_with_output().expect("Failed to read stdout");
-
-
-                        match output.status.code() {
-                            Some(c) => {
-                                if c != case.3 {
-                                    error!("FAIL {}::{} exit: {} instead of: {}", artifact.name, case.0, c, case.3);
+                            match output.status.code() {
+                                Some(c) => {
+                                    if c != case.3 {
+                                        error!("FAIL {}::{} exit: {} instead of: {}", artifact.name, case.0, c, case.3);
+                                        std::process::exit(10);
+                                    }
+                                }
+                                _ => {
+                                    #[cfg(unix)]
+                                    {
+                                        use std::os::unix::process::ExitStatusExt;
+                                        error!("FAIL {}::{} died by signal {}", artifact.name, case.0, output.status.signal().unwrap());
+                                    }
+                                    #[cfg(not(unix))]
+                                    {
+                                        error!("FAIL {}::{} died by signal", artifact.name, case.0);
+                                    }
                                     std::process::exit(10);
                                 }
                             }
-                            _ => {
-                                #[cfg(unix)]
-                                {
-                                    use std::os::unix::process::ExitStatusExt;
-                                    error!("FAIL {}::{} died by signal {}", artifact.name, case.0, output.status.signal().unwrap());
+                            if let Some(expect_stdout) = &case.2 {
+                                if &output.stdout != expect_stdout {
+                                    error!("FAIL {} {} \nstdout expected:\n{}\nbut got:\n{}\n",
+                                           artifact.name,
+                                           case.0,
+                                           String::from_utf8_lossy(&expect_stdout),
+                                           String::from_utf8_lossy(&output.stdout)
+                                          );
+                                    std::process::exit(10);
                                 }
-                                #[cfg(not(unix))]
-                                {
-                                    error!("FAIL {}::{} died by signal", artifact.name, case.0);
+                            }
+                            if bench {
+                                if start.elapsed().as_secs() > 0 {
+                                    info!("PASS {} {} {}ms/iter", artifact.name, case.0, average);
+                                    break;
+                                } else {
+                                    continue;
                                 }
-                                std::process::exit(10);
+                            } else {
+                                info!("PASS {} {} in {}ms", artifact.name, case.0, average);
+                                break;
                             }
                         }
-                        if let Some(expect_stdout) = &case.2 {
-                            if &output.stdout != expect_stdout {
-                                error!("FAIL {} {} \nstdout expected:\n{}\nbut got:\n{}\n",
-                                       artifact.name,
-                                       case.0,
-                                       String::from_utf8_lossy(&expect_stdout),
-                                       String::from_utf8_lossy(&output.stdout)
-                                );
-                                std::process::exit(10);
-                            }
-                        }
-                        info!("PASS {} {}", artifact.name, case.0);
+
                     }
                 }
             }

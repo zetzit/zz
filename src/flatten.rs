@@ -87,7 +87,10 @@ fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, ast::Locatio
         },
         ast::Statement::Switch{expr, cases, default, ..} => {
             let mut deps = expr_deps(cr, expr);
-            for (_,body) in cases {
+            for (exprs,body) in cases {
+                for expr in exprs {
+                    deps.extend(expr_deps(cr, expr));
+                }
                 deps.extend(block_deps(cr, body));
             }
             if let Some(default) =  default {
@@ -370,6 +373,10 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             let mut impl_deps : Vec<(Name, ast::Location)> = Vec::new();
             match &local.def {
                 ast::Def::Enum{names, ..} => {
+                    let mut ns = module_name.clone();
+                    ns.push(ast_name.clone());
+
+
                     expecting_sub_type = false;
                     //flat.aliases.insert(name.clone(), format!("enum {}", name.0[1..].join("_")));
                     for (subname, _) in names {
@@ -377,7 +384,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         name.push(subname.clone());
                         collected.0.insert(name, Local{
                             impl_deps:      Vec::new(),
-                            decl_deps:      Vec::new(),
+                            decl_deps:      vec![(ns.clone(), loc.clone())],
                             use_deps:       Vec::new(),
                             ast:            None,
                             in_scope_here:  loc.clone(),

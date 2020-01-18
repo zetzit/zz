@@ -9,12 +9,12 @@ export struct MutSlice {
 
 
 export fn borrow(MutSlice mut*self) -> MutSlice *
-    where self->slice.size == len(self->slice.mem)
+    where self->slice.size >= len(self->slice.mem)
     where self->at <= self->slice.size
     model safe(return)
     model return->slice.size == self->slice.size
     model return->at == self->at
-    model return->slice.size == len(return->slice.mem)
+    model return->slice.size >= len(return->slice.mem)
     model return->at <= return->slice.size
 {
     let r = self;
@@ -44,6 +44,7 @@ export fn new(u8 mut*mem, usize size) -> MutSlice
 
 export inline fn mem(MutSlice mut * self) -> u8 mut*
     model len(return) >= self->slice.size
+    model len(return) >= self->at
 {
     u8 mut* m = (u8 mut *)self->slice.mem;
     static_attest(len(m) >= self->slice.size);
