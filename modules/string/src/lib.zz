@@ -36,6 +36,7 @@ export fn slice(String+tail mut * self) -> Slice
 export fn append_slice(String+tail mut * self) -> MutSlice
     model return.slice.size == tail
     model return.at         <= tail
+    model return.slice.size >= len(return.slice.mem)
 {
 
     static_attest(self->len < tail);

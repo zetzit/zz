@@ -5,11 +5,10 @@ Drunk Octopus - It compiles, ship it
 
 ZZ (drunk octopus) is a modern formally provable dialect of C, inspired by rust
 
-It's main use case is embedded systems, where we still program C out of desperation, because nothing else actually works.
-You can also use it to build cross platform libraries. The build and linking concept is biased towards exporting a clean api.
+Its main use case is code close to hardware, where we still program C out of desperation, because nothing else actually works.
+You can also use it to build cross platform libraries, with a clean portable C-standard api.
 
-A major innovative feature is that all code is formally proven using math on symbolic execution.
-You can extract the mathematical expressions and reuse them in other proving tools or go through it manually if you're a math nerd.
+A major innovative feature is that all code is formally proven by symbolic execution in a virtual machine, at compile time.
 
 [![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
 
@@ -60,7 +59,8 @@ with ZZ being emitted as C, all you do is include the header.
 There is no stack unwinding (C++, rust), and no coroutines (go), so all code emits to plain ansi C
 with no requirements towards compiler features.
 
-ZZ works nicely with vendor provided closed source compiler for obscure systems. Like... esp8226 and integrates nicely into existing industry standard microkernels like zephyr, freerots, etc.
+ZZ works nicely with vendor provided closed source compiler for obscure systems.
+Like arduino, esp32, propriatary firmware compilers, and integrates nicely into existing industry standard microkernels like zephyr, freerots, etc.
 
 #### safety and correctness with symbolic execution
 

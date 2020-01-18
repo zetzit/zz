@@ -1,0 +1,16 @@
+using <stdio.h>::{printf};
+
+using bob;
+
+export fn main() -> int {
+
+    usize i;
+
+    switch i {
+        bob::A::Identity => {
+        }
+    }
+
+    printf("hello enum %u\n", i);
+    return 0;
+}

@@ -1,0 +1,7 @@
+pub enum A {
+    Identity = 1,
+    Timestamp = 2,
+    Handshake = 3,
+    Route = 4,
+    Paths = 5,
+}
