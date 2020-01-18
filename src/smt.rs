@@ -740,7 +740,7 @@ impl Solver {
         }
     }
 
-    pub fn new(module_name: String) -> Self {
+    pub fn new(module_name: String, hints: &HashMap<String, String>) -> Self {
 
         //Config::set_global_param_value(":model.partial", "true");
         //Config::set_global_param_value(":parallel.enable", "true");
@@ -748,12 +748,12 @@ impl Solver {
 
 
 
-        let conf = if which::which("yices_smt2_mt").is_ok() {
+        let conf = if let (Some("yices2"), Ok(_)) = (hints.get("solver").as_ref().map(|s|s.as_str()), which::which("yices_smt2_mt")) {
             rsmt2::SmtConf::yices_2()
         } else if which::which("z3").is_ok() {
             rsmt2::SmtConf::z3()
         } else {
-            panic!("z3 or yices_smt2_mt required in PATH")
+            panic!("z3 required in PATH")
         };
 
 
@@ -764,7 +764,9 @@ impl Solver {
         let mut solver = rsmt2::Solver::new(conf, Rsmt2Junk).unwrap();
         solver.path_tee(outfile).unwrap();
 
-        write!(solver,"(set-option :produce-unsat-cores true)\n").unwrap();
+        //insanly slow and we don't actually use it.
+        //write!(solver,"(set-option :produce-unsat-cores true)\n").unwrap();
+
         write!(solver,"(set-logic QF_UFBV)\n").unwrap();
         //write!(solver,"(set-option :parallel.enable true)\n").unwrap();
         //write!(solver,"(set-option :timeout {})\n", TIMEOUT.load(Ordering::Relaxed) as u64).unwrap();

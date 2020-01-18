@@ -132,6 +132,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut callassert = Vec::new();
                 let mut calleffect = Vec::new();
                 let mut vis = Visibility::Object;
+                let mut hints = HashMap::new();
 
                 for part in decl {
                     match part.as_rule() {
@@ -194,6 +195,12 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                         Rule::block => {
                             body = Some(parse_block((file_str, n), features.clone(), part));
                         },
+                        Rule::fn_vattr => {
+                            let mut part = part.into_inner();
+                            let key  = part.next().unwrap().as_str().to_string();
+                            let val  = part.next().unwrap().as_str().to_string();
+                            hints.insert(key, val);
+                        }
                         e => panic!("unexpected rule {:?} in function", e),
                     }
                 }
@@ -208,6 +215,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                                 nameloc,
                                 ret,
                                 attr,
+                                hints,
                                 args,
                                 body: body.unwrap(),
                                 vararg,

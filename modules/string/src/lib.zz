@@ -61,6 +61,7 @@ export fn clear(String+tail mut * self)
 }
 
 export fn push(String+t mut * self, char cstr) -> bool
+    @solver = yices2
     where t > 2
     model self->len < t
     model nullterm(self->mem)
@@ -93,6 +94,7 @@ export fn pop(String+t mut * self) -> bool
 }
 
 export fn append_cstr(String+t mut * self, char * cstr)
+    @solver = yices2
     where nullterm(cstr)
     model nullterm(self->mem)
     model self->len < t
@@ -112,6 +114,7 @@ export fn append_cstr(String+t mut * self, char * cstr)
 }
 
 export fn append(String+t mut * self, String+t2 * other)
+    @solver = yices2
     model self->len < t
     model nullterm(self->mem)
 {
@@ -131,6 +134,7 @@ export fn append(String+t mut * self, String+t2 * other)
 
 
 export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
+    @solver = yices2
     where len(bytes) >= inlen
     model self->len < t
     model nullterm(self->mem)
@@ -220,6 +224,7 @@ export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
 
 
 export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut* other)
+    @solver = yices2
     where tail  > 0
     where tail2 > 0
     model self->len  < tail
