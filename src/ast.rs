@@ -84,6 +84,7 @@ pub enum Def {
         nameloc:    Location,
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
+        hints:      HashMap<String, String>,
         attr:       HashMap<String, Location>,
         body:       Block,
         vararg:     bool,

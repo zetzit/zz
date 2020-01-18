@@ -3129,7 +3129,7 @@ impl Symbolic {
         ]));
     }
 
-    fn new(module_name: &Name) -> Self {
+    fn new(module_name: &Name, hints: &HashMap<String, String>) -> Self {
         Symbolic {
             stack:  vec![
                 Scope {
@@ -3139,7 +3139,7 @@ impl Symbolic {
                 }
             ],
             memory:  Default::default(),
-            ssa:     Solver::new(module_name.to_string()),
+            ssa:     Solver::new(module_name.to_string(), hints),
             builtin: Default::default(),
             defs:    HashMap::new(),
             current_module_name:    module_name.human_name(),
@@ -3311,9 +3311,9 @@ pub fn execute(module: &mut flatten::Module) -> bool {
     let mut defs        = Vec::new();
     let mut function_at = Vec::new();
     for (i, (d,_,defined_here)) in module.d.clone().into_iter().enumerate() {
-        if let ast::Def::Function{..} = d.def {
+        if let ast::Def::Function{ref hints, ..} = d.def {
             if defined_here {
-                function_at.push((i, d.name.clone(), module.clone()));
+                function_at.push((i, d.name.clone(), module.clone(), hints.clone()));
             }
         }
         defs.push(d.clone());
@@ -3322,16 +3322,16 @@ pub fn execute(module: &mut flatten::Module) -> bool {
 
 
     // execute one in serial on the borrowed module to get modifications to globals
-    if let Some((at, name, _)) = function_at.pop() {
-        let mut sym = Symbolic::new(&Name::from(&name));
+    if let Some((at, name, _, hints)) = function_at.pop() {
+        let mut sym = Symbolic::new(&Name::from(&name), &hints);
         if let Err(e) = sym.execute_module(module, at) {
             parser::emit_error(e.message.clone(), &e.details);
             return false;
         }
     }
 
-    let repl = function_at.into_par_iter().map(|(at, name, mut module)|{
-        let mut sym = Symbolic::new(&Name::from(&name));
+    let repl = function_at.into_par_iter().map(|(at, name, mut module, hints)|{
+        let mut sym = Symbolic::new(&Name::from(&name), &hints);
         match sym.execute_module(&mut module, at) {
             Err(e) => {
                 parser::emit_error(e.message.clone(), &e.details);

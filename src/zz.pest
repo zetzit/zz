@@ -91,12 +91,13 @@ named_typei = _{ type_part  ~ named_typei | ident }
 
 // declarations
 
+fn_vattr    = {"@" ~ ident ~ "=" ~ ident }
 fn_attr     = {"inline" | "extern"}
 fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
 call_assert = {"where" ~ expr }
 call_effect = {"model" ~ expr }
-function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( call_assert | call_effect)* ~ block }
+function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( fn_vattr | call_assert | call_effect)* ~ block }
 fntype      = { ( exported | key_shared)? ~ fn_attr* ~ "fntype" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 theory      = { ( exported | key_shared)? ~ "theory" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 

@@ -24,6 +24,7 @@ export fn borrow(MutSlice mut*self) -> MutSlice *
 }
 
 export fn new(u8 mut*mem, usize size) -> MutSlice
+    @solver = yices2
     where len(mem) >= size
     model return.slice.size == size
     model return.slice.size == len(return.slice.mem)
@@ -43,6 +44,7 @@ export fn new(u8 mut*mem, usize size) -> MutSlice
 
 
 export inline fn mem(MutSlice mut * self) -> u8 mut*
+    @solver = yices2
     model len(return) >= self->slice.size
     model len(return) >= self->at
 {
@@ -52,6 +54,7 @@ export inline fn mem(MutSlice mut * self) -> u8 mut*
 }
 
 export fn push(MutSlice mut * self, u8 b) -> bool
+    @solver = yices2
     where self->slice.size >= 1
     model self->at <= self->slice.size
 {
@@ -66,6 +69,7 @@ export fn push(MutSlice mut * self, u8 b) -> bool
 }
 
 export fn push16(MutSlice mut * self, u16 b) -> bool
+    @solver = yices2
     where self->slice.size >= 2
     model self->at <= self->slice.size
 {
@@ -80,6 +84,7 @@ export fn push16(MutSlice mut * self, u16 b) -> bool
 }
 
 export fn push32(MutSlice mut * self, u32 b) -> bool
+    @solver = yices2
     where self->slice.size >= 4
     model self->at <= self->slice.size
 {
@@ -94,6 +99,7 @@ export fn push32(MutSlice mut * self, u32 b) -> bool
 }
 
 export fn push64(MutSlice mut * self, u64 b) -> bool
+    @solver = yices2
     where self->slice.size > 8
 {
     if self->at > self->slice.size - 8 {
