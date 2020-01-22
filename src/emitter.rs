@@ -42,9 +42,9 @@ pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module,
         ns.remove(0);
         (cxx, format!("target/{}/include/{}.h", stage, ns.join("_")))
     } else if cxx {
-        (cxx, format!("target/{}/zz/{}.cpp", stage, module.name))
+        (cxx, format!("target/{}/zz/{}.cpp", stage, module.name.0.join("_")))
     } else {
-        (cxx, format!("target/{}/zz/{}.c", stage, module.name))
+        (cxx, format!("target/{}/zz/{}.c", stage, module.name.0.join("_")))
     }
 }
 
@@ -54,7 +54,7 @@ impl Emitter {
         let (cxx, p) = outname(project, &stage, &module, header);
         let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
-        let casedir = format!("target/{}/testcases/{}", stage, module.name);
+        let casedir = format!("target/{}/testcases/{}", stage, module.name.0.join("_"));
         std::fs::remove_dir_all(&casedir).ok();
         std::fs::create_dir_all(&casedir).unwrap();
 
@@ -92,7 +92,7 @@ impl Emitter {
         if self.inside_macro {
             return;
         }
-        write!(self.f, "\n#line {} \"{}\"\n", loc.line(), loc.file).unwrap();
+        write!(self.f, "\n#line {} \"{}\"\n", loc.line(), loc.file.replace("\\", "\\\\")).unwrap();
     }
 
     fn to_local_typed_name(&self, name: &ast::Typed) -> String {
@@ -165,7 +165,7 @@ impl Emitter {
 
     pub fn emit(mut self) -> CFile {
         let module = self.module.clone();
-        debug!("emitting {}", module.name);
+        debug!("emitting {}", module.name.0.join("_"));
 
         if self.header {
             let headername = module.name.0.join("_");
@@ -283,7 +283,7 @@ impl Emitter {
             f.read_to_end(&mut v).expect(&format!("read {:?}", expr));
 
             if !self.inside_macro {
-                write!(self.f, "\n#line 1 \"{}\"\n", expr).unwrap();
+                write!(self.f, "\n#line 1 \"{}\"\n", expr.replace("\\", "\\\\")).unwrap();
             }
             self.f.write_all(&v).unwrap();
 

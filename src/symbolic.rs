@@ -3139,7 +3139,7 @@ impl Symbolic {
                 }
             ],
             memory:  Default::default(),
-            ssa:     Solver::new(module_name.to_string(), hints),
+            ssa:     Solver::new(module_name.0.join("_"), hints),
             builtin: Default::default(),
             defs:    HashMap::new(),
             current_module_name:    module_name.human_name(),

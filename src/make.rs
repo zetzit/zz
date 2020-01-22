@@ -305,7 +305,6 @@ impl Make {
         let mut hasher: MetroHash128 = MetroHash128::default();
         hasher.write(&b);
         let hash = hasher.finish128();
-        //let hash = metro::hash128(b);
 
         let outp = format!("./target/{}/zz/{}_{:x}{:x}.o", self.stage, cf.name.0.join("_"), hash.0, hash.1);
         args.push(outp.clone());
