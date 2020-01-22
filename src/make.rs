@@ -1,5 +1,6 @@
 use super::project::{Config, Artifact};
-use fasthash::metro;
+use std::hash::{Hasher};
+use metrohash::{MetroHash128};
 use std::path::Path;
 use std::path::PathBuf;
 use std::collections::HashSet;
@@ -173,7 +174,7 @@ impl Make {
             }
         }
 
-        cflags.push("-fPIC".into());
+        //cflags.push("-fPIC".into());
         cflags.push("-I".into());
         cflags.push(".".into());
         cflags.push("-I".into());
@@ -254,10 +255,12 @@ impl Make {
         args.push(inp.to_string_lossy().to_string());
         args.push("-o".to_string());
 
-        let hash = metro::hash128(args.join(" ").as_bytes());
+        let mut hasher: MetroHash128 = MetroHash128::default();
+        hasher.write(args.join(" ").as_bytes());
+        let hash = hasher.finish128();    
 
         let outp = inp.to_string_lossy().replace(|c: char| !c.is_alphanumeric(), "_");
-        let outp = format!("{}_{:x}", outp, hash);
+        let outp = format!("{}_{:x}{:x}", outp, hash.0, hash.1);
         let outp = format!("./target/{}/c/", self.stage) + &outp + ".o";
 
         args.push(outp.clone());
@@ -299,9 +302,12 @@ impl Make {
         let mut b = args.join(" ").as_bytes().to_vec();
         b.extend(self.cc.as_bytes());
 
-        let hash = metro::hash128(b);
+        let mut hasher: MetroHash128 = MetroHash128::default();
+        hasher.write(&b);
+        let hash = hasher.finish128();
+        //let hash = metro::hash128(b);
 
-        let outp = format!("./target/{}/zz/{}_{:x}.o", self.stage, cf.name, hash);
+        let outp = format!("./target/{}/zz/{}_{:x}{:x}.o", self.stage, cf.name.0.join("_"), hash.0, hash.1);
         args.push(outp.clone());
 
         self.steps.push(Step{
@@ -327,7 +333,7 @@ impl Make {
             pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
             if step.is_dirty() {
-                debug!("{} {:?}", self.cc, step.args);
+                debug!("{} {:?}", self.cc, step.args);                
                 let status = Command::new(&self.cc)
                     .env("AFL_USE_ASAN", "1")
                     .args(&step.args)
