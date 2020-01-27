@@ -7,6 +7,7 @@ use super::pp::PP;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
 use pest::prec_climber::{Operator, PrecClimber, Assoc};
+use super::make::Stage;
 
 #[derive(Parser)]
 #[grammar = "zz.pest"]
@@ -16,9 +17,9 @@ pub static ERRORS_AS_JSON : AtomicBool = AtomicBool::new(false);
 
 
 
-pub fn parse(n: &Path, features: HashMap<String, bool> ) -> Module
+pub fn parse(n: &Path, features: &HashMap<String, bool>, stage: &Stage) -> Module
 {
-    match p(&n, features){
+    match p(&n, features, stage){
         Err(e) => {
             let e = e.with_path(&n.to_string_lossy());
             if ERRORS_AS_JSON.load(Ordering::SeqCst) {
@@ -55,7 +56,7 @@ pub fn parse(n: &Path, features: HashMap<String, bool> ) -> Module
     }
 }
 
-fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::Error<Rule>> {
+fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Module, pest::error::Error<Rule>> {
 
     let mut module = Module::default();
     module.source = n.to_path_buf();
@@ -69,7 +70,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
     let mut file = ZZParser::parse(Rule::file, file_str)?;
 
 
-    for decl in PP::new(n, features.clone(), file.next().unwrap().into_inner()) {
+    for decl in PP::new(n, features.clone(), stage.clone(), file.next().unwrap().into_inner()) {
         match decl.as_rule() {
             Rule::imacro => {
                 let loc = Location{
@@ -98,7 +99,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             }
                         }
                         Rule::block if body.is_none() => {
-                            body = Some(parse_block((file_str, n), features.clone(),  part));
+                            body = Some(parse_block((file_str, n), features, stage, part));
                         },
                         e => panic!("unexpected rule {:?} in macro ", e),
                     }
@@ -193,7 +194,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                             calleffect.push(parse_expr((file_str, n), part));
                         },
                         Rule::block => {
-                            body = Some(parse_block((file_str, n), features.clone(), part));
+                            body = Some(parse_block((file_str, n), features, stage, part));
                         },
                         Rule::fn_vattr => {
                             let mut part = part.into_inner();
@@ -263,7 +264,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut names  = Vec::new();
                 let mut loc    = None;
 
-                for part in PP::new(n, features.clone(), decl) {
+                for part in PP::new(n, features.clone(), stage.clone(), decl) {
                     match part.as_rule() {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
@@ -327,7 +328,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 };
 
                 let decl = decl.into_inner();
-                for part in PP::new(n,features.clone(), decl) {
+                for part in PP::new(n,features.clone(), stage.clone(), decl) {
                     match part.as_rule() {
                         Rule::ident => {
                             loc  = Location{
@@ -369,7 +370,7 @@ fn p(n: &Path, features: HashMap<String, bool> ) -> Result<Module, pest::error::
                 let mut tail   = Tail::None;
                 let mut union  = false;
 
-                for part in PP::new(n,features.clone(), decl) {
+                for part in PP::new(n,features.clone(), stage.clone(), decl) {
                     match part.as_rule() {
                         Rule::tail => {
                             tail = Tail::Dynamic;
@@ -997,9 +998,10 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
 
 pub(crate) fn parse_statement(
     n: (&'static str, &Path),
-    features: HashMap<String, bool>,
-    stm: pest::iterators::Pair<'static, Rule>,
-    into: &mut Vec<Box<Statement>>,
+    features:   &HashMap<String, bool>,
+    stage:      &Stage,
+    stm:        pest::iterators::Pair<'static, Rule>,
+    into:       &mut Vec<Box<Statement>>,
     current_if_statement: &mut Option<usize>,
 ) {
 
@@ -1043,7 +1045,7 @@ pub(crate) fn parse_statement(
             }));
         },
         Rule::block => {
-            into.push(Box::new(Statement::Block(Box::new(parse_block(n, features, stm)))))
+            into.push(Box::new(Statement::Block(Box::new(parse_block(n, features, stage, stm)))))
         },
         Rule::return_stm  => {
             let mut stm = stm.into_inner();
@@ -1074,7 +1076,7 @@ pub(crate) fn parse_statement(
             let part    = stm.next().unwrap();
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, features, part);
+            let body    = parse_block(n, features, stage, part);
             into.push(Box::new(Statement::While {
                 expr,
                 body,
@@ -1085,7 +1087,7 @@ pub(crate) fn parse_statement(
             let part    = stm.next().unwrap();
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, features, part);
+            let body    = parse_block(n, features, stage, part);
             *current_if_statement = Some(into.len());
             into.push(Box::new(Statement::If{
                 branches: vec![(loc.clone(), Some(expr), body)],
@@ -1096,7 +1098,7 @@ pub(crate) fn parse_statement(
             let part    = stm.next().unwrap();
             let expr    = parse_expr(n, part);
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, features, part);
+            let body    = parse_block(n, features, stage, part);
             match *current_if_statement {
                 None => {
                     emit_error("else without if", &[
@@ -1114,7 +1116,7 @@ pub(crate) fn parse_statement(
         Rule::else_stm => {
             let mut stm = stm.into_inner();
             let part    = stm.next().unwrap();
-            let body    = parse_block(n, features, part);
+            let body    = parse_block(n, features, stage, part);
             match *current_if_statement {
                 None => {
                     emit_error("else without if", &[
@@ -1149,18 +1151,18 @@ pub(crate) fn parse_statement(
                         cur += 1;
                     },
                     Rule::block if cur == 3 && block.is_none() => {
-                        block = Some(parse_block(n, features.clone(), part));
+                        block = Some(parse_block(n, features, stage, part));
                     },
                     _ if cur == 1 => {
                         let mut cif = None;
-                        parse_statement(n, features.clone(), part, &mut expr1, &mut cif);
+                        parse_statement(n, features, stage, part, &mut expr1, &mut cif);
                     },
                     _ if cur == 2 => {
                         expr2 = Some(parse_expr(n, part));
                     },
                     _ if cur == 3 => {
                         let mut cif = None;
-                        parse_statement(n, features.clone(), part, &mut expr3, &mut cif);
+                        parse_statement(n, features, stage, part, &mut expr3, &mut cif);
                     },
                     e => panic!("unexpected rule {:?} in for ", e),
                 }
@@ -1266,7 +1268,7 @@ pub(crate) fn parse_statement(
                         ]);
                         std::process::exit(9);
                     } else {
-                        default = Some(parse_block(n, features.clone(), part.next().unwrap()));
+                        default = Some(parse_block(n, features,  stage,part.next().unwrap()));
                     }
                 } else {
                     let mut case_cond = Vec::new();
@@ -1274,7 +1276,7 @@ pub(crate) fn parse_statement(
                         case_cond.push(parse_expr(n, case));
                     }
 
-                    let block = parse_block(n, features.clone(), part.next().unwrap());
+                    let block = parse_block(n, features,  stage,part.next().unwrap());
                     cases.push((case_cond,block));
                 }
             }
@@ -1287,7 +1289,7 @@ pub(crate) fn parse_statement(
             }))
         },
         Rule::unsafe_block => {
-            into.push(Box::new(Statement::Unsafe(Box::new(parse_block(n, features, stm.into_inner().next().unwrap())))));
+            into.push(Box::new(Statement::Unsafe(Box::new(parse_block(n, features, stage, stm.into_inner().next().unwrap())))));
         },
         Rule::cblock => {
             let stm = stm.into_inner().next().unwrap();
@@ -1305,9 +1307,10 @@ pub(crate) fn parse_statement(
 }
 
 pub(crate) fn parse_block(
-        n: (&'static str, &Path),
-        features: HashMap<String,bool>,
-        decl: pest::iterators::Pair<'static, Rule>
+        n:          (&'static str, &Path),
+        features:   &HashMap<String,bool>,
+        stage:      &Stage,
+        decl:       pest::iterators::Pair<'static, Rule>
 ) -> Block {
     match decl.as_rule() {
         Rule::block => { }
@@ -1321,8 +1324,8 @@ pub(crate) fn parse_block(
 
     let mut statements = Vec::new();
     let mut cif_state = None;
-    for stm in PP::new(n.1, features.clone(), decl.into_inner()) {
-        parse_statement(n, features.clone(), stm, &mut statements, &mut cif_state)
+    for stm in PP::new(n.1, features.clone(), stage.clone(), decl.into_inner()) {
+        parse_statement(n, features, stage, stm, &mut statements, &mut cif_state)
     }
     Block{
         statements,

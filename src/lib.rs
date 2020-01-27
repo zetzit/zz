@@ -77,13 +77,12 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
 
     let mut modules = HashMap::new();
+    let features = project.features(variant).into_iter().map(|(n,(e,_))|(n,e)).collect();
     if std::path::Path::new("./src").exists() {
-        loader::load(&mut modules, &project_name, &Path::new("./src"),
-            project.features(variant).into_iter().map(|(n,(e,_))|(n,e)).collect());
+        loader::load(&mut modules, &project_name, &Path::new("./src"), &features, &stage);
     }
     if std::path::Path::new("./tests").exists() {
-        loader::load(&mut modules, &project_tests_name, &Path::new("./tests"),
-            project.features(variant).into_iter().map(|(n,(e,_))|(n,e)).collect());
+        loader::load(&mut modules, &project_tests_name, &Path::new("./tests"), &features, &stage);
     }
 
 
@@ -104,7 +103,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
         for (name, dep) in deps {
             match dep {
                 toml::Value::String(_) => {
-                    getdep(name, &mut modules, &mut project.project, &mut searchpaths);
+                    getdep(name, &mut modules, &mut project.project, &mut searchpaths, &stage);
                 },
                 _ => (),
             }
@@ -302,7 +301,13 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     };
 }
 
-fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>, rootproj: &mut project::Project, searchpaths: &mut HashSet<std::path::PathBuf>) {
+fn getdep(
+        name: &str,
+        modules: &mut HashMap<Name, loader::Module>,
+        rootproj: &mut project::Project,
+        searchpaths: &mut HashSet<std::path::PathBuf>,
+        stage:  &make::Stage,
+) {
 
     searchpaths.insert(
         std::env::current_dir().unwrap().join("modules")
@@ -329,8 +334,8 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>, rootproj: &mu
     let (root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
     if found.join("./src").exists() {
-        loader::load(modules, &project_name, &found.join("./src"),
-            project.features("default").into_iter().map(|(n,(e,_))|(n,e)).collect());
+        let features = project.features("default").into_iter().map(|(n,(e,_))|(n,e)).collect();
+        loader::load(modules, &project_name, &found.join("./src"), &features, &stage);
     }
     //std::env::set_current_dir(pp).unwrap();
 
@@ -358,7 +363,7 @@ fn getdep(name: &str, modules: &mut HashMap<Name, loader::Module>, rootproj: &mu
         for (name, dep) in deps {
             match dep {
                 toml::Value::String(_) => {
-                    getdep(name, modules, rootproj, searchpaths);
+                    getdep(name, modules, rootproj, searchpaths, stage);
                 },
                 _ => (),
             }

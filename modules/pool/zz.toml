@@ -11,3 +11,5 @@ lflags = []
 default = []
 
 [dependencies]
+hex = "1"
+err = "1"

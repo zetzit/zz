@@ -3,7 +3,7 @@ using byteorder;
 using string;
 
 using <stdio.h>::{printf};
-using <string.h>::{memset};
+using <string.h>::{memset,memcmp};
 
 inline using "os.h" as os;
 
@@ -22,6 +22,11 @@ export fn new() -> Address {
     return Address {
         type: Type::Invalid,
     };
+}
+
+
+export fn eq(Address * self, Address * other) -> bool {
+    return memcmp(self, other, sizeof(Address)) == 0;
 }
 
 export fn valid(Address * self) -> bool {

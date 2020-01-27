@@ -1,5 +1,5 @@
 using <string.h>::{memset};
-using <stdio.h>::{printf};
+using <stdio.h>::{printf, fprintf, FILE};
 using slice;
 
 static u8 map[] = {
@@ -60,7 +60,7 @@ export fn dump_slice(slice::Slice *s)
     printf("\n");
 }
 
-export fn dump(u8 *data, usize l)
+export fn dump(u8 * unsafe data, usize l)
     where len(data) >= l
 {
     for (usize mut i = 0; i < l; i++) {
@@ -70,4 +70,16 @@ export fn dump(u8 *data, usize l)
         }
     }
     printf("\n");
+}
+
+export fn fdump(FILE mut *f, u8 * unsafe data, usize l)
+    where len(data) >= l
+{
+    for (usize mut i = 0; i < l; i++) {
+        fprintf(f, "%02x ", data[i]);
+        if i % 16 == 15 {
+            printf("\n");
+        }
+    }
+    fprintf(f, "\n");
 }

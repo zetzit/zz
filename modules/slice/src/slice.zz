@@ -26,6 +26,13 @@ export fn eq_cstr(Slice *self, char *other) -> bool
     where nullterm(other)
 {
     usize othersize = (usize)c_string::strlen(other);
+    static_attest(len(other) == othersize);
+    return eq_bytes(self, (u8*)other, othersize);
+}
+
+export fn eq_bytes(Slice *self, u8 *other, usize othersize) -> bool
+    where len(other) >= othersize
+{
     if self->size != othersize {
         return false;
     }

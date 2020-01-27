@@ -4,12 +4,14 @@ use super::ast;
 use super::name::Name;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
+use crate::make::Stage;
 
 pub struct PP {
     decl:       pest::iterators::Pairs<'static, Rule>,
     n:          PathBuf,
     stack:      Vec<bool>,
     features:   HashMap<String,bool>,
+    stage:      Stage,
 }
 
 #[derive(Debug)]
@@ -20,9 +22,10 @@ pub enum Value {
 
 
 impl PP {
-    pub fn new(n: &Path, features: HashMap<String,bool>, decl: pest::iterators::Pairs<'static, Rule>) -> PP {
+    pub fn new(n: &Path, features: HashMap<String,bool>, stage: Stage, decl: pest::iterators::Pairs<'static, Rule>) -> PP {
         PP {
             features,
+            stage,
             decl,
             n: n.into(),
             stack: Vec::new(),
@@ -121,10 +124,24 @@ impl PP {
                         }
 
                         match &args[0] {
-                            Value::String(s) if s == "endian" => {
+                            Value::String(s) if s == "asan" => {
                                 match &args[1] {
-                                    Value::String(s) if s == "big"          => Value::Bool(false),
-                                    Value::String(s) if s == "little"       => Value::Bool(true),
+                                    Value::Bool(s)  => {
+                                        Value::Bool(s == &self.stage.asan)
+                                    }
+                                    _ => {
+                                        emit_warn("invalid attribute value defaults to false", &[
+                                                  (loc, "target attribute needs to be a string"),
+                                        ]);
+                                        Value::Bool(false)
+                                    }
+                                }
+                            },
+                            Value::String(s) if s == "debug" => {
+                                match &args[1] {
+                                    Value::Bool(s)  => {
+                                        Value::Bool(s == &self.stage.debug)
+                                    }
                                     _ => {
                                         emit_warn("invalid attribute value defaults to false", &[
                                                   (loc, "target attribute needs to be a string"),

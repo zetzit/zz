@@ -8,6 +8,7 @@ use pbr;
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{Ordering};
+use super::make::Stage;
 
 pub enum Module {
     C(PathBuf),
@@ -18,7 +19,8 @@ pub fn load(
     modules:        &mut HashMap<Name, Module>,
     artifact_name:  &Name,
     src:            &Path,
-    features:       HashMap<String, bool>,
+    features:       &HashMap<String, bool>,
+    stage:          &Stage,
 ) {
 
 
@@ -56,7 +58,7 @@ pub fn load(
         if !silent{
             pb.lock().unwrap().message(&format!("parsing {:?} ", path));
         }
-        let mut m = parser::parse(&path, features.clone());
+        let mut m = parser::parse(&path, features, stage);
         m.name = artifact_name.clone();
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
         if stem != "lib" {

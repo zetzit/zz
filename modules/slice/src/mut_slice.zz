@@ -1,7 +1,6 @@
 using <string.h> as c_string;
 using slice::{Slice};
 
-
 export struct MutSlice {
     Slice   slice;
     usize   at;
@@ -51,6 +50,20 @@ export inline fn mem(MutSlice mut * self) -> u8 mut*
     u8 mut* m = (u8 mut *)self->slice.mem;
     static_attest(len(m) >= self->slice.size);
     return m;
+}
+
+export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
+    @solver = yices2
+    where len(b) >= l
+    model self->at <= self->slice.size
+{
+    if self->at >= self->slice.size || l >  self->slice.size || self->at  > self->slice.size - l {
+        return false;
+    }
+
+    c_string::memcpy(self->mem() + self->at, b, l);
+    self->at += l;
+    return true;
 }
 
 export fn push(MutSlice mut * self, u8 b) -> bool

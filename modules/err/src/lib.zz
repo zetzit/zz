@@ -1,8 +1,8 @@
-using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, stderr};
+using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, vfprintf, stderr};
 using <string.h>::{memset, strncat, strlen};
 using <errno.h>::{errno, strerror};
 using <stdlib.h>::{abort as cabort};
-using <stdarg.h>::{va_list, va_start};
+using <stdarg.h>::{va_list, va_start, va_end};
 using string::{String};
 using string;
 
@@ -64,6 +64,7 @@ export fn fail_with_errno(
     va_list mut vargs;
     va_start(vargs, fmt);
     vsnprintf(self->description, sizeof(self->description), fmt, vargs);
+    va_end(vargs);
 
     strncat(self->description, " : ", as<usize>(sizeof(self->description)) - as<usize>(strlen(self->description)));
     strncat(self->description, strerror(errno), as<usize>(sizeof(self->description)) - as<usize>(strlen(self->description)));
@@ -90,6 +91,7 @@ export fn fail(
     va_list mut vargs;
     va_start(vargs, fmt);
     vsnprintf(self->description, sizeof(self->description), fmt, vargs);
+    va_end(vargs);
 
     string::clear(&(self->locations));
     backtrace(self, file, scope, line);
@@ -108,7 +110,9 @@ model checked(*self)
         static_attest(checked(*self));
         backtrace(self, file, scope, line);
         fprintf(stderr, "fatal error %u: %s%s\n", self->error, self->description, (self->locations).mem);
-        cabort();
+        for(;;){
+            cabort();
+        }
     }
     static_attest(checked(*self));
 }
@@ -125,4 +129,60 @@ export fn to_str(
 )
 {
     snprintf(dest, dest_len, "%s%s\n", self->description, (self->locations).mem);
+}
+
+export fn panic(
+    char* callsite_source<file>      unsafe file,
+    char* callsite_source<function>  unsafe scope,
+    usize callsite_source<line>      line,
+    char*  fmt,
+    ...
+)
+{
+    fprintf(stderr, "panic in %s:%zu \t%s\n", file, line, scope);
+
+    va_list mut vargs;
+    va_start(vargs, fmt);
+    vfprintf(stderr, fmt, vargs);
+    va_end(vargs);
+
+    fprintf(stderr, "\n");
+
+    for(;;){
+        cabort();
+    }
+}
+
+export fn assert(
+    bool a,
+    char* callsite_source<file>      unsafe file,
+    char* callsite_source<function>  unsafe scope,
+    usize callsite_source<line>      line,
+)
+    model a == true
+{
+    if (!a) {
+        fprintf(stderr, "assertion failed in %s:%zu \t%s\n", file, line, scope);
+        for(;;){
+            cabort();
+        }
+    }
+    static_attest(a == true);
+}
+
+export fn assert_safe(
+    void * unsafe a,
+    char* callsite_source<file>      unsafe file,
+    char* callsite_source<function>  unsafe scope,
+    usize callsite_source<line>      line,
+)
+    model safe(a)
+{
+    if (a == 0) {
+        fprintf(stderr, "assertion failed in %s:%zu \t%s\n", file, line, scope);
+        for(;;){
+            cabort();
+        }
+    }
+    static_attest(safe(a));
 }

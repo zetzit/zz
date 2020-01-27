@@ -1,6 +1,18 @@
 using <string.h>::{memset};
 using <assert.h>::{assert};
+using <stdio.h>::{stderr};
+using hex;
+using err;
+using <stdint.h>::{uintptr_t};
 
+inline using "asan.h"::{
+    ASAN_POISON_MEMORY_REGION,
+    ASAN_UNPOISON_MEMORY_REGION
+}
+
+
+
+const usize ALIGN = (usize)sizeof(uintptr_t);
 
 pub theory member(void * m, Pool*p) -> bool;
 
@@ -19,13 +31,20 @@ export fn new(Pool+pt mut *self, u8 mut blocksize)
     where pt > pt/(usize)blocksize
 {
     self->blocksize = blocksize;
-    usize usedmemlen = pt / (usize)blocksize / 8;
+    usize mut usedmemlen = pt / (usize)blocksize / 8;
+    unsafe { usedmemlen += (ALIGN - (usedmemlen % ALIGN)); }
 
     self->used  = self->mem;
     self->pool  = self->mem + usedmemlen;
+
+    assert((usize)self->used % ALIGN == 0);
+    assert((usize)self->pool % ALIGN == 0);
+
     self->poolsize = pt - usedmemlen;
 
     memset(self->used, 0, usedmemlen);
+
+    ASAN_POISON_MEMORY_REGION(self->pool, self->poolsize);
 }
 
 export fn alloc(Pool mut *self, usize mut size) -> void mut*
@@ -33,8 +52,10 @@ export fn alloc(Pool mut *self, usize mut size) -> void mut*
 {
     static_attest(member(0, self));
 
-    // one byte at the front and one at the back overhead
-    size += 2;
+    // 8 byte redzone
+    size += 8;
+    // 8 byte align
+    size += (ALIGN - (size % ALIGN));
 
     usize mut blocks = size/(usize)self->blocksize;
     if size % (usize)self->blocksize != 0 {
@@ -74,27 +95,40 @@ export fn alloc(Pool mut *self, usize mut size) -> void mut*
         }
 
         if allfree {
-            void mut * mut mem = 0;
+            u8 mut * mut mem = 0;
             unsafe {
                 mem = self->pool + ((usize)self->blocksize * i);
+                ASAN_UNPOISON_MEMORY_REGION(mem, size);
                 memset(mem, 0, size);
-                *(u8 mut*)mem = blocks;
-                mem = (u8 mut*)mem + 1;
+                mem[0] = 0x60;
+                mem[1] = 0x61;
+                mem[2] = 0x62;
+                mem[3] = 0x63;
+                mem[4] = blocks;
+                mem[5] = 0x65;
+                mem[6] = 0x66;
+                mem[7] = 0x67;
+                ASAN_POISON_MEMORY_REGION(mem, 8);
+                mem = mem + 8;
             }
 
             for (usize mut j = 0; j < blocks; j++) {
                 static_attest((i+j)/8 < len(self->used));
                 bitarray_set(self->used, i+j);
             }
+
+            assert((usize)mem % ALIGN == 0);
             return mem;
         }
     }
     return 0;
 }
 
-export fn free(Pool mut *self, void * unsafe mut ptr)
-    where member(ptr, self)
+export fn free(Pool mut *self, void * unsafe mut ptr_)
+    where member(ptr_, self)
 {
+    let mut ptr = (u8 mut*)ptr_;
+
     if ptr == 0 {
         return;
     }
@@ -102,8 +136,20 @@ export fn free(Pool mut *self, void * unsafe mut ptr)
     u8 mut blocks;
     usize mut startblock;
     unsafe {
-        ptr = ((u8*)ptr) - 1;
-        blocks = *(u8*)ptr;
+        ptr = ptr - 8;
+        ASAN_UNPOISON_MEMORY_REGION(ptr, 8);
+        blocks = ptr[4];
+    }
+    static_attest(len(ptr) >= 8);
+
+    if ptr[0] != 0x60 || ptr[1] != 0x61 || ptr[2] != 0x62 || ptr[3] != 0x63 || ptr[7] != 0x67 {
+        unsafe { hex::fdump(stderr, ptr, 8); }
+        err::panic("invalid address passed to free");
+    }
+
+    ASAN_POISON_MEMORY_REGION(ptr, blocks * self->blocksize);
+
+    unsafe {
         assert((usize)blocks < self->poolsize/(usize)self->blocksize);
         startblock = ((u8*)ptr - self->pool) / (usize)self->blocksize;
         assert(startblock < self->poolsize/(usize)self->blocksize);

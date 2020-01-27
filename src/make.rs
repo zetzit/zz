@@ -18,7 +18,7 @@ pub struct Stage {
     pub optimize:   Option<String>,
     pub lto:        bool,
     pub asan:       bool,
-    pub fuzz:        bool,
+    pub fuzz:       bool,
 }
 
 impl Stage {
