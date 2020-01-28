@@ -29,7 +29,7 @@ export  fn check(
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
 ) -> bool
-    model checked(*self)
+    model return == true || checked(*self)
 {
     if (self->error != 0) {
         backtrace(self, file, scope, line);

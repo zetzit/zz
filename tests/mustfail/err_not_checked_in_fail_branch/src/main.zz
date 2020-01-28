@@ -21,7 +21,9 @@ export fn main() -> int {
     if err::check(&e) {
         int x = 0;
         // must not compile
-        // static_assert(err::checked(e));
+        // must not pass e to another function here,
+        // because the function obviously expects the passed in err to be clean
+        static_assert(err::checked(e));
         return 0;
     }
     static_assert(err::checked(e));
