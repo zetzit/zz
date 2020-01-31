@@ -1,0 +1,7 @@
+using <stdio.h>::{printf};
+
+
+export fn main() -> int {
+    printf("hello recursive_struct\n");
+    return 0;
+}

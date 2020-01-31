@@ -369,8 +369,10 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             let mut ast = local.clone();
             let ast_name = local.name.clone();
 
-            let mut decl_deps : Vec<(Name, ast::Location)> = Vec::new();
-            let mut impl_deps : Vec<(Name, ast::Location)> = Vec::new();
+            let mut decl_deps       : Vec<(Name, ast::Location)> = Vec::new();
+            let mut impl_deps       : Vec<(Name, ast::Location)> = Vec::new();
+            let mut weak_deps       : Vec<(Name, ast::Location)> = Vec::new();
+
             match &local.def {
                 ast::Def::Enum{names, ..} => {
                     let mut ns = module_name.clone();
@@ -457,7 +459,12 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 }
                 ast::Def::Struct{fields,..} => {
                     for field in fields {
-                        decl_deps.extend(type_deps(cr, &field.typed));
+                        if field.typed.ptr.len() > 0 {
+                            weak_deps.extend(type_deps(cr, &field.typed));
+                        } else {
+                            decl_deps.extend(type_deps(cr, &field.typed));
+                        }
+
                         if let Some(ref expr) = &field.array {
                             if let Some(ref expr) = expr {
                                 decl_deps.extend(expr_deps(cr, expr));
@@ -494,6 +501,9 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             for (dep,loc) in &decl_deps  {
                 incomming.push((dep.clone(), loc.clone()));
             }
+            for (dep,loc) in &weak_deps  {
+                incomming.push((dep.clone(), loc.clone()));
+            }
 
 
             let ns = if module_name.0[1] == "ext" {
@@ -509,7 +519,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             collected.0.insert(ns, Local{
                 decl_deps,
                 impl_deps,
-                use_deps:  Vec::new(),
+                use_deps:  weak_deps,
                 ast: Some(ast),
                 in_scope_here: loc,
             });
@@ -757,7 +767,7 @@ fn sort_visit(
     }
 
     for (dep,loc) in &n.decl_deps {
-        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), false, depth+1, Some(&mut use_deps_here));
+        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), allow_recursion, depth+1, Some(&mut use_deps_here));
     }
 
 

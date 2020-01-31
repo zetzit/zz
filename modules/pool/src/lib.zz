@@ -1,6 +1,6 @@
 using <string.h>::{memset};
 using <assert.h>::{assert};
-using <stdio.h>::{stderr};
+using <stdio.h>::{stderr, printf};
 using hex;
 using err;
 using <stdint.h>::{uintptr_t};
@@ -30,6 +30,8 @@ export struct Pool+ {
 export fn new(Pool+pt mut *self, u8 mut blocksize)
     where pt > pt/(usize)blocksize
 {
+    assert((usize)blocksize % ALIGN == 0);
+
     self->blocksize = blocksize;
     usize mut usedmemlen = pt / (usize)blocksize / 8;
     unsafe { usedmemlen += (ALIGN - (usedmemlen % ALIGN)); }
@@ -45,6 +47,20 @@ export fn new(Pool+pt mut *self, u8 mut blocksize)
     memset(self->used, 0, usedmemlen);
 
     ASAN_POISON_MEMORY_REGION(self->pool, self->poolsize);
+}
+
+export fn free_bytes(Pool *self) -> usize
+{
+    static_attest(safe(self->used));
+    static_attest(len(self->used) == self->poolsize/(usize)self->blocksize);
+
+    usize mut c = 0;
+    for (usize mut i = 0 ; i < self->poolsize/(usize)self->blocksize; i++) {
+        if !bitarray_test(self->used, i) {
+            c += (usize)self->blocksize;
+        }
+    }
+    return c;
 }
 
 export fn alloc(Pool mut *self, usize mut size) -> void mut*

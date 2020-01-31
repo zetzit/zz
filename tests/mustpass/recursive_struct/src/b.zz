@@ -1,0 +1,7 @@
+using c;
+using a;
+pub struct B {
+    a::A *a;
+    c::C c;
+}
+

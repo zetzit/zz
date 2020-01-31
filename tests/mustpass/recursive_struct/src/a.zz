@@ -1,0 +1,7 @@
+using b;
+using c;
+pub struct A {
+    b::B b;
+    c::C c;
+}
+

@@ -1,0 +1,5 @@
+using a;
+pub struct C {
+    a::A * a;
+}
+

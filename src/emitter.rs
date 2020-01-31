@@ -182,6 +182,26 @@ impl Emitter {
                 continue
             }
             match d.def {
+                ast::Def::Struct{..} => {
+                    self.emit_struct_def(&d, *def_here, None);
+                    if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                        for v in vs {
+                            let mut d = d.clone();
+                            d.name = format!("{}_{}", d.name, v);
+                            self.emit_struct_def(&d, *def_here, Some(*v));
+                        }
+                    }
+                }
+                _ => (),
+            }
+            write!(self.f, "\n").unwrap();
+        }
+
+        for (d, decl_here, def_here) in &module.d {
+            if !decl_here{
+                continue
+            }
+            match d.def {
                 ast::Def::Macro{..} => {
                     self.emit_macro(&d)
                 }
@@ -190,6 +210,25 @@ impl Emitter {
                 }
                 ast::Def::Static{..} => {
                     self.emit_static(&d)
+                }
+                ast::Def::Enum{..} => {
+                    self.emit_enum(&d)
+                }
+                ast::Def::Fntype{..} => {
+                    self.emit_fntype(&d);
+                }
+                ast::Def::Theory{..} => {
+                }
+                ast::Def::Testcase {..} => {
+                    self.emit_testcase(&d);
+                }
+                ast::Def::Function{..} => {
+                    if !d.name.ends_with("::main") {
+                        self.emit_decl(&d);
+                    }
+                }
+                ast::Def::Include {inline,..} => {
+                    self.emit_include(&d);
                 }
                 ast::Def::Struct{..} => {
                     self.emit_struct(&d, *def_here, None);
@@ -201,27 +240,9 @@ impl Emitter {
                         }
                     }
                 }
-                ast::Def::Enum{..} => {
-                    self.emit_enum(&d)
-                }
-                ast::Def::Function{..} => {
-                    if !d.name.ends_with("::main") {
-                        self.emit_decl(&d);
-                    }
-                }
-                ast::Def::Fntype{..} => {
-                    self.emit_fntype(&d);
-                }
-                ast::Def::Theory{..} => {
-                }
-                ast::Def::Testcase {..} => {
-                    self.emit_testcase(&d);
-                }
-                ast::Def::Include {..} => {
-                    self.emit_include(&d);
-                }
+
+                _ => (),
             }
-            write!(self.f, "\n").unwrap();
         }
 
         if self.header {
@@ -234,12 +255,15 @@ impl Emitter {
                 if !def_here {
                     continue
                 }
-                if let ast::Def::Function{..} = d.def {
-                    let mut name = Name::from(&d.name);
-                    name.pop();
-                    if name == module.name {
-                        self.emit_def(&d);
+                match d.def {
+                    ast::Def::Function{..} => {
+                        let mut name = Name::from(&d.name);
+                        name.pop();
+                        if name == module.name {
+                            self.emit_def(&d);
+                        }
                     }
+                    _ => (),
                 }
             }
         }
@@ -474,6 +498,33 @@ impl Emitter {
     }
 
 
+    pub fn emit_struct_def(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
+        let (fields, packed, _tail, union) = match &ast.def {
+            ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
+            _ => unreachable!(),
+        };
+
+        self.emit_loc(&ast.loc);
+        if *union {
+            write!(self.f, "union ").unwrap();
+        } else {
+            write!(self.f, "struct ").unwrap();
+        }
+        write!(self.f, "{}_t;\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+
+        write!(self.f, "typedef ").unwrap();
+        if *union {
+            write!(self.f, "union ").unwrap();
+        } else {
+            write!(self.f, "struct ").unwrap();
+        }
+        write!(self.f, "{}_t {};\n",
+            self.to_local_name(&Name::from(&ast.name)),
+            self.to_local_name(&Name::from(&ast.name))
+        ).unwrap();
+
+    }
+
     pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
         let (fields, packed, _tail, union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
@@ -482,15 +533,13 @@ impl Emitter {
 
         self.emit_loc(&ast.loc);
         if *union {
-            write!(self.f, "typedef union \n").unwrap();
+            write!(self.f, "union ").unwrap();
         } else {
-            write!(self.f, "typedef struct \n").unwrap();
+            write!(self.f, "struct ").unwrap();
         }
+        write!(self.f, "{}_t ", self.to_local_name(&Name::from(&ast.name))).unwrap();
 
 
-        if *packed {
-            write!(self.f, " __attribute__((__packed__)) ").unwrap();
-        }
 
 
         write!(self.f, "{{\n").unwrap();
@@ -534,10 +583,13 @@ impl Emitter {
                 write!(self.f, "   uint8_t _____tail [{}];\n", tt).unwrap();
             }
         }
+        write!(self.f, "}}\n").unwrap();
 
-        write!(self.f, "}} {}", self.to_local_name(&Name::from(&ast.name))).unwrap();
-        write!(self.f, " ;\n").unwrap();
+        if *packed {
+            write!(self.f, " __attribute__((__packed__)) ").unwrap();
+        }
 
+        write!(self.f, ";\n").unwrap();
 
         if def_here {
             if ast.vis == ast::Visibility::Export {
