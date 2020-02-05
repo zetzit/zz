@@ -396,7 +396,7 @@ when allocating a new stack variable of type String, you also allocate a tail on
     printf("%.*s", s.len, s.mem);
 ```
 
-again, + means tail, but here we specify an ineteger value of exact numbers of char we would like to add.
+again, + means tail, but here we specify an integer value of exact numbers of char we would like to add.
 the tail is measured in number of elements of whatever is the last unsized element in the struct, not in bytes.
 
 String can dynamically expand within the tail memory. in this case, we append some stuff to the string, without ever allocating any heap.
