@@ -60,7 +60,7 @@ There is no stack unwinding (C++, rust), and no coroutines (go), so all code emi
 with no requirements towards compiler features.
 
 ZZ works nicely with vendor provided closed source compiler for obscure systems.
-Like arduino, esp32, propriatary firmware compilers, and integrates nicely into existing industry standard microkernels like zephyr, freerots, etc.
+Like arduino, esp32, propriatary firmware compilers, and integrates nicely into existing industry standard microkernels like zephyr, freertos, etc.
 
 #### safety and correctness with symbolic execution
 
