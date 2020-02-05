@@ -85,7 +85,7 @@ so my::lib::hello becomes my_lib_hello, which is C convention.
 
 #### top level declarations: fn, struct
 
-fn delares a function.
+fn declares a function.
 struct declares a struct.
 nothing fancy here.
 
@@ -100,7 +100,7 @@ thread_local mutable bool bob = true;
 atomic mutable int marvin = 0;
 ```
 
-const is inlined in each module and therefor points to different memory in each module.
+const is inlined in each module and therefore points to different memory in each module.
 static has a global storage location, but is private to the current module.
 
 in effect, there is no way to have declare a shared global writable variable.
@@ -204,7 +204,7 @@ fn bla(int * a, int l)
 ```
 
 
-thanks to the underlying SMT solver, the ZZ symbolic executor will know that a[2] is only executed in the case where len(a) >= l >= 3, so it is defined.
+thanks to the underlying SMT solver, the ZZ symbolic executor will know that `a[2]` is only executed in the case where `len(a) >= l >= 3`, so it is defined.
 
 The where keyword requires behaviour in the callsite, and the model keyword declares how the function itself will behave.
 
@@ -222,7 +222,7 @@ But it actually does not, so this won't compile.
 
 ### theory
 
-we can use annotations to define states for types, which neatly lets you define which calls are legal on whic
+we can use annotations to define states for types, which neatly lets you define which calls are legal on which
 type at a given time in the program without ANY runtime code.
 
 
@@ -295,7 +295,7 @@ struct A {
 ```
 
 Every branch of an #if / #else must contain a completed statement,
-and can only appear where a statment would be valid,
+and can only appear where a statement would be valid,
 so this is not possible:
 
 ```C
@@ -328,7 +328,7 @@ unless you want to apply mutability to the local storage named foo
     *foo = 0 // compile error
 ```
 
-Coincidentally this is roughly equivalent to Rust, so rust devs should feel right at home.
+Coincidentally this is roughly equivalent to Rust, so Rust devs should feel right at home.
 Even if not, you will quickly learn how pointer tags works by following the compiler errors.
 
 #### fntype
@@ -350,7 +350,7 @@ fn main() {
 
 ```
 
-closures do not exist in ZZ. One reason being that the C output would be difficult to use in other raw c code.
+closures do not exist in ZZ. One reason being that the C output would be difficult to use in other raw C code.
 But the biggest reason is that most usage of closures is for capturing scope state.
 That only really works well with garbage collected languages, otherwise its difficult to reason about (see rust).
 In ZZ we instead explicitly track all state in structs and simply use plain stateless functions.
