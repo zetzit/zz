@@ -54,7 +54,7 @@ fn gen(Random *self) -> u32 {
 ZZ emits plain C and it will always do that. It is one of the main reasons it exists.
 It will always emit C into a C compiler which will then emit the binary.
 
-most modern languages have has their own ABI, deviating from C, so you have to use glue tools to play nice with others.
+most modern languages have their own ABI, deviating from C, so you have to use glue tools to play nice with others.
 with ZZ being emitted as C, all you do is include the header.
 
 There is no stack unwinding (C++, rust), and no coroutines (go), so all code emits to plain ansi C
@@ -104,7 +104,7 @@ atomic mutable int marvin = 0;
 const is inlined in each module and therefore points to different memory in each module.
 static has a global storage location, but is private to the current module.
 
-in effect, there is no way to have declare a shared global writable variable.
+in effect, there is no way to declare a shared global writable variable.
 ZZ has no borrowchecker, and the restriction has nothing to do with preventing multithread races.
 Instead the declarations are selected so that the resulting exported binary interface can be mapped to any other language.
 
@@ -277,7 +277,7 @@ fn main() {
 
 #### conditional compilation / preprocessor
 
-Like in rust, the prepro is not a string processor, but rather executed on the AST  **after** parsing.
+Like in rust, the prepro is not a string processor, but rather executed on the AST **after** parsing.
 This makes it behave very different than C, even if the syntax is the same as C.
 
 The right hand side of #if is evaluated immediately and can only access preprocessor scope.
