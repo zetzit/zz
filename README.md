@@ -11,6 +11,7 @@ You can also use it to build cross platform libraries, with a clean portable C-s
 A major innovative feature is that all code is formally proven by symbolic execution in a virtual machine, at compile time.
 
 [![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
+[![FAQ](https://img.shields.io/badge/FAQ-Wiki-blue)](https://github.com/aep/zz/wiki/FAQ)
 
 ### quick quick start
 
