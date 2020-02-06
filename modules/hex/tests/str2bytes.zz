@@ -1,7 +1,7 @@
 using <string.h>::{memcmp, strlen};
-using <stdio.h>::{getline, printf, putchar, stdin};
+using <stdio.h>::{printf, fgetc, putchar, fgets, stdin, FILE};
 using hex;
-using <stdlib.h>::{free};
+using <stdlib.h>::{malloc, realloc, free};
 
 
 
@@ -42,16 +42,16 @@ fn t(char *str) {
 
 pub fn main() -> int {
     for (;;) {
-        char mut * mut line = 0;
+        char mut line[128];
         usize mut l = 0;
-        int nread = as<int>(getline(&line, &l, stdin));
-        if nread < 1 {
-            free(line);
-            break;
+
+        char *rr = (char*)fgets(line, sizeof(line), stdin);
+        if rr == 0 {
+           break;
         }
         static_attest(safe(line));
+        static_attest(nullterm(line));
         t(line);
-        free(line);
     }
     return 0;
 }

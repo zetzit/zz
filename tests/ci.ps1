@@ -2,13 +2,13 @@ $env:TARGET_CC="clang"
 $env:RUST_BACKTRACE="full"
 $THIS=Get-Location
 
-cargo build
+cargo build --release
 
 Set-Location $THIS
 foreach($i in Get-ChildItem "mustpass" -Directory){
     Set-Location $i.FullName
-    ./../../../target/debug/zz clean
-    ./.././../../target/debug/zz run
+    ./../../../target/release/zz clean
+    ./.././../../target/release/zz run
     if ($LastExitCode -eq 0){
         Write-Output "$i passed"
     } else {
@@ -21,8 +21,8 @@ foreach($i in Get-ChildItem "mustpass" -Directory){
 Set-Location $THIS
 foreach($i in Get-ChildItem "mustfail" -Directory){
     Set-Location $i.FullName
-    ./../../../target/debug/zz clean
-    ./.././../../target/debug/zz check
+    ./../../../target/release/zz clean
+    ./.././../../target/release/zz check
     if ($LastExitCode -eq 0){
         Write-Output "$i passed, but it should not"
         Set-Location $THIS

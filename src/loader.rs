@@ -27,7 +27,7 @@ pub fn load(
     let mut files = Vec::new();
     for entry in std::fs::read_dir(src).expect(&format!("cannot open src directory {:?} ", src)) {
         let entry = entry.unwrap();
-        let path  = entry.path().canonicalize().unwrap();
+        let path  = entry.path();
         if path.is_file() {
             let ext = match path.extension().map(|v|v.to_str()) {
                 Some(ext) => ext,
@@ -54,8 +54,7 @@ pub fn load(
     if !silent{
         pb.lock().unwrap().finish_print(&format!("parsing {}", artifact_name));
     }
-    let om : HashMap<Name, Module> = files.into_par_iter().map(|path_buf| {
-        let path = path_buf.canonicalize().unwrap();
+    let om : HashMap<Name, Module> = files.into_par_iter().map(|path| {
         if !silent{
             pb.lock().unwrap().message(&format!("parsing {:?} ", path));
         }
