@@ -14,6 +14,7 @@ struct Storage {
     name:           Name,
     typed:          ast::Typed,
     declared:       ast::Location,
+    complete:       flatten::TypeComplete,
 }
 
 #[derive(Default)]
@@ -50,7 +51,13 @@ impl Stack {
         self.stack.last_mut().unwrap()
     }
 
-    fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, _tags: ast::Tags) -> Result<(), Error> {
+    fn alloc(&mut self,
+             name: Name,
+             typed: ast::Typed,
+             loc: ast::Location,
+             _tags: ast::Tags,
+             complete: &flatten::TypeComplete
+    ) -> Result<(), Error> {
 
         match format!("{}", name).as_str() {
             "len" | "theory" | "safe" | "nullterm" => {
@@ -65,16 +72,19 @@ impl Stack {
         }
 
         if let Some(prev) = self.cur().storage.get(&name).cloned() {
-            return Err(Error::new(format!("redeclation of local name '{}'", name), vec![
-                (loc.clone(), "this declaration would shadow a previous name".to_string()),
-                (prev.declared.clone(), "previous declaration".to_string())
-            ]));
+            if prev.complete == flatten::TypeComplete::Complete &&  complete == &flatten::TypeComplete::Complete{
+                return Err(Error::new(format!("redeclation of local name '{}'", name), vec![
+                    (loc.clone(), "this declaration would shadow a previous name".to_string()),
+                    (prev.declared.clone(), "previous declaration".to_string())
+                ]));
+            }
         }
 
         self.cur().storage.insert(name.clone(), Storage{
             typed:      typed.clone(),
             name:       name,
             declared:   loc.clone(),
+            complete:   complete.clone(),
         });
 
         Ok(())
@@ -89,7 +99,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
 
     // declaration run
-    for (d,_,_defined_here) in &mut module.d {
+    for (d,complete) in &mut module.d {
         stack.defs.insert(Name::from(&d.name), d.def.clone());
 
         match &mut d.def {
@@ -103,7 +113,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                         tail:   ast::Tail::None,
                     },
                     d.loc.clone(),
-                    Tags::new()
+                    Tags::new(),
+                    complete
                 )?;
             },
             ast::Def::Function{args, callassert, callattests, calleffect, ..} => {
@@ -116,7 +127,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                         tail:   ast::Tail::None,
                     },
                     d.loc.clone(),
-                    Tags::new()
+                    Tags::new(),complete
                 )?;
 
             },
@@ -133,13 +144,15 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     typed.clone(),
                     d.loc.clone(),
                     tags.clone(),
+                    complete,
                 )?;
             },
             ast::Def::Const { typed, .. } => {
                 stack.alloc(
                     Name::from(&d.name),
                     typed.clone(),
-                    d.loc.clone(), Tags::new()
+                    d.loc.clone(), Tags::new(),
+                    complete,
                 )?;
             },
             ast::Def::Fntype {..} => {
@@ -151,7 +164,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                         loc:    d.loc.clone(),
                         tail:   ast::Tail::None,
                     },
-                    d.loc.clone(), Tags::new()
+                    d.loc.clone(), Tags::new(),
+                    complete,
                 )?;
             },
             ast::Def::Struct {fields, union, ..} => {
@@ -163,7 +177,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                         loc:    d.loc.clone(),
                         tail:   ast::Tail::None,
                     },
-                    d.loc.clone(), Tags::new()
+                    d.loc.clone(), Tags::new(),
+                    complete,
                 )?;
                 if *union {
                     for field in fields {
@@ -180,7 +195,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                         loc:    d.loc.clone(),
                         tail:   ast::Tail::None,
                     },
-                    d.loc.clone(), Tags::new()
+                    d.loc.clone(), Tags::new(),
+                    complete,
                 )?;
 
                 /*
@@ -218,7 +234,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                         loc:    d.loc.clone(),
                         tail:   ast::Tail::None,
                     },
-                    d.loc.clone(), Tags::new()
+                    d.loc.clone(), Tags::new(),
+                    complete,
                 )?;
             },
             ast::Def::Testcase {..} => {},
@@ -228,7 +245,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
 
     // definition run
-    for (d,_,defined_here) in &mut module.d {
+    for (d, complete) in &mut module.d {
         match &mut d.def {
             ast::Def::Theory{..} => {},
             ast::Def::Function{args, body, callassert, callattests, calleffect, ..} => {
@@ -318,23 +335,27 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
 
 
-                if !*defined_here {
-                    continue;
+                if complete == &flatten::TypeComplete::Complete {
+                    stack.push(format!("{}", d.name));
+
+                    for i in 0..args.len() {
+                        let argname = Name::from(&args[i].name);
+                        stack.alloc(
+                            argname.clone(),
+                            args[i].typed.clone(),
+                            args[i].loc.clone(),
+                            args[i].tags.clone(),
+                            &flatten::TypeComplete::Complete,
+                            )?;
+                    }
+
+                    stack.expand_scope(&mut body.statements)?;
+                    body.statements.extend(stack.drop_fn(&body.end)?);
+
+                    stack.pop();
                 }
 
 
-                stack.push(format!("{}", d.name));
-
-                for i in 0..args.len() {
-                    let argname = Name::from(&args[i].name);
-                    stack.alloc(argname.clone(), args[i].typed.clone(), args[i].loc.clone(), args[i].tags.clone())?;
-                }
-
-                stack.expand_scope(&mut body.statements)?;
-                body.statements.extend(stack.drop_fn(&body.end)?);
-
-
-                stack.pop();
             },
             _ => (),
         }
@@ -413,7 +434,7 @@ impl Stack {
                             tags: Tags::new(),
                         });
                     }
-                    self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone())?;
+                    self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone(), &flatten::TypeComplete::Complete)?;
                     if let Some(expr) = assign {
                         self.expand_expr(expr)?;
                     }
@@ -530,20 +551,22 @@ impl Stack {
                     tail:   ast::Tail::None,
                 }))
             };
-            r.extend(self.drop_local(loc, &storage.typed, accesslocal)?);
+            r.extend(self.drop_local(loc, &storage.typed, accesslocal, format!("(&{})", name))?);
         }
         Ok(r)
     }
 
 
-    fn drop_local(&self, loc: &ast::Location, typed: &ast::Typed, expr: ast::Expression) -> Result<Vec<Box<ast::Statement>>, Error> {
+    fn drop_local(&self, loc: &ast::Location, typed: &ast::Typed, expr: ast::Expression, exprs: String)
+        -> Result<Vec<Box<ast::Statement>>, Error>
+    {
         let mut v = Vec::new();
         if let ast::Type::Other(name) = &typed.t {
             if let Some(ast::Def::Struct{impls,fields,..}) = self.defs.get(name) {
                 if let Some((fnname,_)) = impls.get("drop") {
-                    emit_debug(format!("drop {}", typed), &[(loc.clone(), "here")]);
+                    emit_debug(format!("drop {} {}", typed, exprs), &[(loc.clone(), "here")]);
                     let call = ast::Expression::Call {
-                        loc:            loc.clone(),
+                        loc:            ast::Location::gen(loc, format!("{}({})", fnname.clone(), exprs)),
                         name:           Box::new(ast::Expression::Name(ast::Typed{
                             t:      ast::Type::Other(fnname.clone()),
                             ptr:    Vec::new(),
@@ -571,7 +594,7 @@ impl Stack {
                             rhs:    field.name.clone(),
                         }),
                     };
-                    v.extend(self.drop_local(loc, &field.typed, accesslocal)?);
+                    v.extend(self.drop_local(loc, &field.typed, accesslocal, format!("{}->{}", exprs, field.name))?);
                 }
             }
         }

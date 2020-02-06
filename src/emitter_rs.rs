@@ -122,14 +122,10 @@ impl Emitter {
 
         write!(self.f, "extern {{\n").unwrap();
 
-        for (d,decl_here,def_here) in &module.d {
-            if !decl_here{
+        for (d,complete) in &module.d {
+            if complete != &flatten::TypeComplete::Complete {
                 continue
             }
-            if d.vis != ast::Visibility::Export {
-                continue;
-            }
-
 
             let mut dmodname = Name::from(&d.name);
             dmodname.pop();
@@ -148,12 +144,12 @@ impl Emitter {
                     self.emit_static(&d)
                 }
                 ast::Def::Struct{..} => {
-                    self.emit_struct(&d, *def_here, None);
+                    self.emit_struct(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
                         for v in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
-                            self.emit_struct(&d, *def_here, Some(*v));
+                            self.emit_struct(&d, Some(*v));
                         }
                     }
                 }
@@ -234,7 +230,7 @@ impl Emitter {
     }
 
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, _def_here: bool, _tail_variant: Option<u64>) {
+    pub fn emit_struct(&mut self, ast: &ast::Local, _tail_variant: Option<u64>) {
         let (_fields, _packed, _tail, _union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),

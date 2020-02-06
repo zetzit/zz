@@ -42,7 +42,7 @@ export fn new(u8 mut*mem, usize size) -> MutSlice
 }
 
 
-export inline fn mem(MutSlice mut * self) -> u8 mut*
+export fn mem(MutSlice mut * self) -> u8 mut*
     @solver = yices2
     model len(return) >= self->slice.size
     model len(return) >= self->at

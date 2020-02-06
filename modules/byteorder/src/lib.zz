@@ -1,30 +1,12 @@
 inline using "lib.h"::{BYTE_ORDER};
 
-pub inline fn bswap_16(u16 x) -> u16
-{
-    return x<<8 | x>>8;
-}
-
-export inline fn bswap_32(u32 x) -> u32
-{
-    return x>>24 | ( (x >> 8) & 0xff00) | ((x<<8) & 0xff0000) | x<<24;
-}
-
-pub inline fn bswap_64(u64 x) -> u64
-{
-    unsafe {
-        return (bswap_32(x) + ((u64)0)) <<32 | bswap_32(x>>32);
-    }
-}
-
-
 // host to big endian
 
 pub inline fn to_be16(u16 x) -> u16 {
     BYTE_ORDER;
     @{{
         #if BYTE_ORDER == LITTLE_ENDIAN
-            return byteorder_bswap_16(x);
+            return bswap_16(x);
         #else
             return x;
         #endif
@@ -38,7 +20,7 @@ pub inline fn to_be32(u32 x) -> u32{
     BYTE_ORDER;
     @{{
         #if BYTE_ORDER == LITTLE_ENDIAN
-            return byteorder_bswap_32(x);
+            return bswap_32(x);
         #else
             return x;
         #endif
@@ -52,7 +34,7 @@ pub inline fn to_be64(u64 x) -> u64 {
     BYTE_ORDER;
     @{{
         #if BYTE_ORDER == LITTLE_ENDIAN
-            return byteorder_bswap_64(x);
+            return bswap_64(x);
         #else
             return x;
         #endif
@@ -70,7 +52,7 @@ pub inline fn to_le16(u16 x) -> u16 {
     BYTE_ORDER;
     @{{
         #if BYTE_ORDER == BIG_ENDIAN
-            return byteorder_bswap_16(x);
+            return bswap_16(x);
         #else
             return x;
         #endif
@@ -83,7 +65,7 @@ pub inline fn from_le16(u16 x) -> u16 {
 pub inline fn to_le32(u32 x) -> u32{
     @{{
         #if BYTE_ORDER == BIG_ENDIAN
-            return byteorder_bswap_32(x);
+            return bswap_32(x);
         #else
             return x;
         #endif
@@ -97,7 +79,7 @@ pub inline fn to_le64(u64 x) -> u64 {
     BYTE_ORDER;
     @{{
         #if BYTE_ORDER == BIG_ENDIAN
-            return byteorder_bswap_64(x);
+            return bswap_64(x);
         #else
             return x;
         #endif

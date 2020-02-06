@@ -172,46 +172,30 @@ impl Emitter {
             write!(self.f, "#ifndef ZZ_EXPORT_HEADER_{}\n#define ZZ_EXPORT_HEADER_{}\n", headername, headername).unwrap();
         }
 
+        let mut dup = HashSet::new();
 
-        for (d,decl_here,def_here) in &module.d {
-            debug!("  {} (decl_here: {})", d.name, decl_here);
-            if !decl_here{
-                continue
-            }
-            if self.header && d.vis != ast::Visibility::Export {
-                continue
-            }
-            match d.def {
-                ast::Def::Struct{..} => {
-                    self.emit_struct_def(&d, *def_here, None);
-                    if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for v in vs {
-                            let mut d = d.clone();
-                            d.name = format!("{}_{}", d.name, v);
-                            self.emit_struct_def(&d, *def_here, Some(*v));
-                        }
-                    }
-                }
-                _ => (),
-            }
-            write!(self.f, "\n").unwrap();
-        }
-
-        for (d, decl_here, def_here) in &module.d {
-            if !decl_here{
-                continue
-            }
+        for (d, complete) in &module.d {
+            debug!("    emitting {}", d.name);
             match d.def {
                 ast::Def::Macro{..} => {
+                    if complete != &flatten::TypeComplete::Complete {
+                        continue
+                    }
                     self.emit_macro(&d)
                 }
                 ast::Def::Const{..} => {
                     self.emit_const(&d)
                 }
                 ast::Def::Static{..} => {
+                    if complete != &flatten::TypeComplete::Complete {
+                        continue
+                    }
                     self.emit_static(&d)
                 }
                 ast::Def::Enum{..} => {
+                    if complete != &flatten::TypeComplete::Complete {
+                        continue
+                    }
                     self.emit_enum(&d)
                 }
                 ast::Def::Fntype{..} => {
@@ -220,23 +204,54 @@ impl Emitter {
                 ast::Def::Theory{..} => {
                 }
                 ast::Def::Testcase {..} => {
+                    if complete != &flatten::TypeComplete::Complete {
+                        continue
+                    }
                     self.emit_testcase(&d);
                 }
                 ast::Def::Function{..} => {
-                    if !d.name.ends_with("::main") {
-                        self.emit_decl(&d);
-                    }
+                    self.emit_decl(&d);
                 }
                 ast::Def::Include {inline,..} => {
-                    self.emit_include(&d);
+                    if dup.insert(d.name.clone()) {
+                        self.emit_include(&d);
+                    }
                 }
                 ast::Def::Struct{..} => {
-                    self.emit_struct(&d, *def_here, None);
-                    if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for v in vs {
-                            let mut d = d.clone();
-                            d.name = format!("{}_{}", d.name, v);
-                            self.emit_struct(&d, *def_here, Some(*v));
+                    match complete {
+                        flatten::TypeComplete::Incomplete => {
+                            self.emit_struct_def(&d, None);
+                            if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                                for v in vs {
+                                    let mut d = d.clone();
+                                    d.name = format!("{}_{}", d.name, v);
+                                    self.emit_struct_def(&d, Some(*v));
+                                }
+                            }
+                        }
+                        flatten::TypeComplete::Complete => {
+                            self.emit_struct_def(&d, None);
+                            if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                                for v in vs {
+                                    let mut d = d.clone();
+                                    d.name = format!("{}_{}", d.name, v);
+                                    self.emit_struct_def(&d, Some(*v));
+                                }
+                            }
+
+
+                            let mut name = Name::from(&d.name);
+                            name.pop();
+                            let isimpl = name == module.name;
+
+                            self.emit_struct(&d, isimpl, None);
+                            if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                                for v in vs {
+                                    let mut d = d.clone();
+                                    d.name = format!("{}_{}", d.name, v);
+                                    self.emit_struct(&d, isimpl, Some(*v));
+                                }
+                            }
                         }
                     }
                 }
@@ -245,30 +260,22 @@ impl Emitter {
             }
         }
 
-        if self.header {
-            write!(self.f, "\n#endif\n").unwrap();
-        } else {
-            for (d, decl_here, def_here) in &module.d {
-                if !decl_here{
-                    continue
-                }
-                if !def_here {
-                    continue
-                }
-                match d.def {
-                    ast::Def::Function{..} => {
-                        let mut name = Name::from(&d.name);
-                        name.pop();
-                        if name == module.name {
-                            self.emit_def(&d);
-                        }
+        // function impls are always last.
+        // so we can be a bit more relaxed about emitting the correct decleration order
+
+        for (d, complete) in &module.d {
+            debug!("    emitting2 {}", d.name);
+            match &d.def {
+                ast::Def::Function{attr, ..} => {
+                    let mut mname = Name::from(&d.name);
+                    mname.pop();
+                    if complete == &flatten::TypeComplete::Complete && (mname == module.name || attr.contains_key("inline")) {
+                        self.emit_def(&d);
                     }
-                    _ => (),
                 }
+                _ => (),
             }
         }
-
-
 
         CFile {
             name:       module.name,
@@ -498,7 +505,7 @@ impl Emitter {
     }
 
 
-    pub fn emit_struct_def(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
+    pub fn emit_struct_def(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
         let (fields, packed, _tail, union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
@@ -525,7 +532,7 @@ impl Emitter {
 
     }
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, def_here: bool, tail_variant: Option<u64>) {
+    pub fn emit_struct(&mut self, ast: &ast::Local, isimpl: bool, tail_variant: Option<u64>) {
         let (fields, packed, _tail, union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
@@ -591,13 +598,11 @@ impl Emitter {
 
         write!(self.f, ";\n").unwrap();
 
-        if def_here {
-            if ast.vis == ast::Visibility::Export {
-                write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
-                self.to_local_name(&Name::from(&ast.name)),
-                self.to_local_name(&Name::from(&ast.name)),
-                ).unwrap();
-            }
+        if ast.vis == ast::Visibility::Export && isimpl {
+            write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
+            self.to_local_name(&Name::from(&ast.name)),
+            self.to_local_name(&Name::from(&ast.name)),
+            ).unwrap();
         }
     }
 
@@ -708,6 +713,7 @@ impl Emitter {
                     name.0.insert(0, String::new());
                 },
                 "inline" => {
+                    write!(self.f, " static inline ").unwrap();
                 },
                 o => {
                     parser::emit_error(
@@ -810,7 +816,7 @@ impl Emitter {
                     name.0.insert(0, String::new());
                 },
                 "inline" => {
-                    write!(self.f, " inline ").unwrap();
+                    write!(self.f, " static inline ").unwrap();
                 },
                 o => {
                     parser::emit_error(

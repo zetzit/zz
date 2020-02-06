@@ -10,6 +10,7 @@ cd $THIS/tests
 
 for i in $THIS/examples/*
 do
+    echo "================="
     cd $i
     ../../target/release/zz --smt-timeout=200000 clean
     ../../target/release/zz --smt-timeout=200000 run

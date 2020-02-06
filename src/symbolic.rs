@@ -234,7 +234,7 @@ impl Symbolic {
 
 
         // declaration run
-        for (d,_, _defined_here) in &mut module.d {
+        for (d,complete) in &mut module.d {
             self.defs.insert(Name::from(&d.name), d.def.clone());
             match &mut d.def {
                 ast::Def::Theory{args, ret, ..} => {
@@ -247,7 +247,11 @@ impl Symbolic {
                             tail:   ast::Tail::None,
                         },
                         d.loc.clone(), Tags::new()
-                    )?;
+                    );
+                    let sym = match sym {
+                        Err(_) => continue,
+                        Ok(v) => v,
+                    };
 
                     let ret = if let Some(ret) = ret {
                         if let ast::Type::Other(_) = ret.typed.t {
@@ -280,7 +284,11 @@ impl Symbolic {
                         tail:   ast::Tail::None,
                     },
                     d.loc.clone(), Tags::new()
-                    )?;
+                    );
+                    let sym = match sym {
+                        Err(_) => continue,
+                        Ok(v) => v,
+                    };
 
                     self.memory[sym].value = Value::Function {
                         loc:    d.loc.clone(),
@@ -363,7 +371,7 @@ impl Symbolic {
                     )?;
                 },
                 ast::Def::Struct {..} => {
-                    self.alloc(
+                    let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed{
                             t:      ast::Type::Other(Name::from(&d.name.clone())),
@@ -372,7 +380,11 @@ impl Symbolic {
                             tail:   ast::Tail::None,
                         },
                         d.loc.clone(), Tags::new()
-                    )?;
+                    );
+                    let sym = match sym {
+                        Err(_) => continue,
+                        Ok(v) => v,
+                    };
                 },
                 ast::Def::Enum{names} => {
                     self.alloc(
@@ -431,7 +443,7 @@ impl Symbolic {
             }
         }
 
-        let (fun,_,_) = &mut module.d[fun];
+        let (fun,_) = &mut module.d[fun];
 
         match &mut fun.def {
             ast::Def::Function{args, body, ret, callassert, calleffect, callattests, ..} => {
@@ -3310,9 +3322,9 @@ pub fn execute(module: &mut flatten::Module) -> bool {
 
     let mut defs        = Vec::new();
     let mut function_at = Vec::new();
-    for (i, (d,_,defined_here)) in module.d.clone().into_iter().enumerate() {
+    for (i, (d,complete)) in module.d.clone().into_iter().enumerate() {
         if let ast::Def::Function{ref hints, ..} = d.def {
-            if defined_here {
+            if complete == flatten::TypeComplete::Complete {
                 function_at.push((i, d.name.clone(), module.clone(), hints.clone()));
             }
         }

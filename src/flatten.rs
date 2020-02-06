@@ -8,14 +8,33 @@ use std::path::PathBuf;
 use super::abs::Ext;
 
 
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub enum TypeComplete {
+    Incomplete  = 1,
+    Complete    = 2,
+}
+
+#[derive(Clone, Debug, Default)]
+struct TypeSet(pub HashMap<Name, TypeComplete>);
+impl TypeSet {
+    pub fn insert(&mut self, name: Name, tc: TypeComplete) {
+        match self.0.get(&name) {
+            Some(cc) if cc >= &tc=> {
+            }
+            _ => {
+                self.0.insert(name, tc);
+            }
+        };
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Module {
     pub name:           Name,
     pub sources:        HashSet<PathBuf>,
     pub c_names:        HashMap<Name, ast::Location>,
 
-                                        //vv declare in this object, define in this object
-    pub d:              Vec<(ast::Local, bool,                       bool)>,
+    pub d:              Vec<(ast::Local, TypeComplete) >,
 
 
     pub aliases:        HashMap<Name, String>,
@@ -26,12 +45,14 @@ pub struct Module {
 
 #[derive(Clone)]
 struct Local {
-    decl_deps:          Vec<(Name, ast::Location)>,
-    impl_deps:          Vec<(Name, ast::Location)>,
+    decl_deps:          Vec<(Name, TypeComplete, ast::Location)>,
+    impl_deps:          Vec<(Name, TypeComplete, ast::Location)>,
     use_deps:           Vec<(Name, ast::Location)>,
     ast:                Option<ast::Local>,
     in_scope_here:      ast::Location,
 }
+
+
 
 
 #[derive(Default)]
@@ -42,24 +63,29 @@ struct Collector {
 #[derive(Default)]
 struct Locals (HashMap<Name, Local>);
 
-fn tag_deps(_cr: &mut Collector, tags: &ast::Tags) ->  Vec<(Name, ast::Location)> {
+fn tag_deps(_cr: &mut Collector, tags: &ast::Tags) ->  Vec<(Name, TypeComplete, ast::Location)> {
     let mut r = Vec::new();
 
     for (_,vals) in tags.0.iter() {
         for (k,loc) in vals.iter() {
             let name = Name::from(k);
             if name.is_absolute() && name.len() > 2 {
-                r.push((name,loc.clone()));
+                r.push((name, TypeComplete::Incomplete , loc.clone()));
             }
         }
     }
     r
 }
 
-fn type_deps(cr: &mut Collector, typed: &ast::Typed) -> Vec<(Name, ast::Location)> {
+fn type_deps(cr: &mut Collector, typed: &ast::Typed) -> Vec<(Name, TypeComplete, ast::Location)> {
     let mut r = Vec::new();
     if let ast::Type::Other(name) = &typed.t {
-        r.push((name.clone(), typed.loc.clone()));
+        let cc = if typed.ptr.len() > 0 {
+            TypeComplete::Incomplete
+        } else {
+            TypeComplete::Complete
+        };
+        r.push((name.clone(), cc, typed.loc.clone()));
     }
     for ptr in &typed.ptr {
         r.extend(tag_deps(cr, &ptr.tags));
@@ -74,7 +100,7 @@ fn type_deps(cr: &mut Collector, typed: &ast::Typed) -> Vec<(Name, ast::Location
     r
 }
 
-fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, ast::Location)> {
+fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, TypeComplete, ast::Location)> {
     match stm {
         ast::Statement::Mark{..} | ast::Statement::Label{..} => {
             Vec::new()
@@ -169,7 +195,7 @@ fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, ast::Locatio
     }
 }
 
-fn block_deps(cr: &mut Collector,block: &ast::Block) -> Vec<(Name, ast::Location)> {
+fn block_deps(cr: &mut Collector,block: &ast::Block) -> Vec<(Name, TypeComplete, ast::Location)> {
     let mut deps = Vec::new();
     for stm in &block.statements {
         deps.extend(stm_deps(cr, stm));
@@ -178,7 +204,7 @@ fn block_deps(cr: &mut Collector,block: &ast::Block) -> Vec<(Name, ast::Location
 }
 
 
-fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, ast::Location)> {
+fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, TypeComplete, ast::Location)> {
     match expr {
         ast::Expression::ArrayInit{fields,..}  => {
             let mut v = Vec::new();
@@ -198,7 +224,7 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, ast::Loca
         ast::Expression::Name(name)  => {
             if let ast::Type::Other(n) = &name.t {
                 if n.len() > 2 {
-                    vec![(n.clone(), name.loc.clone())]
+                    vec![(n.clone(), TypeComplete::Incomplete , name.loc.clone())]
                 } else {
                     Vec::new()
                 }
@@ -209,7 +235,12 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, ast::Loca
         ast::Expression::Cast{expr, into,..} => {
             let mut v = Vec::new();
             if let ast::Type::Other(n) = &into.t {
-                v.push((n.clone(), into.loc.clone()));
+                let cc = if into.ptr.len() > 0 {
+                    TypeComplete::Incomplete
+                } else {
+                    TypeComplete::Complete
+                };
+                v.push((n.clone(), cc, into.loc.clone()));
             }
             v.extend(expr_deps(cr, expr));
             v
@@ -257,9 +288,16 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     flat.sources    = md.sources.clone();
 
     let mut collected   = Locals::default();
+
     let mut injected    : HashMap<Name, Vec<(Name, ast::Location)>> = Default::default();
+
     let mut incomming   : Vec<(Name, ast::Location)>  = Vec::new();
-    let mut thisobject  = HashSet::new();
+
+    let mut thisobject  = TypeSet::default();
+
+    // functions which cannot be forward declared
+    let mut forceinline = HashSet::new();
+
     let mut collector   = Collector::default();
     let cr = &mut collector;
 
@@ -268,7 +306,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         let mut ns = md.name.clone();
         ns.push(local.name.clone());
         debug!("  local from abs.md: {}", local.name);
-        thisobject.insert(ns.clone());
+        thisobject.insert(ns.clone(), TypeComplete::Complete);
         incomming.push((ns, local.loc.clone()));
     }
 
@@ -369,9 +407,8 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             let mut ast = local.clone();
             let ast_name = local.name.clone();
 
-            let mut decl_deps       : Vec<(Name, ast::Location)> = Vec::new();
-            let mut impl_deps       : Vec<(Name, ast::Location)> = Vec::new();
-            let mut weak_deps       : Vec<(Name, ast::Location)> = Vec::new();
+            let mut decl_deps       : Vec<(Name, TypeComplete, ast::Location)> = Vec::new();
+            let mut impl_deps       : Vec<(Name, TypeComplete, ast::Location)> = Vec::new();
 
             match &local.def {
                 ast::Def::Enum{names, ..} => {
@@ -386,22 +423,25 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                         name.push(subname.clone());
                         collected.0.insert(name, Local{
                             impl_deps:      Vec::new(),
-                            decl_deps:      vec![(ns.clone(), loc.clone())],
+                            decl_deps:      vec![(ns.clone(), TypeComplete::Complete, loc.clone())],
                             use_deps:       Vec::new(),
                             ast:            None,
                             in_scope_here:  loc.clone(),
                         });
                     }
+                    forceinline.insert(name.clone());
                 }
                 ast::Def::Static{typed,expr,..} => {
                     decl_deps.extend(type_deps(cr, &typed));
                     decl_deps.extend(expr_deps(cr, expr));
+                    forceinline.insert(name.clone());
                 }
                 ast::Def::Const{typed,expr, ..} => {
                     decl_deps.extend(type_deps(cr, &typed));
                     decl_deps.extend(expr_deps(cr, expr));
+                    forceinline.insert(name.clone());
                 }
-                ast::Def::Function{ret, args, body, callassert, calleffect, .. } => {
+                ast::Def::Function{ret, args, body, callassert, calleffect, attr, .. } => {
                     if let Some(ret) = ret {
                         decl_deps.extend(type_deps(cr, &ret.typed));
                     }
@@ -438,6 +478,10 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     }
 
                     impl_deps.extend(block_deps(cr, body));
+
+                    if attr.contains_key("inline") {
+                        forceinline.insert(name.clone());
+                    }
                 }
                 ast::Def::Fntype{ret, args, ..} => {
                     if let Some(ret) = ret {
@@ -459,26 +503,27 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 }
                 ast::Def::Struct{fields,..} => {
                     for field in fields {
-                        if field.typed.ptr.len() > 0 {
-                            weak_deps.extend(type_deps(cr, &field.typed));
-                        } else {
-                            decl_deps.extend(type_deps(cr, &field.typed));
-                        }
+                        impl_deps.extend(type_deps(cr, &field.typed));
 
                         if let Some(ref expr) = &field.array {
                             if let Some(ref expr) = expr {
-                                decl_deps.extend(expr_deps(cr, expr));
+                                impl_deps.extend(expr_deps(cr, expr));
                             }
                         }
                     }
+
+                    //all structs eventually need to be emitted complete before function body
+                    thisobject.insert(name.clone(), TypeComplete::Complete);
                 }
                 ast::Def::Macro{body, ..} => {
                     decl_deps.extend(block_deps(cr, body));
+                    forceinline.insert(name.clone());
                 }
                 ast::Def::Testcase{fields, ..} => {
                     for (_, expr) in fields {
                         decl_deps.extend(expr_deps(cr, expr));
                     }
+                    forceinline.insert(name.clone());
                 }
                 ast::Def::Include{needs, expr, inline,.. } => {
                     for (typed,_) in needs {
@@ -488,6 +533,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                     if *inline {
                         flat.sources.insert(PathBuf::from(&expr));
                     }
+                    forceinline.insert(name.clone());
                 }
             }
 
@@ -495,13 +541,10 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
                 panic!("ice: incorrectly resolved '{}' as local '{}' in module '{}' ", name, local_name, module_name)
             }
 
-            for (dep,loc) in &impl_deps  {
+            for (dep,complete,loc) in &impl_deps  {
                 incomming.push((dep.clone(), loc.clone()));
             }
-            for (dep,loc) in &decl_deps  {
-                incomming.push((dep.clone(), loc.clone()));
-            }
-            for (dep,loc) in &weak_deps  {
+            for (dep,complete,loc) in &decl_deps  {
                 incomming.push((dep.clone(), loc.clone()));
             }
 
@@ -519,7 +562,7 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
             collected.0.insert(ns, Local{
                 decl_deps,
                 impl_deps,
-                use_deps:  weak_deps,
+                use_deps: Vec::new(),
                 ast: Some(ast),
                 in_scope_here: loc,
             });
@@ -612,30 +655,32 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     }
 
 
-    let impl_in_thisobject = std::mem::replace(&mut thisobject, HashSet::new());
     // collect implementation dependencies into this object
-    for name in &impl_in_thisobject {
+    for (name, complete) in std::mem::replace(&mut thisobject, TypeSet::default()).0 {
         let n = collected.0.get(&name).unwrap();
-        debug!("  thisobj from impl_in_thisobject: {}", name);
-        thisobject.insert(name.clone());
-        for (mut dep,_) in n.impl_deps.clone() {
-            if dep.0[1] == "ext" {
-                if dep.0.len() > 3 {
-                    dep.0.truncate(3);
-                }
-            }
+        debug!("  collecting impl deps for thisobj : {}", name);
+        thisobject.insert(name.clone(), complete.clone());
 
-            debug!("      < : {}", dep);
-            thisobject.insert(dep.clone());
+        if complete == TypeComplete::Complete {
+            for (mut dep,complete,_) in n.impl_deps.clone() {
+                if dep.0[1] == "ext" {
+                    if dep.0.len() > 3 {
+                        dep.0.truncate(3);
+                    }
+                }
+
+                debug!("      <I   {} {:?}", dep, complete);
+                thisobject.insert(dep.clone(), complete);
+            }
         }
-        for (mut dep,_) in n.decl_deps.clone() {
+        for (mut dep,complete,_) in n.decl_deps.clone() {
             if dep.0[1] == "ext" {
                 if dep.0.len() > 3 {
                     dep.0.truncate(3);
                 }
             }
-            debug!("      < : {}", dep);
-            thisobject.insert(dep.clone());
+            debug!("      <D   {} {:?}", dep, complete);
+            thisobject.insert(dep.clone(), complete);
         }
     }
 
@@ -655,30 +700,49 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
         }
     }
 
-    // recursively find all declaration dependencies
-    for name in std::mem::replace(&mut thisobject, HashSet::new()) {
+    // recursively find all dependencies
+    for (name, complete) in std::mem::replace(&mut thisobject, TypeSet::default()).0 {
         let mut visited = HashSet::new();
-        decl_visit(
+        dependency_visit(
             &mut visited,
             &collected.0,
             name,
+            &complete,
             &mut thisobject,
-            0);
+            0,
+            );
     }
 
 
+    // sort dependencies
+
     let mut sorted          = Vec::new();
-    let mut sorted_mark     = HashSet::new();
-    for name in &thisobject {
+    let mut sorted_mark     = HashMap::new();
+    let mut more            = HashSet::new();
+    for (name, complete) in &thisobject.0 {
         sort_visit(
             &mut sorted,
             &mut sorted_mark,
             &mut collected.0 ,
             name.clone(),
+            complete.clone(),
             None,
-            false,
             0,
+            &forceinline,
+            &mut more,
+        );
+    }
+    for name in std::mem::replace(&mut more, HashSet::new()) {
+        sort_visit(
+            &mut sorted,
+            &mut sorted_mark,
+            &mut collected.0 ,
+            name.clone(),
+            TypeComplete::Incomplete,
             None,
+            0,
+            &forceinline,
+            &mut more,
         );
     }
 
@@ -688,19 +752,31 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 
     debug!("sorted");
 
-    for (name, l) in sorted {
-        let decl_in_obj = thisobject.contains(&name);
-        let def_in_obj  = impl_in_thisobject.contains(&name);
-        debug!(" {} {}", name, if decl_in_obj {"<this object"} else {""});
-        for (dep, _) in &l.decl_deps {
-            debug!("    <D {}", dep);
+    for (name, mut complete, l) in sorted {
+
+        if let Some(ast) = &l.ast {
+            match ast.def {
+                ast::Def::Function{..} | ast::Def::Static{..} => {
+                    if !forceinline.contains(&name) {
+                        if !thisobject.0.contains_key(&name) {
+                            complete = TypeComplete::Incomplete;
+                        }
+                    }
+                }
+                _ => (),
+            }
         }
-        for (dep, _) in &l.impl_deps {
-            debug!("    <I {}", dep);
+
+        debug!(" {} {:?}", name, complete);
+        for (dep, complete, _) in &l.decl_deps {
+            debug!("    <D {:?} {}", complete, dep);
+        }
+        for (dep, complete, _) in &l.impl_deps {
+            debug!("    <I {:?} {}", complete, dep);
         }
 
         if let Some(ast) = l.ast {
-            flat.d.push((ast.clone(), decl_in_obj, def_in_obj));
+            flat.d.push((ast.clone(), complete));
         }
     }
 
@@ -709,14 +785,15 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
 }
 
 fn sort_visit(
-        sorted:             &mut Vec<(Name,Local)>,
-        sorted_mark:        &mut HashSet<Name>,
+        sorted:             &mut Vec<(Name, TypeComplete, Local)>,
+        sorted_mark:        &mut HashMap<Name, TypeComplete>,
         unsorted:           &mut HashMap<Name, Local>,
         mut name:           Name,
+        mut complete:       TypeComplete,
         here:               Option<&ast::Location>,
-        allow_recursion:    bool,
         depth:              usize,
-        mut use_deps:       Option<&mut Vec<(Name, ast::Location)>>
+        forceinline:        &HashSet<Name>,
+        more:               &mut HashSet<Name>, // discover more dependencies
 )
 {
     if name.0[1] == "ext" {
@@ -725,70 +802,90 @@ fn sort_visit(
         }
     }
 
-    if sorted_mark.contains(&name) {
-        return;
+    debug!("  {} sort_visit: {} {:?}", " ".repeat(depth), name, complete);
+
+    if forceinline.contains(&name) {
+        debug!("  {} forced inline", " ".repeat(depth));
+        complete = TypeComplete::Complete;
     }
 
-    debug!("  {} sort_visit: {} {}", " ".repeat(depth), name, if allow_recursion { "(recursion ok)"} else {""});
 
-    let n = match unsorted.remove(&name) {
-        Some(v) => v,
-        None => {
-            if allow_recursion {
-                return;
-            }
-            let mut estack = Vec::new();
-            if let Some(here) = here {
-                estack.push((here.clone(), format!("type incomplete in this scope")));
-            }
-            emit_error(format!("recursive type {} will never complete", name), &estack);
+    if let Some(cc) = sorted_mark.get(&name) {
+        if cc >= &complete {
+            return;
+        }
+    }
 
-            debug!("sorted:");
-            for (name, _) in sorted{
-                debug!("  {}", name);
+
+    let n = match complete {
+        TypeComplete::Incomplete => {
+            match unsorted.get(&name) {
+                Some(n) => n.clone(),
+                None => {
+                    debug!("  {} skipped (incomplete and not found", " ".repeat(depth));
+                    return;
+                }
             }
-            debug!("unsorted:");
-            for (name, _) in unsorted {
-                debug!("  {}", name);
+        }
+        TypeComplete::Complete => {
+            match unsorted.remove(&name) {
+                Some(v) => v,
+                None => {
+                    let mut estack = Vec::new();
+                    if let Some(here) = here {
+                        estack.push((here.clone(), format!("type incomplete in this scope")));
+                    }
+                    emit_error(format!("recursive type {} will never complete", name), &estack);
+
+                    debug!("sorted:");
+                    for (name, _, _) in sorted{
+                        debug!("  {}", name);
+                    }
+                    debug!("unsorted:");
+                    for (name, _) in unsorted {
+                        debug!("  {}", name);
+                    }
+                    std::process::exit(10);
+                }
             }
-            std::process::exit(10);
-        },
+        }
     };
 
-
-    let mut use_deps_here = Vec::new();
-
-
-    for (dep,loc) in &n.impl_deps {
-        if dep == &name {
-            continue;
+    if complete == TypeComplete::Complete {
+        for (dep, complete, loc) in &n.impl_deps {
+            if dep == &name {
+                continue;
+            }
+            sort_visit(sorted, sorted_mark, unsorted, dep.clone(), complete.clone(), Some(loc), depth+1, forceinline, more);
         }
-        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), true, depth+1, Some(&mut use_deps_here));
-    }
-
-    for (dep,loc) in &n.decl_deps {
-        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), allow_recursion, depth+1, Some(&mut use_deps_here));
     }
 
 
-    sorted_mark.insert(name.clone());
-    sorted.push((name.clone(), n.clone()));
-
-    for (dep,loc) in &use_deps_here {
-        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), Some(loc), true, depth+1, None);
+    for (dep, complete, loc) in &n.decl_deps {
+        sort_visit(sorted, sorted_mark, unsorted, dep.clone(), complete.clone(), Some(loc), depth+1, forceinline, more);
     }
 
+    debug!("  {} < marked : {} {:?}", " ".repeat(depth), name, complete);
+    match sorted_mark.get(&name) {
+        Some(cc) if cc >= &complete => {
+        }
+        _ => {
+            sorted.push((name.clone(), complete.clone(), n.clone()));
+        }
+    };
+    sorted_mark.insert(name.clone(), complete.clone());
 
-    if let Some(use_deps) = use_deps.as_mut() {
-        use_deps.extend(n.use_deps.clone());
+    for (dep,_) in &n.use_deps {
+        more.insert(dep.clone());
     }
 }
 
-fn decl_visit(
+fn dependency_visit(
         visited:    &mut HashSet<Name>,
         unsorted:   &HashMap<Name, Local>,
         mut name:   Name,
-        thisobject: &mut HashSet<Name>,
+        complete:   &TypeComplete,
+        thisobject: &mut TypeSet,
         depth:      usize,
 ) {
     if name.0[1] == "ext" {
@@ -801,7 +898,7 @@ fn decl_visit(
         return;
     }
 
-    thisobject.insert(name.clone());
+    thisobject.insert(name.clone(), complete.clone());
 
     let n = match unsorted.get(&name) {
         Some(v) => v,
@@ -810,12 +907,12 @@ fn decl_visit(
         },
     };
 
-    for (dep,_) in &n.decl_deps {
-        decl_visit(visited, unsorted, dep.clone(), thisobject, depth+1);
+    for (dep,_,_) in &n.decl_deps {
+        dependency_visit(visited, unsorted, dep.clone(), &TypeComplete::Incomplete, thisobject, depth+1);
     }
 
     for (dep,_) in &n.use_deps {
-        decl_visit(visited, unsorted, dep.clone(), thisobject, depth+1);
+        dependency_visit(visited, unsorted, dep.clone(), &TypeComplete::Incomplete, thisobject, depth+1);
     }
 }
 

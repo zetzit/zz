@@ -20,6 +20,18 @@ impl Location {
             span: pest::Span::new(" ",0,1).unwrap(),
         }
     }
+    pub fn gen(here: &Location, gen: String) -> Self {
+        let (line, _col) = here.span.end_pos().line_col();
+
+        let mut sx = "\n".repeat(line);
+        sx.push_str(&gen);
+        let sx = Box::leak(Box::new(sx)).as_str();
+
+        Self {
+            file: here.file.clone(),
+            span: pest::Span::new(sx, line, line+gen.len()).unwrap(),
+        }
+    }
 }
 
 impl std::fmt::Display for Location {
