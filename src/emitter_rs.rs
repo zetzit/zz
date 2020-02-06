@@ -26,7 +26,7 @@ pub struct Emitter{
 }
 
 pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
-    format!("target/{}/rs/{}.rs", stage, module.name)
+    format!("target/{}/rs/{}.rs", stage, module.name.0.join("_"))
 }
 
 impl Emitter {

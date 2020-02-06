@@ -192,7 +192,7 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
             if path.is_file() {
                 if let Some("zz") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
                     c.artifacts.as_mut().unwrap().push(Artifact{
-                        name: format!("tests::{}", path.file_stem().unwrap().to_string_lossy()),
+                        name: format!("tests_{}", path.file_stem().unwrap().to_string_lossy()),
                         typ:  ArtifactType::Test,
                         main: format!("{}::tests::{}",
                                       c.project.name.clone(),
