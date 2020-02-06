@@ -86,14 +86,14 @@ fn main() {
                 if let zz::project::ArtifactType::Test = artifact.typ {
                     if let Some(testname) = submatches.value_of("testname") {
                         if testname != artifact.name {
-                            if format!("tests::{}", testname) != artifact.name {
+                            if format!("tests_{}", testname) != artifact.name {
                                 continue;
                             }
                         }
                     }
 
 
-                    let casedir = format!("./target/{}/testcases/_{}", stage, artifact.main);
+                    let casedir = format!("./target/{}/testcases/_{}", stage, artifact.main.replace("::","_"));
                     let mut cases = Vec::new();
                     match std::fs::read_dir(casedir) {
                         Err(_) => (),
@@ -111,6 +111,7 @@ fn main() {
                                     Ok(mut f) => {
                                         let mut v = Vec::new();
                                         f.read_to_end(&mut v).unwrap();
+                                        v.retain(|&i|i!=b'\r');
                                         stdin = Some(v);
                                     },
                                     Err(_) => {eprintln!("stdin testfile not found {}", path.to_string_lossy());}
@@ -119,6 +120,7 @@ fn main() {
                                     Ok(mut f) => {
                                         let mut v = Vec::new();
                                         f.read_to_end(&mut v).unwrap();
+                                        v.retain(|&i|i!=b'\r');
                                         stdout = Some(v);
                                     },
                                     Err(_) => {eprintln!("stdout testfile not found {}", path.to_string_lossy());}
@@ -186,12 +188,16 @@ fn main() {
                                 }
                             }
                             if let Some(expect_stdout) = &case.2 {
-                                if &output.stdout != expect_stdout {
-                                    error!("FAIL {} {} \nstdout expected:\n{}\nbut got:\n{}\n",
+                                let mut output_stdout = output.stdout;
+                                output_stdout.retain(|&i|i!=b'\r');
+                                if &output_stdout != expect_stdout {
+                                    error!("FAIL {} {} \nstdout expected:\n<{}>({})\nbut got:\n<{}>({})\n",
                                            artifact.name,
                                            case.0,
                                            String::from_utf8_lossy(&expect_stdout),
-                                           String::from_utf8_lossy(&output.stdout)
+                                           expect_stdout.len(),
+                                           String::from_utf8_lossy(&output_stdout),
+                                           output_stdout.len()
                                           );
                                     std::process::exit(10);
                                 }

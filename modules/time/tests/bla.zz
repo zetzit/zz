@@ -12,7 +12,7 @@ pub fn main() -> int {
     assert(t2.to_millis() == 2001);
 
     time::Time t3 = time::tick();
-    printf("%lu\n", t3.to_millis());
+    printf("%llu\n", t3.to_millis());
 
     return 0;
 }
