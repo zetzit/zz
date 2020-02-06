@@ -174,6 +174,26 @@ impl Emitter {
 
         let mut dup = HashSet::new();
 
+        // forward declarations first
+        // these have no dependencies, so just put them first.
+        // this shouldnt be nessesary, but dependency ordering for struct A { fntype(A*) } is still broken
+        for (d, _) in &module.d {
+            debug!("    emitting0 {}", d.name);
+            match &d.def {
+                ast::Def::Struct{..} => {
+                    self.emit_struct_def(&d, None);
+                    if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                        for v in vs {
+                            let mut d = d.clone();
+                            d.name = format!("{}_{}", d.name, v);
+                            self.emit_struct_def(&d, Some(*v));
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+
         for (d, complete) in &module.d {
             debug!("    emitting {}", d.name);
             match d.def {
@@ -218,51 +238,27 @@ impl Emitter {
                     }
                 }
                 ast::Def::Struct{..} => {
-                    match complete {
-                        flatten::TypeComplete::Incomplete => {
-                            self.emit_struct_def(&d, None);
-                            if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                                for v in vs {
-                                    let mut d = d.clone();
-                                    d.name = format!("{}_{}", d.name, v);
-                                    self.emit_struct_def(&d, Some(*v));
-                                }
-                            }
-                        }
-                        flatten::TypeComplete::Complete => {
-                            self.emit_struct_def(&d, None);
-                            if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                                for v in vs {
-                                    let mut d = d.clone();
-                                    d.name = format!("{}_{}", d.name, v);
-                                    self.emit_struct_def(&d, Some(*v));
-                                }
-                            }
+                    if complete == &flatten::TypeComplete::Complete {
+                        let mut name = Name::from(&d.name);
+                        name.pop();
+                        let isimpl = name == module.name;
 
-
-                            let mut name = Name::from(&d.name);
-                            name.pop();
-                            let isimpl = name == module.name;
-
-                            self.emit_struct(&d, isimpl, None);
-                            if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                                for v in vs {
-                                    let mut d = d.clone();
-                                    d.name = format!("{}_{}", d.name, v);
-                                    self.emit_struct(&d, isimpl, Some(*v));
-                                }
+                        self.emit_struct(&d, isimpl, None);
+                        if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                            for v in vs {
+                                let mut d = d.clone();
+                                d.name = format!("{}_{}", d.name, v);
+                                self.emit_struct(&d, isimpl, Some(*v));
                             }
                         }
                     }
                 }
-
                 _ => (),
             }
         }
 
         // function impls are always last.
         // so we can be a bit more relaxed about emitting the correct decleration order
-
         for (d, complete) in &module.d {
             debug!("    emitting2 {}", d.name);
             match &d.def {

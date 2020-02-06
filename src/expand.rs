@@ -182,7 +182,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                 )?;
                 if *union {
                     for field in fields {
-                        stack.cannot_drop_union(&field, &field.loc)?;
+                        stack.cannot_drop_union(&field, &field.loc, 0)?;
                     }
                 }
             },
@@ -602,19 +602,23 @@ impl Stack {
     }
 
 
-    fn cannot_drop_union(&self, field: &ast::Field, in_union: &ast::Location) -> Result<(), Error> {
+    fn cannot_drop_union(&self, field: &ast::Field, in_union: &ast::Location, depth: usize) -> Result<(), Error> {
+        if depth > 100 {
+            //recursive or something. can't be bothered to deal with this right now because drop is broken anyway
+            return Ok(())
+        }
         if let ast::Type::Other(name) = &field.typed.t {
             if let Some(ast::Def::Struct{impls,fields,..}) = self.defs.get(name) {
+
                 if let Some((_,loc)) = impls.get("drop") {
                     return Err(Error::new(format!("struct {} cannot be used in a union because it has a drop implementation", name), vec![
-                                          (in_union.clone(), format!("union field {} cannot be dropped safely", field.name)),
-                                          (loc.clone(), "because of a drop implementation here".to_string()),
+                        (in_union.clone(), format!("union field {} cannot be dropped safely", field.name)),
+                        (loc.clone(), "because of a drop implementation here".to_string()),
                     ]));
                 }
                 for field in fields {
-                    self.cannot_drop_union(field, in_union)?;
+                    self.cannot_drop_union(field, in_union, depth + 1 )?;
                 }
-
             }
         }
         Ok(())
