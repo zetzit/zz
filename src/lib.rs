@@ -1,7 +1,7 @@
 #![allow(dead_code)] // dead code checker is broken
 
 #[macro_use] extern crate pest_derive;
-extern crate fasthash;
+extern crate metrohash;
 #[macro_use] extern crate log;
 extern crate pbr;
 extern crate rayon;

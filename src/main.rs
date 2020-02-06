@@ -93,7 +93,7 @@ fn main() {
                     }
 
 
-                    let casedir = format!("./target/{}/testcases/::{}", stage, artifact.main);
+                    let casedir = format!("./target/{}/testcases/_{}", stage, artifact.main);
                     let mut cases = Vec::new();
                     match std::fs::read_dir(casedir) {
                         Err(_) => (),
@@ -113,7 +113,7 @@ fn main() {
                                         f.read_to_end(&mut v).unwrap();
                                         stdin = Some(v);
                                     },
-                                    Err(_) => {}
+                                    Err(_) => {eprintln!("stdin testfile not found {}", path.to_string_lossy());}
                                 }
                                 match std::fs::File::open(path.join("stdout")) {
                                     Ok(mut f) => {
@@ -121,7 +121,7 @@ fn main() {
                                         f.read_to_end(&mut v).unwrap();
                                         stdout = Some(v);
                                     },
-                                    Err(_) => {}
+                                    Err(_) => {eprintln!("stdout testfile not found {}", path.to_string_lossy());}
                                 }
 
                                 match std::fs::File::open(path.join("exit")) {
@@ -159,7 +159,7 @@ fn main() {
                                 .expect("failed to execute process");
 
                             if let Some(i) = &case.1 {
-                                let stdin = child.stdin.as_mut().expect("Failed to open stdin");
+                                let stdin = child.stdin.as_mut().expect("Failed to open stdin");                            
                                 stdin.write_all(&i).unwrap();
                             }
                             let output = child.wait_with_output().expect("Failed to read stdout");
@@ -292,7 +292,7 @@ fn main() {
             }
 
             let indir = tempdir::TempDir::new("zzfuzz").unwrap();
-            let casedir = format!("./target/{}/testcases/::{}", stage, &exes[0].1);
+            let casedir = format!("./target/{}/testcases/_{}", stage, &exes[0].1);
             let mut havesome = false;
             match std::fs::read_dir(casedir) {
                 Err(_) => (),
