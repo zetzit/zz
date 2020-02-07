@@ -3,12 +3,13 @@
 Drunk Octopus - It compiles, ship it
 ====================================
 
-ZZ (drunk octopus) is a modern formally provable dialect of C, inspired by rust
+ZZ is a transpiler from a verifiable rust-ish C dialect to bare-metal dependency-free C
 
-Its main use case is code close to hardware, where we still program C out of desperation, because nothing else actually works.
+Its main use case is code close to hardware, where C is and will remain the defacto standard system interface.
 You can also use it to build cross platform libraries, with a clean portable C-standard api.
 
-A major innovative feature is that all code is formally proven by symbolic execution in a virtual machine, at compile time.
+A major innovative feature is that all code is formally verified by symbolic execution in a virtual machine,
+at compile time.
 
 [![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
 [![FAQ](https://img.shields.io/badge/FAQ-Wiki-blue)](https://github.com/aep/zz/wiki/FAQ)
