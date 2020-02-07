@@ -4,8 +4,7 @@
 int os_time_tick(uint64_t *secs, uint64_t* nanos);
 int os_time_real(uint64_t *secs, uint64_t* nanos);
 
-#if defined(__linux__) || defined(__APPLE__)
-#else
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define MS_PER_SEC      1000ULL     // MS = milliseconds
@@ -20,7 +19,7 @@ int os_time_real(uint64_t *secs, uint64_t* nanos);
 #define CLOCK_MONOTONIC 1
 #define CLOCK_REALTIME  2
 
-int clock_gettime_monotonic(struct timespec *tv)
+static inline int clock_gettime_monotonic(struct timespec *tv)
 {
     static LARGE_INTEGER ticksPerSec;
     LARGE_INTEGER ticks;
@@ -43,7 +42,7 @@ int clock_gettime_monotonic(struct timespec *tv)
     return 0;
 }
 
-int clock_gettime_realtime(struct timespec *tv)
+static inline int clock_gettime_realtime(struct timespec *tv)
 {
     FILETIME ft;
     ULARGE_INTEGER hnsTime;
@@ -63,7 +62,7 @@ int clock_gettime_realtime(struct timespec *tv)
     return 0;
 }
 
-int clock_gettime(int type, struct timespec *tp)
+static inline int clock_gettime(int type, struct timespec *tp)
 {
     if (type == CLOCK_MONOTONIC)
     {
