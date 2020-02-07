@@ -4,9 +4,11 @@ rust:
 os:
   - linux
   - osx
+  - windows
+before_install:
+  - if [ "$TRAVIS_OS_NAME" = "windows" ]; then curl -fsSL https://github.com/Z3Prover/z3/releases/download/Nightly/z3-4.8.8-x64-win.zip -o z3-4.8.8-x64-win.zip; 7z e z3-4.8.8-x64-win.zip -o/c/z3_downloaded -r -y; export PATH="/C/z3_downloaded:$PATH"; z3 --version; fi
 script:
-  - ./ci.sh
-
+  - ./ci.sh  
 
 addons:
   apt:
