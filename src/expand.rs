@@ -182,7 +182,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                 )?;
                 if *union {
                     for field in fields {
-                        stack.cannot_drop_union(&field, &field.loc, 0)?;
+                        //stack.cannot_drop_union(&field, &field.loc, 0)?;
                     }
                 }
             },
@@ -551,77 +551,9 @@ impl Stack {
                     tail:   ast::Tail::None,
                 }))
             };
-            r.extend(self.drop_local(loc, &storage.typed, accesslocal, format!("(&{})", name))?);
+            //r.extend(self.drop_local(loc, &storage.typed, accesslocal, format!("(&{})", name))?);
         }
         Ok(r)
-    }
-
-
-    fn drop_local(&self, loc: &ast::Location, typed: &ast::Typed, expr: ast::Expression, exprs: String)
-        -> Result<Vec<Box<ast::Statement>>, Error>
-    {
-        let mut v = Vec::new();
-        if let ast::Type::Other(name) = &typed.t {
-            if let Some(ast::Def::Struct{impls,fields,..}) = self.defs.get(name) {
-                if let Some((fnname,_)) = impls.get("drop") {
-                    emit_debug(format!("drop {} {}", typed, exprs), &[(loc.clone(), "here")]);
-                    let call = ast::Expression::Call {
-                        loc:            ast::Location::gen(loc, format!("{}({})", fnname.clone(), exprs)),
-                        name:           Box::new(ast::Expression::Name(ast::Typed{
-                            t:      ast::Type::Other(fnname.clone()),
-                            ptr:    Vec::new(),
-                            loc:    loc.clone(),
-                            tail:   ast::Tail::None,
-                        })),
-                        args:           vec![Box::new(expr.clone())],
-                        expanded:       false,
-                        emit:           ast::EmitBehaviour::Default,
-                    };
-                    let stm = Box::new(ast::Statement::Expr{
-                        expr: call,
-                        loc:  loc.clone(),
-                    });
-                    v.push(stm);
-                }
-                for field in fields {
-                    let accesslocal = ast::Expression::UnaryPre {
-                        loc:    loc.clone(),
-                        op:     ast::PrefixOperator::AddressOf,
-                        expr: Box::new(ast::Expression::MemberAccess {
-                            loc:    loc.clone(),
-                            lhs:    Box::new(expr.clone()),
-                            op:     "->".to_string(),
-                            rhs:    field.name.clone(),
-                        }),
-                    };
-                    v.extend(self.drop_local(loc, &field.typed, accesslocal, format!("{}->{}", exprs, field.name))?);
-                }
-            }
-        }
-        Ok(v)
-    }
-
-
-    fn cannot_drop_union(&self, field: &ast::Field, in_union: &ast::Location, depth: usize) -> Result<(), Error> {
-        if depth > 100 {
-            //recursive or something. can't be bothered to deal with this right now because drop is broken anyway
-            return Ok(())
-        }
-        if let ast::Type::Other(name) = &field.typed.t {
-            if let Some(ast::Def::Struct{impls,fields,..}) = self.defs.get(name) {
-
-                if let Some((_,loc)) = impls.get("drop") {
-                    return Err(Error::new(format!("struct {} cannot be used in a union because it has a drop implementation", name), vec![
-                        (in_union.clone(), format!("union field {} cannot be dropped safely", field.name)),
-                        (loc.clone(), "because of a drop implementation here".to_string()),
-                    ]));
-                }
-                for field in fields {
-                    self.cannot_drop_union(field, in_union, depth + 1 )?;
-                }
-            }
-        }
-        Ok(())
     }
 
 
