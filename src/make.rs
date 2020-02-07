@@ -20,6 +20,7 @@ pub struct Stage {
     pub lto:        bool,
     pub asan:       bool,
     pub fuzz:       bool,
+    pub pic:        bool,
 }
 
 impl Stage {
@@ -31,6 +32,7 @@ impl Stage {
             lto:        true,
             asan:       false,
             fuzz:       false,
+            pic:        !cfg!(windows),
         }
     }
     pub fn test() -> Self {
@@ -41,6 +43,7 @@ impl Stage {
             lto:        false,
             asan:       true,
             fuzz:       false,
+            pic:        !cfg!(windows),
         }
     }
     pub fn debug() -> Self {
@@ -51,6 +54,7 @@ impl Stage {
             lto:        false,
             asan:       false,
             fuzz:       false,
+            pic:        !cfg!(windows),
         }
     }
     pub fn fuzz() -> Self {
@@ -61,6 +65,7 @@ impl Stage {
             lto:        false,
             asan:       true,
             fuzz:       true,
+            pic:        !cfg!(windows),
         }
     }
 }
@@ -173,8 +178,9 @@ impl Make {
                 lflags.push(flag.to_string());
             }
         }
-
-        //cflags.push("-fPIC".into());
+        if stage.pic {
+            cflags.push("-fPIC".into());
+        }
         cflags.push("-I".into());
         cflags.push(".".into());
         cflags.push("-I".into());
