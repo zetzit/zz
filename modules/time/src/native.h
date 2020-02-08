@@ -1,12 +1,17 @@
 #include <stdint.h>
-#include <time.h>
+
 
 int os_time_tick(uint64_t *secs, uint64_t* nanos);
 int os_time_real(uint64_t *secs, uint64_t* nanos);
 
+#if defined(__linux__) || defined(__APPLE__)
+#include <time.h>
+#endif
+
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <time.h>
 #define MS_PER_SEC      1000ULL     // MS = milliseconds
 #define US_PER_MS       1000ULL     // US = microseconds
 #define HNS_PER_US      10ULL       // HNS = hundred-nanoseconds (e.g., 1 hns = 100 ns)
@@ -78,6 +83,7 @@ static inline int clock_gettime(int type, struct timespec *tp)
 }
 #endif
 
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
 int os_time_tick(uint64_t *secs, uint64_t* nanos) {
     struct timespec tt;
     int r = clock_gettime(CLOCK_MONOTONIC, &tt);
@@ -90,6 +96,7 @@ int os_time_tick(uint64_t *secs, uint64_t* nanos) {
     return 0;
 }
 
+
 int os_time_real(uint64_t *secs, uint64_t* nanos) {
     struct timespec tt;
     int r = clock_gettime(CLOCK_REALTIME, &tt);
@@ -101,4 +108,4 @@ int os_time_real(uint64_t *secs, uint64_t* nanos) {
     *nanos  = tt.tv_nsec;
     return 0;
 }
-
+#endif

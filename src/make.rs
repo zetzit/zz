@@ -339,7 +339,7 @@ impl Make {
             pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
             if step.is_dirty() {
-                debug!("{} {:?}", self.cc, step.args);                
+                debug!("{} {:?}", self.cc, step.args);
                 let status = Command::new(&self.cc)
                     .env("AFL_USE_ASAN", "1")
                     .args(&step.args)
