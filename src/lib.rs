@@ -79,10 +79,10 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     let mut modules = HashMap::new();
     let features = project.features(variant).into_iter().map(|(n,(e,_))|(n,e)).collect();
     if std::path::Path::new("./src").exists() {
-        loader::load(&mut modules, &project_name, &Path::new("./src"), &features, &stage);
+        loader::load(&mut modules, &project_name, &Path::new("./src").canonicalize().unwrap(), &features, &stage);
     }
     if std::path::Path::new("./tests").exists() {
-        loader::load(&mut modules, &project_tests_name, &Path::new("./tests"), &features, &stage);
+        loader::load(&mut modules, &project_tests_name, &Path::new("./tests").canonicalize().unwrap(), &features, &stage);
     }
 
 
@@ -333,9 +333,9 @@ fn getdep(
     //std::env::set_current_dir(&found).unwrap();
     let (root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
-    if found.join("./src").exists() {
         let features = project.features("default").into_iter().map(|(n,(e,_))|(n,e)).collect();
-        loader::load(modules, &project_name, &found.join("./src"), &features, &stage);
+    if found.join("./src").exists() {
+        loader::load(modules, &project_name, &found.join("./src").canonicalize().unwrap(), &features, &stage);
     }
     //std::env::set_current_dir(pp).unwrap();
 
