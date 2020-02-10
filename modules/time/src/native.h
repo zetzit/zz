@@ -8,7 +8,7 @@ int os_time_real(uint64_t *secs, uint64_t* nanos);
 #include <time.h>
 #endif
 
-#if defined(_WIN32)
+#if defined(_WIN64) || defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <time.h>
@@ -83,7 +83,7 @@ static inline int clock_gettime(int type, struct timespec *tp)
 }
 #endif
 
-#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN64) || defined(_WIN32)
 int os_time_tick(uint64_t *secs, uint64_t* nanos) {
     struct timespec tt;
     int r = clock_gettime(CLOCK_MONOTONIC, &tt);
