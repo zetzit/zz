@@ -68,9 +68,9 @@ fn main() {
         },
         ("clean", Some(_submatches)) => {
             let (root, _) = zz::project::load_cwd();
-            std::env::set_current_dir(root).unwrap();
-            if std::path::Path::new("./target").exists() {
-                std::fs::remove_dir_all("target").unwrap();
+            //std::env::set_current_dir(root).unwrap();
+            if root.join("target").exists() {
+                std::fs::remove_dir_all(root.join("target")).unwrap();
             }
         },
         ("test", Some(submatches))  | ("bench", Some(submatches)) => {
@@ -80,7 +80,7 @@ fn main() {
             let stage = zz::make::Stage::test();
             zz::build(true, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
-            std::env::set_current_dir(root).unwrap();
+            //std::env::set_current_dir(root).unwrap();
 
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
                 if let zz::project::ArtifactType::Test = artifact.typ {
@@ -93,7 +93,7 @@ fn main() {
                     }
 
 
-                    let casedir = format!("./target/{}/testcases/_{}", stage, artifact.main.replace("::","_"));
+                    let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("_{}",artifact.main.replace("::","_")));
                     let mut cases = Vec::new();
                     match std::fs::read_dir(casedir) {
                         Err(_) => (),
@@ -149,12 +149,13 @@ fn main() {
                     }
 
                     for case in &cases {
-                        println!("running \"./target/{}/bin/{}\"\n", stage, artifact.name);
+                        let running = root.join("target").join(stage.to_string()).join("bin").join(&artifact.name);
+                        println!("running \"{}\"\n", running.to_string_lossy());
                         let start = Instant::now();
                         let mut average = 0;
                         loop {
                             let istart = Instant::now();
-                            let mut child = Command::new(format!("./target/{}/bin/{}", stage, artifact.name))
+                            let mut child = Command::new(&running)
                                 .stdin(std::process::Stdio::piped())
                                 .stdout(std::process::Stdio::piped())
                                 .spawn()
@@ -231,7 +232,7 @@ fn main() {
             let variant = submatches.value_of("variant").unwrap_or("default");
             zz::build(false, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
-            std::env::set_current_dir(root).unwrap();
+            //std::env::set_current_dir(root).unwrap();
 
             let mut exes = Vec::new();
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
@@ -248,8 +249,9 @@ fn main() {
                 std::process::exit(9);
             }
 
-            println!("running \"./target/{}/bin/{}\"\n", stage, exes[0].name);
-            let status = Command::new(format!("./target/{}/bin/{}", stage, exes[0].name))
+            let running = root.join("target").join(stage.to_string()).join("bin").join(&exes[0].name);
+            println!("running \"{}\"\n", running.to_string_lossy());
+            let status = Command::new(running)
                 .args(submatches.values_of("args").unwrap_or_default())
                 .status()
                 .expect("failed to execute process");
@@ -260,7 +262,7 @@ fn main() {
             let stage = zz::make::Stage::fuzz();
             zz::build(true, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
-            std::env::set_current_dir(root).unwrap();
+            //std::env::set_current_dir(root).unwrap();
 
 
 
@@ -298,7 +300,7 @@ fn main() {
             }
 
             let indir = tempdir::TempDir::new("zzfuzz").unwrap();
-            let casedir = format!("./target/{}/testcases/_{}", stage, &exes[0].1);
+            let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("_{}", &exes[0].1));
             let mut havesome = false;
             match std::fs::read_dir(casedir) {
                 Err(_) => (),
@@ -323,10 +325,10 @@ fn main() {
                 std::process::exit(1);
             }
 
-            let outdir = format!("./target/{}/{}", stage, &exes[0].1);
+            let outdir = root.join("target").join(stage.to_string()).join(&exes[0].1);
             std::fs::create_dir_all(&outdir).unwrap();
 
-            println!("fuzzer output in {}", outdir);
+            println!("fuzzer output in {}", outdir.to_string_lossy());
 
             let mut child = Command::new("afl-fuzz")
                 .arg("-m30000")
@@ -334,12 +336,12 @@ fn main() {
                 .arg(indir.path())
                 .arg("-o")
                 .arg(&outdir)
-                .arg(format!("./target/{}/bin/{}", stage, exes[0].0))
+                .arg(root.join("target").join(stage.to_string()).join("bin").join(&exes[0].0))
                 .spawn()
                 .expect("failed to execute process");
             child.wait().unwrap();
 
-            println!("\n\nfuzzer output in {}", outdir);
+            println!("\n\nfuzzer output in {}", outdir.to_string_lossy());
             return;
 
         },
