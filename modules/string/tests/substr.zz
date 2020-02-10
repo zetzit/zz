@@ -1,6 +1,7 @@
 using string;
-using <stdio.h>::{getline, printf, stdin};
+using <stdio.h>::{printf, stdin};
 using <stdlib.h>::{free, atoi};
+inline using "native.h"::{getline};
 
 
 test t1{
