@@ -65,11 +65,11 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     use std::sync::{Arc, Mutex};
 
     let (root, mut project) = project::load_cwd();
-    std::env::set_current_dir(root).unwrap();
+    //std::env::set_current_dir(root).unwrap();
 
-    std::fs::create_dir_all(format!("./target/{}/c/", stage)).expect("create target dir");
-    std::fs::create_dir_all(format!("./target/{}/zz/", stage)).expect("create target dir");
-    std::fs::create_dir_all(format!("./target/{}/include/", stage)).expect("create target dir");
+    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("c")).expect("create target dir");
+    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("zz")).expect("create target dir");
+    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("include")).expect("create target dir");
 
     let project_name        = Name(vec![String::new(), project.project.name.clone()]);
     let project_tests_name  = Name(vec![String::new(), project.project.name.clone(), "tests".to_string()]);
@@ -78,11 +78,11 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
     let mut modules = HashMap::new();
     let features = project.features(variant).into_iter().map(|(n,(e,_))|(n,e)).collect();
-    if std::path::Path::new("./src").exists() {
-        loader::load(&mut modules, &project_name, &Path::new("./src").canonicalize().unwrap(), &features, &stage);
+    if root.join("src").exists() {
+        loader::load(&mut modules, &project_name, &root.join("src"), &features, &stage);
     }
-    if std::path::Path::new("./tests").exists() {
-        loader::load(&mut modules, &project_tests_name, &Path::new("./tests").canonicalize().unwrap(), &features, &stage);
+    if root.join("tests").exists() {
+        loader::load(&mut modules, &project_tests_name, &root.join("tests").canonicalize().unwrap(), &features, &stage);
     }
 
 
@@ -334,8 +334,8 @@ fn getdep(
     let (root, project)  = project::load(&found);
     let project_name     = Name(vec![String::new(), project.project.name.clone()]);
         let features = project.features("default").into_iter().map(|(n,(e,_))|(n,e)).collect();
-    if found.join("./src").exists() {
-        loader::load(modules, &project_name, &found.join("./src").canonicalize().unwrap(), &features, &stage);
+    if found.join("src").exists() {
+        loader::load(modules, &project_name, &found.join("src"), &features, &stage);
     }
     //std::env::set_current_dir(pp).unwrap();
 
