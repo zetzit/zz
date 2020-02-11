@@ -97,8 +97,19 @@ impl Make {
 
         let features = config.features(variant);
 
-        let mut lflags = Vec::new();
-        let mut cflags = Vec::new();
+        let mut cflags : Vec<String> =
+                std::env::var("TARGET_CFLAGS")
+                .or(std::env::var("CFLAGS"))
+                .unwrap_or("".to_string()).split(" ")
+                .map(|s|s.to_string()).collect();
+
+        let mut lflags : Vec<String> =
+                std::env::var("TARGET_LDFLAGS")
+                .or(std::env::var("TARGET_LFLAGS"))
+                .or(std::env::var("LDFLAGS"))
+                .or(std::env::var("LFLAGS"))
+                .unwrap_or("".to_string()).split(" ")
+                .map(|s|s.to_string()).collect();
 
         let mut cc = std::env::var("TARGET_CC")
             .or(std::env::var("CC"))
