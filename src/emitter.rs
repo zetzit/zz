@@ -679,6 +679,9 @@ impl Emitter {
             ast::Visibility::Object  => {
                 write!(self.f, "static ").unwrap();
             },
+            ast::Visibility::Shared  => {
+                write!(self.f, "extern ").unwrap();
+            },
             _ => (),
         };
 
