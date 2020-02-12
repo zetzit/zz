@@ -18,9 +18,13 @@ done
 
 for i in $THIS/modules/*
 do
-    cd $i
-    ../../target/release/zz --smt-timeout=200000 clean
-    ../../target/release/zz --smt-timeout=200000 test
+    if  ! [[ "$OSTYPE" == "msys" ]] || ! [[ "$i" =~ .*(io|net)$ ]]; then
+        cd $i
+        ../../target/release/zz --smt-timeout=200000 clean
+        ../../target/release/zz --smt-timeout=200000 test
+    else
+        echo "skip module $i"
+    fi
 done
 
 echo
