@@ -68,7 +68,6 @@ fn main() {
         },
         ("clean", Some(_submatches)) => {
             let (root, _) = zz::project::load_cwd();
-            //std::env::set_current_dir(root).unwrap();
             if root.join("target").exists() {
                 std::fs::remove_dir_all(root.join("target")).unwrap();
             }
@@ -80,7 +79,6 @@ fn main() {
             let stage = zz::make::Stage::test();
             zz::build(true, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
-            //std::env::set_current_dir(root).unwrap();
 
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
                 if let zz::project::ArtifactType::Test = artifact.typ {
@@ -162,7 +160,7 @@ fn main() {
                                 .expect("failed to execute process");
 
                             if let Some(i) = &case.1 {
-                                let stdin = child.stdin.as_mut().expect("Failed to open stdin");                            
+                                let stdin = child.stdin.as_mut().expect("Failed to open stdin");
                                 stdin.write_all(&i).unwrap();
                             }
                             let output = child.wait_with_output().expect("Failed to read stdout");
@@ -232,7 +230,6 @@ fn main() {
             let variant = submatches.value_of("variant").unwrap_or("default");
             zz::build(false, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
-            //std::env::set_current_dir(root).unwrap();
 
             let mut exes = Vec::new();
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
@@ -262,7 +259,6 @@ fn main() {
             let stage = zz::make::Stage::fuzz();
             zz::build(true, false, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
-            //std::env::set_current_dir(root).unwrap();
 
 
 

@@ -1,6 +1,5 @@
 #include <stdint.h>
 
-
 int os_time_tick(uint64_t *secs, uint64_t* nanos);
 int os_time_real(uint64_t *secs, uint64_t* nanos);
 
@@ -95,7 +94,6 @@ int os_time_tick(uint64_t *secs, uint64_t* nanos) {
     *nanos  = tt.tv_nsec;
     return 0;
 }
-
 
 int os_time_real(uint64_t *secs, uint64_t* nanos) {
     struct timespec tt;
