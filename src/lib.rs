@@ -332,9 +332,9 @@ fn getdep(
     //let pp = std::env::current_dir().unwrap();
     //std::env::set_current_dir(&found).unwrap();
     let (root, project)  = project::load(&found);
-    let project_name     = Name(vec![String::new(), project.project.name.clone()]);
-        let features = project.features("default").into_iter().map(|(n,(e,_))|(n,e)).collect();
+    let project_name     = Name(vec![String::new(), project.project.name.clone()]);        
     if found.join("src").exists() {
+        let features = project.features("default").into_iter().map(|(n,(e,_))|(n,e)).collect();
         loader::load(modules, &project_name, &found.join("src"), &features, &stage);
     }
     //std::env::set_current_dir(pp).unwrap();
