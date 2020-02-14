@@ -674,13 +674,25 @@ impl Emitter {
 
         // declare the fqn
 
+
+        let mut inline = false;
+        for (attr, _) in attr {
+            match attr.as_str() {
+                "inline" => {
+                    inline = true;
+                },
+                _ => (),
+            }
+        }
+
+
         self.emit_loc(&ast.loc);
 
         match &ast.vis {
             ast::Visibility::Object  => {
                 write!(self.f, "static ").unwrap();
             },
-            ast::Visibility::Shared  => {
+            ast::Visibility::Shared if !inline => {
                 write!(self.f, "extern ").unwrap();
             },
             _ => (),
