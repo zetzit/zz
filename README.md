@@ -1,11 +1,8 @@
-![logo](logo.png?raw=true)
+![logo](logo2.png?raw=true)
 
-Drunk Octopus - It compiles, ship it
-====================================
 
-ZZ is a transpiler from a verifiable rust-ish C dialect to bare-metal dependency-free C
 
-Its main use case is code close to hardware, where C is and will remain the defacto standard system interface.
+ZetZ is for code close to hardware, where C is and will remain the defacto standard system interface.
 You can also use it to build cross platform libraries, with a clean portable C-standard api.
 
 A major innovative feature is that all code is formally verified by symbolic execution in a virtual machine,
