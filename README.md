@@ -229,7 +229,7 @@ type at a given time in the program without ANY runtime code.
 
 ```C++
 
-thery is_open(int*) -> bool;
+theory is_open(int*) -> bool;
 
 fn open(int mut* a)
     model is_open(a)
