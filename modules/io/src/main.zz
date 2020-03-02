@@ -60,7 +60,7 @@ export fn main() -> int {
         }
         e.abort();
 
-        async.wait(&e);
+        io::wait(&async, &e);
         e.abort();
     }
     return 0;

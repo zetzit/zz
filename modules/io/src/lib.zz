@@ -4,15 +4,18 @@ using err;
 
 using <stdio.h>::{printf};
 
-export fntype select_fn  (Async mut*self, err::Err+et mut* e, Context mut*ctx, Ready w);
+export fntype make_timeout_fn   (Async mut* async, err::Err+et mut*e, time::Time t2) -> Io;
+export fntype select_fn         (Async mut* async, err::Err+et mut* e, Context mut*ctx, Ready w);
+export fntype wake_fn           (Async mut* async);
+export fntype wait_fn           (Async mut* async, err::Err+et mut* e);
 
 export struct Async {
-    //make_timeout_fn
-    void unsafe *make_timeout;
-    //select_fn
-    void unsafe *select_impl;
-    //wake_fn
-    void unsafe *do_wake;
+    void * upper;
+
+    make_timeout_fn     impl_make_timeout;
+    select_fn           impl_select;
+    wake_fn             impl_wake;
+    wait_fn             impl_wait;
 }
 
 
@@ -192,24 +195,20 @@ export fn close(Io mut* self)
 export fn select(Async mut *self, err::Err+et mut* e, Context mut*ctx, Ready w)
     where err::checked(*e)
 {
-    if self->select_impl == 0 {
+    if self->impl_select == 0 {
         return;
     }
-    select_fn select_impl = (select_fn)self->select_impl;
-    static_attest(safe(select_impl));
-    select_impl(self, e, ctx, w);
+    static_attest(safe(self->impl_select));
+    self->impl_select(self, e, ctx, w);
 }
 
 
-export fntype make_timeout_fn(Async *async, err::Err+et mut*e, time::Time t2) -> Io;
-// TODO cannot use self function because flatten makes it a recursive type
-export fn timeout(Async mut* this, err::Err+et mut*e, time::Time t2) -> Io
+export fn timeout(Async mut* self, err::Err+et mut*e, time::Time t2) -> Io
     where err::checked(*e)
 {
-    if this->make_timeout != 0 {
-        make_timeout_fn make_timeout = (make_timeout_fn)this->make_timeout;
-        static_attest(safe(make_timeout));
-        return make_timeout(this, e, t2);
+    if self->impl_make_timeout != 0 {
+        static_attest(safe(self->impl_make_timeout));
+        return self->impl_make_timeout(self, e, t2);
     }
     return Io{
         read_impl: 0,
@@ -217,12 +216,41 @@ export fn timeout(Async mut* this, err::Err+et mut*e, time::Time t2) -> Io
 }
 
 
-export fntype wake_fn(Async *async);
 export fn wake(Async mut* self) {
-    if self->do_wake != 0 {
-        wake_fn iwake = (wake_fn)self->do_wake;
-        static_attest(safe(iwake));
-        iwake(self);
+    if self->impl_wake != 0 {
+        static_attest(safe(self->impl_wake));
+        self->impl_wake(self);
+    }
+}
+
+export fn wait(Async mut* self, err::Err+et mut*e)
+     where err::checked(*e)
+{
+    if self->impl_wait != 0 {
+        static_attest(safe(self->impl_wait));
+        self->impl_wait(self,e );
+    }
+}
+
+export fntype poll_fn    (void mut *user, err::Err+et mut* e, Async mut* async) -> Result;
+export fn await(Async mut* self, err::Err+et mut*e, void *poll, void mut*user)
+    where err::checked(*e)
+    where safe(user)
+    where safe(poll)
+{
+    poll_fn fp = (poll_fn)poll;
+    for (;;) {
+        
+        if fp(user, e, self) == Result::Ready {
+            return;
+        }
+        if err::check(e) {
+            return;
+        }
+        self->wait(e);
+        if err::check(e) {
+            return;
+        }
     }
 }
 

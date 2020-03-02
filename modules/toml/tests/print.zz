@@ -1,0 +1,136 @@
+using <stdio.h>::{printf, fread, stdin};
+using <stdlib.h>::{atoi};
+using <string.h>::{strcmp, memset};
+using err;
+using string::{String};
+using string;
+using toml;
+
+
+
+test test123  {
+    stdin = r#"
+height = 12.0
+add = "\"[{123123}:b"
+v = [
+  23.0
+]
+deep = "nah"
+
+[engine]
+rolling = "hard"
+fuel = "electric"
+charge = [
+  9229.0,
+  -399888.0
+]
+"#
+    stdout = r#"height : 12
+add : "[{123123}:b
+v:
+  v : 23
+deep : nah
+engine:
+  rolling : hard
+  fuel : electric
+  charge:
+    charge : 9229
+    charge : -399888
+"#
+}
+
+test test_uint {
+    stdin   = "a = 19\n"
+    stdout  = "a : 19\n"
+}
+
+test test_sint {
+    stdin   = "a = -19\n"
+    stdout  = "a : -19\n"
+}
+
+test test_escape {
+    stdin   = r#"a = "\"yo\no\"""#
+    stdout  = r#"a : "yo
+o"
+"#
+}
+
+test test_array {
+    stdin   = r#"a = [1,
+    3, "yep"
+]"#
+    stdout  = r#"a:
+  a : 1
+  a : 3
+  a : yep
+"#
+}
+
+
+
+fn pretty(err::Err+et mut *e, toml::Parser+pt mut* p, usize mut * depth, char *k, toml::Value v)
+    where err::checked(*e)
+{
+    for (usize mut i = 0; i < (usize)depth * 2; i++) {
+        printf(" ");
+    }
+
+    switch v.t {
+        toml::ValueType::Object => {
+            printf("%s:\n", k);
+            toml::next(p,  e, (toml::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            if err::check(e) {
+                return;
+            }
+        }
+        toml::ValueType::Array => {
+            printf("%s:\n", k);
+            toml::next(p,  e, (toml::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            if err::check(e) {
+                return;
+            }
+        }
+        toml::ValueType::String => {
+            printf("%s : %s\n", k, v.string);
+        }
+        toml::ValueType::Integer => {
+            printf("%s : %d\n", k, v.integer);
+        }
+    }
+}
+
+
+
+export fn main() -> int {
+    err::Err+1000 mut e = {0};
+    err::new(&e);
+
+    usize depth = 0;
+    toml::Parser+100 mut parser = {0};
+    toml::new(&parser,  &e, (toml::deserialize_t)pretty, (void mut*)depth);
+    if err::check(&e) {
+        err::eprint(&e);
+        return 2;
+    }
+    static_attest(err::checked(e));
+
+
+    char mut buf[10];
+
+    for(;;) {
+        usize bin = as<usize>(fread(buf, sizeof(char), static(len(buf)), stdin));
+        if bin == 0 {
+            break;
+        }
+        static_attest(bin < len(buf));
+        toml::push(&parser, &e, buf, bin);
+        if err::check(&e) {
+            err::eprint(&e);
+            return 2;
+        }
+    }
+
+
+    return 0;
+}

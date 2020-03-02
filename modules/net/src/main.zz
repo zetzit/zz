@@ -36,7 +36,7 @@ export fn main() -> int {
     e.abort();
 
     for (;;) {
-        async.wait(&e);
+        io::wait(&async, &e);
         e.abort();
 
         string::String+100 mut sbuf = {0};
