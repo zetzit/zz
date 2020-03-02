@@ -116,7 +116,7 @@ impl Emitter {
         return s.0.join("_");
     }
 
-    pub fn emit(mut self) -> CFile {
+    pub fn emit(mut self) {
         let module = self.module.clone();
         debug!("emitting rs {}", module.name);
 
@@ -172,13 +172,6 @@ impl Emitter {
         }
 
         write!(self.f, "}}\n").unwrap();
-
-        CFile {
-            name:       module.name,
-            filepath:   self.p,
-            sources:    module.sources,
-            deps:       module.deps,
-        }
     }
 
     pub fn emit_static(&mut self, ast: &ast::Local) {

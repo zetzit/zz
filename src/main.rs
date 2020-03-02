@@ -91,7 +91,7 @@ fn main() {
                     }
 
 
-                    let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("_{}",artifact.main.replace("::","_")));
+                    let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("{}",artifact.main.replace("::","_")));
                     let mut cases = Vec::new();
                     match std::fs::read_dir(casedir) {
                         Err(_) => (),

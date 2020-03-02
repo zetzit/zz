@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::process::Command;
 use pbr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use super::emitter_js;
 
 static ABORT:           AtomicBool = AtomicBool::new(false);
 pub static BUILD_RS:    AtomicBool = AtomicBool::new(false);
@@ -78,23 +79,23 @@ impl std::fmt::Display for  Stage {
 
 
 pub struct Step {
-    source: PathBuf,
-    args:   Vec<String>,
+    pub source: PathBuf,
+    pub args:   Vec<String>,
 
-    deps:   HashSet<PathBuf>,
-    outp:   String,
+    pub deps:   HashSet<PathBuf>,
+    pub outp:   String,
 }
 
 pub struct Make {
-    artifact:   Artifact,
-    steps:      Vec<Step>,
-    cc:         String,
-    ar:         String,
-    cflags:     Vec<String>,
-    lflags:     Vec<String>,
-    lobjs:      Vec<String>,
-    variant:    String,
-    stage:      Stage,
+    pub artifact:   Artifact,
+    pub steps:      Vec<Step>,
+    pub cc:         String,
+    pub ar:         String,
+    pub cflags:     Vec<String>,
+    pub lflags:     Vec<String>,
+    pub lobjs:      Vec<String>,
+    pub variant:    String,
+    pub stage:      Stage,
 }
 
 impl Make {
@@ -205,10 +206,14 @@ impl Make {
 
 
         //TODO
-        if artifact.typ != super::project::ArtifactType::Staticlib {
-            if stage.lto {
-                cflags.push("-flto".into());
-                lflags.push("-flto".into());
+        match artifact.typ {
+            super::project::ArtifactType::Staticlib |
+            super::project::ArtifactType::NodeModule => (),
+            _ => {
+                if stage.lto {
+                    cflags.push("-flto".into());
+                    lflags.push("-flto".into());
+                }
             }
         }
 
@@ -337,6 +342,11 @@ impl Make {
 
 
     pub fn link(mut self) {
+        if self.artifact.typ == super::project::ArtifactType::NodeModule {
+            emitter_js::make_npm_module(&self);
+            return;
+        }
+
         use rayon::prelude::*;
         use std::sync::{Arc, Mutex};
 
@@ -411,6 +421,9 @@ impl Make {
             }
             super::project::ArtifactType::Header  => {
                 panic!("cannot link header yet");
+            }
+            super::project::ArtifactType::NodeModule => {
+                unreachable!();
             }
         }
         self.lflags.push("-fvisibility=hidden".into());

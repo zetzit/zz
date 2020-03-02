@@ -1,10 +1,11 @@
 using time;
 using string;
 using err;
-
+using slice;
 using <stdio.h>::{printf};
 
 export fntype make_timeout_fn   (Async mut* async, err::Err+et mut*e, time::Time t2) -> Io;
+export fntype make_channel_fn   (Async mut* async, err::Err+et mut*e, Io mut *read, Io mut *write);
 export fntype select_fn         (Async mut* async, err::Err+et mut* e, Context mut*ctx, Ready w);
 export fntype wake_fn           (Async mut* async);
 export fntype wait_fn           (Async mut* async, err::Err+et mut* e);
@@ -13,6 +14,7 @@ export struct Async {
     void * upper;
 
     make_timeout_fn     impl_make_timeout;
+    make_channel_fn     impl_make_channel;
     select_fn           impl_select;
     wake_fn             impl_wake;
     wait_fn             impl_wait;
@@ -82,6 +84,35 @@ export fn read(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> 
     return rr;
 }
 
+export fn read_slice(Io mut* self, err::Err+et mut* e, slice::MutSlice mut* slice) -> Result
+    where err::checked(*e)
+{
+    if self->read_impl == 0 {
+        err::fail(e, 1, "noimpl");
+        return Result::Error;
+    }
+    static_attest(safe(self->read_impl));
+
+
+    u8 mut * mem = slice->mem();
+    if slice->at >= slice->slice.size {
+        err::fail(e, 1, "oom");
+        return Result::Error;
+    }
+    usize mut ll = slice->slice.size - slice->at;
+
+    Result rr = self->read_impl(&self->ctx, e, mem + slice->at, &ll);
+    if err::check(e) {
+        return Result::Error;
+    }
+    if rr != Result::Ready {
+        return rr;
+    }
+
+    slice->at += ll;
+    static_attest(slice->at <= slice->slice.size);
+    return rr;
+}
 
 export fn read_bytes(Io mut* self, err::Err+et mut* e, u8 mut* mem, usize mut *memlen) -> Result
     where err::checked(*e)
@@ -215,6 +246,15 @@ export fn timeout(Async mut* self, err::Err+et mut*e, time::Time t2) -> Io
     };
 }
 
+export fn channel(Async mut* self, err::Err+et mut*e, Io mut*read, Io mut*write)
+    where err::checked(*e)
+{
+    if self->impl_make_channel != 0 {
+        static_attest(safe(self->impl_make_channel));
+        self->impl_make_channel(self, e, read, write);
+    }
+}
+
 
 export fn wake(Async mut* self) {
     if self->impl_wake != 0 {
@@ -233,14 +273,26 @@ export fn wait(Async mut* self, err::Err+et mut*e)
 }
 
 export fntype poll_fn    (void mut *user, err::Err+et mut* e, Async mut* async) -> Result;
-export fn await(Async mut* self, err::Err+et mut*e, void *poll, void mut*user)
+export fn await(Async mut* self, err::Err+et mut*e, void *poll, void mut* user, time::Time timeout_)
     where err::checked(*e)
     where safe(user)
     where safe(poll)
 {
+    let mut tt = timeout(self, e,timeout_);
+    string::String+8 mut b;
+    b.clear();
+    if err::check(e) {return;}
+
     poll_fn fp = (poll_fn)poll;
     for (;;) {
-        
+        if tt.valid() {
+            if tt.read(e, &b) == Result::Ready {
+                if err::check(e) {
+                    return;
+                }
+                err::fail(e, 4, "timeout");
+            }
+        }
         if fp(user, e, self) == Result::Ready {
             return;
         }
