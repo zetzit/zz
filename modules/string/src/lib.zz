@@ -23,6 +23,13 @@ we need conditions that get checked for every use of a struct automatically
 
 */
 
+export fn cstr(String * self) -> char *
+    model nullterm(return)
+{
+    static_attest(nullterm(self->mem));
+    return self->mem;
+}
+
 export fn slice(String+tail mut * self) -> Slice
     model return.size <= tail
 {

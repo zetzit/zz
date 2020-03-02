@@ -26,6 +26,7 @@ export fn new(Async+tail mut *self) {
     memset(self, 0, (usize)sizeof(Async));
 
     self->base.impl_make_timeout    = impl_make_timeout;
+    self->base.impl_make_channel    = impl_make_channel;
     self->base.impl_select          = impl_unix_select;
     self->base.impl_wake            = impl_wake;
     self->base.impl_wait            = impl_wait;
@@ -222,8 +223,11 @@ fn impl_wake(io::Async mut *async)
 fn impl_make_timeout(io::Async mut *async, err::Err+et mut*e, time::Time t2) -> io::Io
     where err::checked(*e)
 {
-    let self = (Async mut *)async->upper;
-    static_attest(safe(self));
+    if !t2.finite {
+        return io::Io {
+            read_impl:  impl_never,
+        };
+    }
 
     time::Time now = time::tick();
     u64 mut expires = now.to_millis();
@@ -240,6 +244,11 @@ fn impl_make_timeout(io::Async mut *async, err::Err+et mut*e, time::Time t2) -> 
         close_impl: impl_timer_close,
         ctx:        ctx,
     };
+}
+
+fn impl_never(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) -> io::Result
+{
+    return io::Result::Later;
 }
 
 fn impl_timeout_read(io::Context mut*ctx, err::Err+et mut*e, u8 mut* to, usize mut *l) -> io::Result
@@ -309,7 +318,18 @@ fn impl_make_timeout(Async mut *async, err::Err+et mut*e, time::Duration t2, io:
 
     return i;
 }
-
-
-
 */
+
+
+fn impl_make_channel(io::Async mut *async, err::Err+et mut*e, io::Io mut*read, io::Io mut*write)
+    where err::checked(*e)
+{
+    int mut fd[2];
+    if unistd::pipe(fd) != 0 {
+        e->fail_with_errno("pipe");
+        return;
+    }
+
+    *read  = unix(fd[0]);
+    *write = unix(fd[1]);
+}

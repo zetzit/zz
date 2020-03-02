@@ -37,14 +37,14 @@ pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module,
         }
     }
 
+    let mut ns = module.name.0.clone();
+    ns.remove(0);
     if header {
-        let mut ns = module.name.0.clone();
-        ns.remove(0);
-        (cxx, format!("target/{}/include/{}.h", stage, ns.join("_")))
+        (cxx, format!("target/{}/include/zz/{}/{}.h", stage, project.name, ns.join("_")))
     } else if cxx {
-        (cxx, format!("target/{}/zz/{}.cpp", stage, module.name.0.join("_")))
+        (cxx, format!("target/{}/zz/{}.cpp", stage, ns.join("_")))
     } else {
-        (cxx, format!("target/{}/zz/{}.c", stage, module.name.0.join("_")))
+        (cxx, format!("target/{}/zz/{}.c", stage, ns.join("_")))
     }
 }
 
@@ -54,7 +54,7 @@ impl Emitter {
         let (cxx, p) = outname(project, &stage, &module, header);
         let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
-        let casedir = format!("target/{}/testcases/{}", stage, module.name.0.join("_"));
+        let casedir = format!("target/{}/testcases/{}", stage, module.name.0[1..].join("_"));
         std::fs::remove_dir_all(&casedir).ok();
         std::fs::create_dir_all(&casedir).unwrap();
 
@@ -152,15 +152,19 @@ impl Emitter {
             return s.0.last().unwrap().clone();
         }
 
-        if self.header {
-            let mut s = s.clone();
-            s.0.remove(0);
-            return s.0.join("_");
-        }
-
         let mut s = s.clone();
         s.0.remove(0);
         return s.0.join("_");
+    }
+
+    fn to_local_name_mangle(&self, s: &Name) -> String {
+        self.to_local_name(s).chars().map(|x| match x {
+            'A'..='Z'   => x,
+            'a'..='z'   => x,
+            '0'..='9'   => x,
+            '_'         => x,
+            _ => '_',
+        }).collect()
     }
 
     pub fn emit(mut self) -> CFile {
@@ -204,10 +208,22 @@ impl Emitter {
                     self.emit_macro(&d)
                 }
                 ast::Def::Const{..} => {
-                    self.emit_const(&d)
+                    if self.header {
+                        write!(self.f, r#"
+#ifndef ZZ_EXPORT_{tn}
+#define ZZ_EXPORT_{tn}
+"#,
+                            tn = self.to_local_name_mangle(&Name::from(&d.name))).unwrap();
+                    }
+
+                    self.emit_const(&d);
+
+                    if self.header {
+                        write!(self.f, "\n#endif\n").unwrap();
+                    }
                 }
                 ast::Def::Static{..} => {
-                    if complete != &flatten::TypeComplete::Complete {
+                    if self.header || complete != &flatten::TypeComplete::Complete {
                         continue
                     }
                     self.emit_static(&d)
@@ -216,7 +232,18 @@ impl Emitter {
                     if complete != &flatten::TypeComplete::Complete {
                         continue
                     }
-                    self.emit_enum(&d)
+                    if self.header {
+                        write!(self.f, r#"
+#ifndef ZZ_EXPORT_{tn}
+#define ZZ_EXPORT_{tn}
+"#,
+                            tn = self.to_local_name_mangle(&Name::from(&d.name))).unwrap();
+                    }
+
+                    self.emit_enum(&d);
+                    if self.header {
+                        write!(self.f, "\n#endif\n").unwrap();
+                    }
                 }
                 ast::Def::Fntype{..} => {
                     self.emit_fntype(&d);
@@ -224,7 +251,7 @@ impl Emitter {
                 ast::Def::Theory{..} => {
                 }
                 ast::Def::Testcase {..} => {
-                    if complete != &flatten::TypeComplete::Complete {
+                    if self.header || complete != &flatten::TypeComplete::Complete {
                         continue
                     }
                     self.emit_testcase(&d);
@@ -239,37 +266,66 @@ impl Emitter {
                 }
                 ast::Def::Struct{..} => {
                     if complete == &flatten::TypeComplete::Complete {
+                        if self.header {
+                            write!(self.f, r#"
+#ifndef ZZ_EXPORT_{tn}
+#define ZZ_EXPORT_{tn}
+"#,
+                            tn = self.to_local_name_mangle(&Name::from(&d.name))).unwrap();
+                        }
+
                         let mut name = Name::from(&d.name);
                         name.pop();
                         let isimpl = name == module.name;
 
                         self.emit_struct(&d, isimpl, None);
+
+                        if self.header {
+                            write!(self.f, "\n#endif\n").unwrap();
+                        }
+
                         if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
                             for v in vs {
                                 let mut d = d.clone();
                                 d.name = format!("{}_{}", d.name, v);
+                                if self.header {
+                                    write!(self.f, r#"
+#ifndef ZZ_EXPORT_{tn}_{v}
+#define ZZ_EXPORT_{tn}_{v}
+"#,                                 tn = self.to_local_name_mangle(&Name::from(&d.name)),  v=v).unwrap();
+                                }
                                 self.emit_struct(&d, isimpl, Some(*v));
+                                if self.header {
+                                    write!(self.f, "\n#endif\n").unwrap();
+                                }
+
                             }
                         }
+
                     }
                 }
                 _ => (),
             }
         }
 
-        // function impls are always last.
-        // so we can be a bit more relaxed about emitting the correct decleration order
-        for (d, complete) in &module.d {
-            debug!("    emitting2 {}", d.name);
-            match &d.def {
-                ast::Def::Function{attr, ..} => {
-                    let mut mname = Name::from(&d.name);
-                    mname.pop();
-                    if complete == &flatten::TypeComplete::Complete && (mname == module.name || attr.contains_key("inline")) {
-                        self.emit_def(&d);
+
+        if self.header {
+            write!(self.f, "#endif\n").unwrap();
+        } else {
+            // function impls are always last.
+            // so we can be a bit more relaxed about emitting the correct decleration order
+            for (d, complete) in &module.d {
+                debug!("    emitting2 {}", d.name);
+                match &d.def {
+                    ast::Def::Function{attr, ..} => {
+                        let mut mname = Name::from(&d.name);
+                        mname.pop();
+                        if complete == &flatten::TypeComplete::Complete && (mname == module.name || attr.contains_key("inline")) {
+                            self.emit_def(&d);
+                        }
                     }
+                    _ => (),
                 }
-                _ => (),
             }
         }
 
@@ -290,6 +346,12 @@ impl Emitter {
             ast::Def::Include{expr, loc, fqn, inline, needs} => (expr, loc, fqn, inline, needs),
             _ => unreachable!(),
         };
+
+        // TODO this is wrong. flatten should run a separate dependency tree for the header than
+        // for the c file
+        if *inline && self.header {
+            return;
+        }
 
         trace!("    emit include {} (inline? {})", fqn, inline);
         if *inline {
@@ -594,7 +656,7 @@ impl Emitter {
 
         write!(self.f, ";\n").unwrap();
 
-        if ast.vis == ast::Visibility::Export && isimpl {
+        if ast.vis == ast::Visibility::Export && isimpl && !self.header {
             write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
             self.to_local_name(&Name::from(&ast.name)),
             self.to_local_name(&Name::from(&ast.name)),

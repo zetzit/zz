@@ -14,6 +14,7 @@ pub mod loader;
 pub mod flatten;
 pub mod emitter;
 pub mod emitter_rs;
+pub mod emitter_js;
 pub mod abs;
 pub mod name;
 pub mod pp;
@@ -69,7 +70,8 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("c")).expect("create target dir");
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("zz")).expect("create target dir");
-    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("include")).expect("create target dir");
+    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("include")
+                            .join("zz").join(&project.project.name)).expect("create target dir");
 
     let project_name        = Name(vec![String::new(), project.project.name.clone()]);
     let project_tests_name  = Name(vec![String::new(), project.project.name.clone(), "tests".to_string()]);
@@ -184,6 +186,9 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             let rsbridge = emitter_rs::Emitter::new(&project.project, stage.clone(), module.clone());
             rsbridge.emit();
 
+            let jsbridge = emitter_js::Emitter::new(&project.project, stage.clone(), module.clone());
+            jsbridge.emit();
+
             let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
             let cf = em.emit();
 
@@ -239,6 +244,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             }
         }
     };
+
 
 
     if ABORT.load(Ordering::Relaxed) {

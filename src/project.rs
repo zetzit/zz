@@ -18,14 +18,29 @@ pub enum ArtifactType {
     Test,
     #[serde(rename = "header")]
     Header,
+    #[serde(rename = "npm")]
+    NodeModule,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Artifact {
-    pub name:   String,
-    pub main:   String,
+    pub name:       String,
+    pub main:       String,
     #[serde(rename = "type")]
-    pub typ:    ArtifactType,
+    pub typ:        ArtifactType,
+    pub indexjs:    Option<String>,
+}
+
+
+impl Default for Artifact {
+    fn default() -> Self {
+        Self {
+            name:       String::new(),
+            main:       String::new(),
+            typ:        ArtifactType::Lib,
+            indexjs:    None,
+        }
+    }
 }
 
 
@@ -172,6 +187,7 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
                 name: c.project.name.clone(),
                 main: format!("{}::main", c.project.name),
                 typ:  ArtifactType::Exe,
+                ..Default::default()
             });
         }
 
@@ -180,6 +196,7 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
                 name: c.project.name.clone(),
                 main: format!("{}", c.project.name),
                 typ:  ArtifactType::Lib,
+                ..Default::default()
             });
         }
         c.artifacts = Some(a);
@@ -197,6 +214,7 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
                         main: format!("{}::tests::{}",
                                       c.project.name.clone(),
                                       path.file_stem().unwrap().to_string_lossy()),
+                        ..Default::default()
                     });
                 }
             }

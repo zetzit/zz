@@ -20,7 +20,7 @@ done
 for i in $THIS/modules/*
 do
     
-    if  [ ! "$OSTYPE" = "msys" ] || [[ ! "$i" = *"/io" && ! "$i" = *"/net" ]]; then
+    if  [ ! "$OSTYPE" = "msys" ] || [[ ! "$i" = *"/io" && ! "$i" = *"/net" && "$i" = *"/fs" ]]; then
         cd $i        
         ../../target/release/zz --smt-timeout=200000 clean
         ../../target/release/zz --smt-timeout=200000 test

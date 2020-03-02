@@ -4,6 +4,7 @@ int os_time_tick(uint64_t *secs, uint64_t* nanos);
 int os_time_real(uint64_t *secs, uint64_t* nanos);
 
 #if defined(__linux__) || defined(__APPLE__)
+#define _POSIX_C_SOURCE 199309L
 #include <time.h>
 #endif
 
