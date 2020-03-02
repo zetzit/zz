@@ -25,14 +25,22 @@ export struct Async+ {
 export fn new(Async+tail mut *self) {
     memset(self, 0, (usize)sizeof(Async));
 
-    self->base.make_timeout = (void*)impl_make_timeout;
-    self->base.select_impl  = (void*)impl_unix_select;
-    self->base.do_wake      = (void*)impl_wake;
+    self->base.impl_make_timeout    = impl_make_timeout;
+    self->base.impl_select          = impl_unix_select;
+    self->base.impl_wake            = impl_wake;
+    self->base.impl_wait            = impl_wait;
+    self->base.upper                = self;
 
-    self->count     = 0;
     self->tail      = tail;
+
+    self->reset();
+}
+
+fn reset(Async mut *self)
+{
+    self->count     = 0;
     self->timeout   = -1;
-    memset(self->fds, 0, (usize)sizeof(pollfd_t) * tail);
+    memset(self->fds, 0, (usize)sizeof(pollfd_t) * self->tail);
 }
 
 pub fn select_fd(Async mut* self, int fd, int events) -> bool {
@@ -57,9 +65,12 @@ pub fn select_fd(Async mut* self, int fd, int events) -> bool {
     return true;
 }
 
-fn impl_unix_select(Async mut*self, err::Err+et mut*e, io::Context mut*ctx, io::Ready w)
+fn impl_unix_select(io::Async mut* async, err::Err+et mut*e, io::Context mut*ctx, io::Ready w)
     where err::checked(*e)
 {
+    let self = (Async mut *)async->upper;
+    static_attest(safe(self));
+
     if ctx->async == 0 {
         err::fail(e,1, "not an async io");
         return;
@@ -83,12 +94,15 @@ fn impl_unix_select(Async mut*self, err::Err+et mut*e, io::Context mut*ctx, io::
 }
 
 
-export fn wait(Async+tail mut* self, err::Err+et mut*e)
+fn impl_wait(io::Async mut* async, err::Err+et mut*e)
     where err::checked(*e)
 {
+    let self = (Async mut *)async->upper;
+    static_attest(safe(self));
+
     //printf("io::unix::wait %d\n", self->timeout);
     int rr = (int)poll(self->fds, self->count, self->timeout);
-    new(self);
+    self->reset();
     if rr < 0 {
         err::fail_with_errno(e, "poll");
         return;
@@ -197,14 +211,20 @@ fn impl_unix_close(io::Context mut* ctx)
 }
 
 
-fn impl_wake(Async mut *async)
+fn impl_wake(io::Async mut *async)
 {
-    async->timeout = 0;
+    let self= (Async mut *)async->upper;
+    static_attest(safe(self));
+
+    self->timeout = 0;
 }
 
-fn impl_make_timeout(Async mut *async, err::Err+et mut*e, time::Time t2) -> io::Io
+fn impl_make_timeout(io::Async mut *async, err::Err+et mut*e, time::Time t2) -> io::Io
     where err::checked(*e)
 {
+    let self = (Async mut *)async->upper;
+    static_attest(safe(self));
+
     time::Time now = time::tick();
     u64 mut expires = now.to_millis();
     expires += t2.to_millis();
