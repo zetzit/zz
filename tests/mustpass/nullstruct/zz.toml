@@ -1,6 +1,6 @@
 [project]
 version = "0.1.0"
-name = "borrow_attestation"
+name = "nullstruct"
 cincludes = []
 cobjects = []
 pkgconfig = []

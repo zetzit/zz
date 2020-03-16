@@ -6,6 +6,10 @@ fn doh(int *a)
     
 }
 
+fn rand() -> bool {
+    return true;
+}
+
 fn from_str(bool whatever, int * i)
     where bob(*i)
 {
@@ -20,7 +24,7 @@ fn from_str(bool whatever, int * i)
 
     static_attest(bob(*i));
 
-    bool somethingelse;
+    bool somethingelse = rand();
 
     if (somethingelse) {
         doh(i);

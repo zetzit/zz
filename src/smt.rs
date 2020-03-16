@@ -251,9 +251,9 @@ impl Solver {
         self.checkpoint();
     }
 
-    pub fn literal(&mut self, tmp: Symbol, val: u64, typ: Type) {
+    pub fn literal(&mut self, tmp: TemporalSymbol, val: u64, typ: Type) {
 
-        let smt_lhs = self.var(&(tmp,0));
+        let smt_lhs = self.var(&tmp);
 
         match typ {
             Type::Unsigned(size) | Type::Signed(size) => {

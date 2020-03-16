@@ -3,6 +3,11 @@ using <stdio.h>::{printf};
 
 
 
+fn rand() -> usize {
+    return 42;
+}
+
+
 export fn bob(int * unsafe i, usize y)
     where len(i) >= y
 {
@@ -13,8 +18,8 @@ export fn bob(int * unsafe i, usize y)
 export fn main() -> int {
 
 
-    int     *i;
-    usize   y;
+    int     *i = rand();
+    usize   y = rand();
     static_attest(y <= len(i));
 
     bob(i, y);

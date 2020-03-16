@@ -16,6 +16,7 @@ syn keyword zzImport            using
 syn keyword zzVisibility        export pub
 syn keyword zzKeywords          mut as
 syn keyword zzSelf              self
+syn keyword zzSpecial           new
 syn keyword zzDanger            unsafe
 syn keyword zzOperator          len safe static_attest static_assert nullterm
 syn keyword zzSSA1              where
@@ -38,6 +39,7 @@ hi def link zzSSA1              Structure
 hi def link zzSSA2              cString
 hi def link zzString            cString
 hi def link zzSelf              Constant
+hi def link zzSpecial           Structure
 
 let b:current_syntax = "zz"
 

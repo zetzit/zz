@@ -11,6 +11,7 @@ export fn main() -> int {
 
     int y = *b;
 
+    static_assert(len(b) > 10 );
     int *c = b + 10;
     static_assert(len(c) == 90);
 

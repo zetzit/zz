@@ -1,0 +1,12 @@
+using <stdio.h>::{printf};
+
+
+struct A {
+    int a;
+}
+
+export fn main() -> int {
+    A a = {0};
+    static_assert(a.a == 0);
+    return 0;
+}

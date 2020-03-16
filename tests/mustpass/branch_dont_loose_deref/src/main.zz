@@ -15,8 +15,8 @@ pub fn parse_query(Store mut*store, usize answers) -> bool
 {
     usize mut storepos = 0;
 
-    bool mut it;
-    while it  {
+    bool mut it = true;
+    if it  {
         /// the bug was that we did a deref here
         ((store->broker)[storepos]).protocol = 2;
     }

@@ -57,6 +57,16 @@ export fn append_slice(String+tail mut * self) -> MutSlice
     };
 }
 
+export fn new(String+tail mut * self)
+    model self->len  == 0
+    model nullterm(self->mem)
+{
+    c_string::memset(self->mem, 0, tail);
+    self->len = 0;
+
+    static_attest(nullterm(self->mem));
+}
+
 export fn clear(String+tail mut * self)
     model self->len  == 0
     model nullterm(self->mem)

@@ -25,8 +25,7 @@ export fn main() -> int {
     assert(t.valid());
 
     for (;;) {
-        string::String+20 mut buf2;
-        buf2.clear();
+        string::String+20 mut buf2 = {0};
 
         switch t.read(&e, &buf2) {
             io::Result::Ready => {
@@ -45,8 +44,7 @@ export fn main() -> int {
         }
         e.abort();
 
-        string::String+2 mut buf;
-        buf.clear();
+        string::String+2 mut buf = {0};
 
         switch i.read(&e, &buf) {
             io::Result::Ready => {

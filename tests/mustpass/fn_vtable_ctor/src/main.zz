@@ -26,7 +26,7 @@ export fn main() -> int {
     };
     int x = mm.add(1,8);
 
-    Math mut m;
+    Math mut m = {0};
     new(&m, add_impl);
 
     int x2 = m.add(1,8);

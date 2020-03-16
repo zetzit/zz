@@ -9,8 +9,7 @@ test blah {
 }
 
 export fn main() -> int {
-    string::String+10 mut s;
-    string::clear(&s);
+    string::String+10 mut s = {0};
 
     string::append_cstr(&s, "hello");
     string::format(&s, "%d%d%d%d", 2, 3, 66,9);

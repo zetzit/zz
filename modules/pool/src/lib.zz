@@ -149,8 +149,8 @@ export fn free(Pool mut *self, void * unsafe mut ptr_)
         return;
     }
 
-    u8 mut blocks;
-    usize mut startblock;
+    u8 mut blocks = 1;
+    usize mut startblock = 0;
     unsafe {
         ptr = ptr - 8;
         ASAN_UNPOISON_MEMORY_REGION(ptr, 8);

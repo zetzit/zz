@@ -28,7 +28,7 @@ export fn main() -> int {
     boh(&e);
 
 
-    int x;
+    int x = 911;
     if x != 2 {
         return 0;
     }

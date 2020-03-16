@@ -13,7 +13,7 @@ struct B {
 
 export fn main() -> int {
 
-    B mut b;
+    B mut b = {0};
     b.a.a= 3;
 
 

@@ -279,8 +279,7 @@ export fn await(Async mut* self, err::Err+et mut*e, void *poll, void mut* user, 
     where safe(poll)
 {
     let mut tt = timeout(self, e,timeout_);
-    string::String+8 mut b;
-    b.clear();
+    string::String+8 mut b = {0};
     if err::check(e) {return;}
 
     poll_fn fp = (poll_fn)poll;

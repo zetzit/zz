@@ -1,0 +1,15 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+
+    bool ok;
+
+
+    if false && ok{
+        return ok;
+    }
+
+
+    printf("hello uninitialized_branch\n");
+    return 0;
+}

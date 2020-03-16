@@ -50,6 +50,7 @@ enum Value{
     Array {
         len:    usize,
         array:  HashMap<usize, Symbol>,
+        null_initialized: bool,
     },
     Unconstrained(String),
     Integer(u64),
@@ -334,6 +335,7 @@ impl Symbolic {
                             self.memory[sym].value = Value::Array {
                                 len:    val as usize,
                                 array:  HashMap::new(),
+                                null_initialized: false,
                             };
                             self.len_into_ssa(sym, expr.loc(), val as usize)?;
 
@@ -341,6 +343,7 @@ impl Symbolic {
                             self.memory[sym].value = Value::Array {
                                 len:    0,
                                 array:  HashMap::new(),
+                                null_initialized: false,
                             };
                         }
                     }
@@ -420,7 +423,7 @@ impl Symbolic {
                         )?;
                         self.memory[sym].value = Value::Integer(value);
 
-                        self.ssa.literal(sym, value, self.memory[sym].t.clone());
+                        self.ssa.literal((sym,0), value, self.memory[sym].t.clone());
 
                         value += 1;
                     }
@@ -804,12 +807,14 @@ impl Symbolic {
                             self.memory[sym].value = Value::Array {
                                 len:    val as usize,
                                 array:  HashMap::new(),
+                                null_initialized: false,
                             };
                             self.len_into_ssa(sym, expr.loc(), val as usize)?;
                         } else {
                             self.memory[sym].value = Value::Array {
                                 len:    0,
                                 array:  HashMap::new(),
+                                null_initialized: false,
                             };
                         }
                     }
@@ -819,7 +824,6 @@ impl Symbolic {
                     if let Some(assign) = assign {
                         let sym2 = self.execute_expr(assign)?;
                         self.copy(sym, sym2, loc)?;
-
                     };
                     if typed_o.t == ast::Type::Elided {
                         if self.memory[sym].typed.t == ast::Type::Elided {
@@ -871,6 +875,12 @@ impl Symbolic {
                                 ]));
                             }
                             let sym = (sym, self.memory[sym].temporal);
+
+                            if let Value::Uninitialized = self.memory[sym.0].value {
+                                return Err(self.trace(format!("branch on uninitialized value"), vec![
+                                    (branch_expr.loc().clone(), format!("{} is uninitialized here", self.memory[sym.0].name))
+                                ]));
+                            }
 
 
                             self.ssa.bool_value(sym, |a,_model| match a {
@@ -927,6 +937,11 @@ impl Symbolic {
                 ast::Statement::Return{loc, expr} => {
                     if let Some(expr) = expr  {
                         let e = self.execute_expr(expr)?;
+                        if let Value::Uninitialized = self.memory[e].value {
+                            return Err(self.trace(format!("return of uninitialized value"), vec![
+                                (expr.loc().clone(), format!("{} is uninitialized here", self.memory[e].name))
+                            ]));
+                        }
                         if let Some(retsym) =  self.current_function_ret {
                             self.copy(retsym, e, expr.loc())?;
                         }
@@ -1010,6 +1025,12 @@ impl Symbolic {
                 ast::Statement::Assign{loc, lhs, op, rhs} => {
                     let lhs = self.execute_expr(lhs)?;
                     let rhs = self.execute_expr(rhs)?;
+
+                    if let Value::Uninitialized = self.memory[rhs].value {
+                        return Err(self.trace(format!("use of uninitialized rhs in assignment"), vec![
+                            (loc.clone(), format!("{} is uninitialized here", self.memory[rhs].name))
+                        ]));
+                    }
 
                     let (newtype, lhs, rhs) = self.type_coersion(lhs, rhs, loc)?;
 
@@ -1118,6 +1139,11 @@ impl Symbolic {
                     if self.memory[sym].t != smt::Type::Bool {
                         return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
                             (expr.loc().clone(), format!("must be boolean"))
+                        ]));
+                    }
+                    if let Value::Uninitialized = self.memory[sym].value {
+                        return Err(self.trace(format!("branch on uninitialized value"), vec![
+                            (expr.loc().clone(), format!("{} is uninitialized here", self.memory[sym].name))
                         ]));
                     }
                     let sym = (sym, self.memory[sym].temporal);
@@ -1248,6 +1274,12 @@ impl Symbolic {
                     let mut calledarg = callargs.remove(0);
                     let mut callptr = self.execute_expr(&mut calledarg)?;
 
+                    if let Value::Uninitialized = self.memory[callptr].value {
+                        return Err(self.trace(format!("passing uninitialized value as argument"), vec![
+                            (calledarg.loc().clone(), format!("{} is uninitialized here", self.memory[callptr].name))
+                        ]));
+                    }
+
 
                     if self.memory[callptr].typed !=  defined[i].typed {
 
@@ -1353,7 +1385,118 @@ impl Symbolic {
     }
 
 
+    fn array_access(&mut self, lhs_sym: Symbol, rhs_sym: Symbol, loc: &ast::Location) -> Result<Symbol, Error> {
+        let static_index = if let smt::Assertion::Constrained(i)  = self.ssa.value((rhs_sym, self.memory[rhs_sym].temporal), |a,_|a) {
+            Some(i as usize)
+        } else {
+            None
+        };
 
+        let mut is_null_initialized = false;
+        match &self.memory[lhs_sym].value {
+            Value::Array{array, null_initialized, ..} => {
+                is_null_initialized = *null_initialized;
+                if let Some(i) = &static_index {
+                    if let Some(sym) = array.get(i) {
+                        return Ok(*sym);
+                    }
+                }
+            },
+            _ => ()
+        }
+
+        if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
+            return Err(self.trace(format!("cannot prove memory access due to unexpected type"), vec![
+                (loc.clone(), format!("lhs of array expression appears to be not a pointer or array"))
+            ]))
+        }
+
+        self.ssa.debug("begin array bounds");
+        let tmp1 = self.temporary(format!("len({})", self.memory[lhs_sym].name),
+        ast::Typed{
+            t:      ast::Type::USize,
+            ptr:    Vec::new(),
+            loc:    loc.clone(),
+            tail:   ast::Tail::None,
+        },
+        loc.clone(),
+        Tags::new(),
+        )?;
+        let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
+        self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (tmp1, 0));
+
+        let tmp2 = self.temporary(format!("{} < len({})", self.memory[rhs_sym].name, self.memory[lhs_sym].name),
+        ast::Typed{
+            t:      ast::Type::Bool,
+            ptr:    Vec::new(),
+            loc:    loc.clone(),
+            tail:   ast::Tail::None,
+        },
+        loc.clone(),
+        Tags::new(),
+        )?;
+
+        self.memory[tmp2].value = Value::InfixOp {
+            lhs:    (rhs_sym, self.memory[rhs_sym].temporal),
+            rhs:    (tmp1, 0),
+            op:     ast::InfixOperator::Lessthan,
+        };
+        self.ssa.infix_op(
+            tmp2,
+            (rhs_sym, self.memory[rhs_sym].temporal),
+            (tmp1, 0),
+            ast::InfixOperator::Lessthan,
+            smt::Type::Bool,
+            false,
+            );
+
+        self.ssa.debug("assert that length less than index is true");
+        self.ssa.assert(vec![(tmp2, self.memory[tmp2].temporal)], |a,model| match a {
+            false => {
+                let mut estack = Vec::new();
+                estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp2, self.memory[tmp2].temporal), 0));
+                Err(self.trace(format!("possible out of bounds array access"), estack))
+            }
+            true => {
+                Ok(())
+            }
+        })?;
+
+
+
+        let mut newtype = self.memory[lhs_sym].typed.clone();
+        newtype.ptr.pop();
+
+        let tmp = self.temporary(
+            format!("array member {}[{}]", self.memory[lhs_sym].name, self.memory[rhs_sym].name),
+            newtype,
+            loc.clone(),
+            self.memory[lhs_sym].tags.clone(),
+        )?;
+
+
+        if is_null_initialized {
+            self.memory[tmp].value = Value::Integer(0);
+            self.ssa.literal((tmp, 0), 0, self.memory[tmp].t.clone());
+        } else {
+            self.memory[tmp].value = Value::Unconstrained("array content".to_string());
+        }
+
+        match &mut self.memory[lhs_sym].value {
+            Value::Array{array, ..} => {
+                if let Some(i) = &static_index {
+                    array.insert(*i, tmp);
+                }
+            },
+            _ => ()
+        }
+
+        Ok(tmp)
+    }
+
+
+
+    //TODO much of thise code can be removed now because alloc() already initializes structs with members
     fn member_access(&mut self, lhs_sym: Symbol, rhs: &str, loc: &ast::Location) -> Result<Symbol, Error> {
 
         let mut struct_def = None;
@@ -1362,6 +1505,12 @@ impl Symbolic {
                 struct_def = Some((fields.clone(), tail));
             }
         };
+
+        if let Value::Uninitialized = self.memory[lhs_sym].value {
+            return Err(self.trace(format!("member access of uninitialized value"), vec![
+                (loc.clone(), format!("{} is uninitialized here", self.memory[lhs_sym].name))
+            ]));
+        }
 
         let struct_def = match struct_def {
             Some(v) => v,
@@ -1410,7 +1559,7 @@ impl Symbolic {
         }
 
 
-        let mut fieldvalue = Value::Uninitialized;
+        let mut fieldvalue = Value::Unconstrained("member access".to_string());
         let mut fieldtyped = field.1.typed.clone();
 
 
@@ -1433,6 +1582,7 @@ impl Symbolic {
                 fieldvalue = Value::Array {
                     len:    val as usize,
                     array:  HashMap::new(),
+                    null_initialized: false,
                 };
 
             // unsized array, but container has a tail
@@ -1440,6 +1590,7 @@ impl Symbolic {
                 fieldvalue = Value::Array {
                     len:    *val as usize,
                     array:  HashMap::new(),
+                    null_initialized: false,
                 };
             }
 
@@ -1582,102 +1733,7 @@ impl Symbolic {
                     ]))
                 }
 
-                let static_index = if let smt::Assertion::Constrained(i)  = self.ssa.value((rhs_sym, self.memory[rhs_sym].temporal), |a,_|a) {
-                    Some(i as usize)
-                } else {
-                    None
-                };
-                match &self.memory[lhs_sym].value {
-                    Value::Array{array, ..} => {
-                        if let Some(i) = &static_index {
-                            if let Some(sym) = array.get(i) {
-                                return Ok(*sym);
-                            }
-                        }
-                    },
-                    _ => ()
-                }
-
-                if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
-                    return Err(self.trace(format!("cannot prove memory access due to unexpected type"), vec![
-                        (lhs.loc().clone(), format!("lhs of array expression appears to be not a pointer or array"))
-                    ]))
-                }
-
-                self.ssa.debug("begin array bounds");
-                let tmp1 = self.temporary(format!("len({})", self.memory[lhs_sym].name),
-                ast::Typed{
-                    t:      ast::Type::USize,
-                    ptr:    Vec::new(),
-                    loc:    loc.clone(),
-                    tail:   ast::Tail::None,
-                },
-                loc.clone(),
-                Tags::new(),
-                )?;
-                let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (tmp1, 0));
-
-                let tmp2 = self.temporary(format!("{} < len({})", self.memory[rhs_sym].name, self.memory[lhs_sym].name),
-                ast::Typed{
-                    t:      ast::Type::Bool,
-                    ptr:    Vec::new(),
-                    loc:    loc.clone(),
-                    tail:   ast::Tail::None,
-                },
-                loc.clone(),
-                Tags::new(),
-                )?;
-
-                self.memory[tmp2].value = Value::InfixOp {
-                    lhs:    (rhs_sym, self.memory[rhs_sym].temporal),
-                    rhs:    (tmp1, 0),
-                    op:     ast::InfixOperator::Lessthan,
-                };
-                self.ssa.infix_op(
-                    tmp2,
-                    (rhs_sym, self.memory[rhs_sym].temporal),
-                    (tmp1, 0),
-                    ast::InfixOperator::Lessthan,
-                    smt::Type::Bool,
-                    false,
-                    );
-
-                self.ssa.debug("assert that length less than index is true");
-                self.ssa.assert(vec![(tmp2, self.memory[tmp2].temporal)], |a,model| match a {
-                    false => {
-                        let mut estack = Vec::new();
-                        estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp2, self.memory[tmp2].temporal), 0));
-                        Err(self.trace(format!("possible out of bounds array access"), estack))
-                    }
-                    true => {
-                        Ok(())
-                    }
-                })?;
-
-
-
-                let mut newtype = self.memory[lhs_sym].typed.clone();
-                newtype.ptr.pop();
-
-                let tmp = self.temporary(
-                    format!("array member {}[{}]", self.memory[lhs_sym].name, self.memory[rhs_sym].name),
-                    newtype,
-                    loc.clone(),
-                    self.memory[lhs_sym].tags.clone(),
-                )?;
-                self.memory[tmp].value = Value::Unconstrained("array content".to_string());
-
-                match &mut self.memory[lhs_sym].value {
-                    Value::Array{array, ..} => {
-                        if let Some(i) = &static_index {
-                            array.insert(*i, tmp);
-                        }
-                    },
-                    _ => ()
-                }
-
-                Ok(tmp)
+                self.array_access(lhs_sym, rhs_sym, loc)
             },
             ast::Expression::LiteralString{ loc, v } => {
                 let tmp = self.temporary(
@@ -1697,6 +1753,7 @@ impl Symbolic {
                 self.memory[tmp].value = Value::Array{
                     array:  HashMap::new(),
                     len:    v.len(),
+                    null_initialized: false,
                 };
                 self.ssa_mark_safe(tmp, loc)?;
                 self.ssa_mark_nullterm(tmp, loc)?;
@@ -2235,6 +2292,17 @@ impl Symbolic {
                 let lhs_sym = self.execute_expr(lhs)?;
                 let rhs_sym = self.execute_expr(rhs)?;
 
+                if let Value::Uninitialized = self.memory[lhs_sym].value {
+                    return Err(self.trace(format!("use of uninitialized value"), vec![
+                        (lhs.loc().clone(), format!("{} is uninitialized here", self.memory[lhs_sym].name))
+                    ]));
+                }
+                if let Value::Uninitialized = self.memory[rhs_sym].value {
+                    return Err(self.trace(format!("use of uninitialized value"), vec![
+                        (rhs.loc().clone(), format!("{} is uninitialized here", self.memory[rhs_sym].name))
+                    ]));
+                }
+
                 let (mut newtype, lhs_sym, rhs_sym) = self.type_coersion(lhs_sym, rhs_sym, loc)?;
 
                 if !op.takes_boolean() && newtype.t == ast::Type::Bool{
@@ -2378,7 +2446,7 @@ impl Symbolic {
                         if let Some(nuval) = self.ssa.value((len_of_opresult, self.memory[len_of_opresult].temporal), |a,_|match a{
                             smt::Assertion::Constrained(val) => {
                                 let nuarray = HashMap::new();
-                                Some(Value::Array{len: val as usize, array: nuarray})
+                                Some(Value::Array{len: val as usize, array: nuarray, null_initialized: false})
                             }
                             _ => None,
                         }) {
@@ -2489,7 +2557,7 @@ impl Symbolic {
                         // it must be coming from a virtual stack
                         // because if we want to prove pointer arithmetic
                         // this value is meaningless
-                        self.ssa.literal(tmp, lhs_sym as u64, smt::Type::Unsigned(64));
+                        self.ssa.literal((tmp, 0), lhs_sym as u64, smt::Type::Unsigned(64));
 
                         self.ssa_mark_safe(tmp, loc)?;
                         Ok(tmp)
@@ -2611,6 +2679,7 @@ impl Symbolic {
                 self.memory[aptr].value = Value::Array{
                     len:    array.len(),
                     array,
+                    null_initialized: false,
                 };
                 self.ssa_mark_safe(aptr, loc)?;
 
@@ -2653,6 +2722,15 @@ impl Symbolic {
         if let Value::Address(to) = self.memory[lhs_sym].value.clone() {
             return Ok(to);
         }
+        if let Value::Array{..} = self.memory[lhs_sym].value {
+            let mut expr = ast::Expression::Literal{
+                loc: loc.clone(),
+                v:   "0".to_string(),
+            };
+            let rhs_sym = self.execute_expr(&mut expr)?;
+            return self.array_access(lhs_sym, rhs_sym, loc);
+        }
+
 
         let mut nutype = self.memory[lhs_sym].typed.clone();
         let popped_tags = match nutype.ptr.pop() {
@@ -2670,7 +2748,6 @@ impl Symbolic {
             popped_tags,
         )?;
 
-
         if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
             return Err(self.trace(format!("cannot prove memory access due to unexpected type"), vec![
                 (loc.clone(), format!("deref expression appears to be not a pointer or array"))
@@ -2678,9 +2755,10 @@ impl Symbolic {
         }
 
 
-        // this is because the optimization cheat in check check_function_model doesn't apply
+        // skip safety check because the optimization cheat in check check_function_model doesn't apply
         // anything in between model calls
         if self.in_model {
+            self.memory[lhs_sym].value = Value::Address(member);
             return Ok(member);
         }
 
@@ -2714,7 +2792,7 @@ impl Symbolic {
 
 
         match &self.memory[lhs_sym].value {
-            // we're assuming this is ok because odf the above satefy checks
+            // we're assuming this is ok because of the above satefy checks
             Value::Uninitialized | Value::Unconstrained(_) => {
                 self.memory[lhs_sym].value = Value::Address(member);
             },
@@ -2765,6 +2843,100 @@ impl Symbolic {
         }
     }
 
+
+    fn typed_alloc(&mut self, sym: Symbol, typed: &ast::Typed, loc: &ast::Location, initialized: bool) -> Result<() , Error> {
+        if typed.ptr.len() > 0 {
+            return Ok(());
+        }
+        if let ast::Type::Other(name) = &typed.t {
+            if let Some(def) = self.defs.get(name) {
+                let def = def.clone();
+                if let ast::Def::Struct{fields, ..} = def {
+                    let mut members = HashMap::new();
+                    for field in fields {
+
+                        let mut fieldvalue = Value::Uninitialized;
+                        if initialized {
+                            fieldvalue = Value::Unconstrained("member".to_string());
+                        }
+                        let mut fieldtyped = field.typed.clone();
+
+                        if let Some(array) = &field.array {
+
+                            // sized array
+                            if let Some(expr) = array {
+                                let mut expr = expr.clone();
+                                let asym = self.execute_expr(&mut expr)?;
+                                let val = self.ssa.value((asym, self.memory[asym].temporal), |a,_| match a {
+                                    smt::Assertion::Constrained(i) => {
+                                        Ok(i)
+                                    },
+                                    _ => {
+                                        Err(self.trace("array size must be static".to_string(), vec![
+                                                       (expr.loc().clone(), format!("expression cannot be reduced to a constrained value at compile time"))
+                                        ]))
+                                    }
+                                })?;
+                                fieldvalue = Value::Array {
+                                    len:    val as usize,
+                                    array:  HashMap::new(),
+                                    null_initialized: false,
+                                };
+
+                                // unsized array, but container has a tail
+                            } else if let ast::Tail::Static(val,_loc) = &self.memory[sym].typed.tail {
+                                fieldvalue = Value::Array {
+                                    len:    *val as usize,
+                                    array:  HashMap::new(),
+                                    null_initialized: false,
+                                };
+                            }
+
+                            fieldtyped.ptr.push(ast::Pointer{
+                                loc:  field.loc.clone(),
+                                tags: Tags::new(),
+                            });
+                        }
+
+                        //nested tail
+                        match field.typed.tail {
+                            ast::Tail::Dynamic => {
+                                fieldtyped.tail = self.memory[sym].typed.tail.clone();
+                            }
+                            _ => {},
+                        }
+
+                        let tmp = self.temporary(
+                            format!("{}.{}", self.memory[sym].name, field.name),
+                            fieldtyped.clone(),
+                            loc.clone(),
+                            field.tags.clone(),
+                        )?;
+
+
+                        match (&fieldvalue, &field.array) {
+                            (Value::Array{len,..}, _) if *len > 0 => {
+                                self.len_into_ssa(tmp, loc, *len)?;
+                                self.ssa_mark_safe(tmp, loc)?;
+                            },
+                            (_, Some(_)) => {
+                                // access to an array member as pointer is always safe, because its part of the struct mem
+                                self.ssa_mark_safe(tmp, loc)?;
+                            },
+                            _ => (),
+                        }
+                        self.memory[tmp].value = fieldvalue;
+                        self.typed_alloc(tmp, &fieldtyped, loc, initialized)?;
+                        members.insert(field.name.clone(), tmp);
+
+                    }
+                    self.memory[sym].value = Value::Struct{members};
+                }
+            }
+        }
+        return Ok(());
+    }
+
     // new stack variable
     fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, tags: ast::Tags) -> Result<Symbol, Error> {
         self.ssa.debug_loc(&loc);
@@ -2793,13 +2965,7 @@ impl Symbolic {
         self.cur().locals.insert(name.clone(), symbol);
         self.ssa.declare(symbol, &format!("{}", name), t);
 
-
-        if let ast::Type::Other(name) = &typed.t {
-            if let Some(def) = self.defs.get(name) {
-                if let ast::Def::Struct{..} = def {
-                }
-            }
-        }
+        self.typed_alloc(symbol, &typed, &loc, false)?;
 
 
 
@@ -2885,7 +3051,7 @@ impl Symbolic {
             typed:      typed.clone(),
             name:       Name::from(&name),
             declared:   loc.clone(),
-            value:      Value::Uninitialized,
+            value:      Value::Unconstrained("temp".to_string()),
             tags,
             temporal:   0,
             assignments: HashMap::new(),
@@ -2893,9 +3059,51 @@ impl Symbolic {
         });
         debug!("{} {} := {}", name, typed, symbol);
         self.ssa.declare(symbol, &format!("{}", name), t);
+        self.typed_alloc(symbol, &typed, &loc, true)?;
         Ok(symbol)
     }
 
+    fn make_all_null(&mut self, lhs: Symbol, loc: &ast::Location) -> Result<(), Error> {
+        match self.memory[lhs].typed.t {
+            ast::Type::Other(_) => {
+                self.typed_alloc(lhs, &self.memory[lhs].typed.clone(), loc, true)?;
+                match &mut self.memory[lhs].value {
+                    Value::Void             => (),
+                    Value::Uninitialized    => {
+                    },
+                    Value::Integer(ref mut s)       => {
+                        *s = 0;
+                    }
+                    Value::InfixOp{..}      => (),
+                    Value::PrefixOp{..}     => (),
+                    Value::PostfixOp{..}    => (),
+                    Value::Struct{ref members}   => {
+                        for (mn,member) in members.clone() {
+                            self.make_all_null(member, loc)?;
+                        }
+                    }
+                    Value::Array{len,array, null_initialized} => {
+                        *null_initialized = true;
+                        for (_, m) in array.clone() {
+                            self.make_all_null(m, loc)?;
+                        }
+                    },
+                    Value::Address(_)       => {
+                    },
+                    Value::Unconstrained(s) => {
+                    },
+                    Value::Theory{..}       => (),
+                    Value::Function{..}     => (),
+                    Value::SelfCall{..}     => (),
+                }
+            }
+            _ => {
+                self.memory[lhs].value = Value::Integer(0);
+                self.ssa.literal((lhs, self.memory[lhs].temporal), 0, self.memory[lhs].t.clone());
+            }
+        }
+        Ok(())
+    }
 
     //                  cpy here   from here
     fn copy(&mut self, lhs: Symbol, rhs: Symbol, used_here: &ast::Location) -> Result<(), Error> {
@@ -2939,7 +3147,6 @@ impl Symbolic {
         self.memory[lhs].assignments.insert(tt, used_here.clone());
 
 
-
         match self.memory[rhs].value.clone() {
             Value::Void => {
                 return Err(self.trace(format!("void is not a value: '{}'",  self.memory[rhs].name), vec![
@@ -2947,10 +3154,10 @@ impl Symbolic {
                 ]));
             }
             Value::Uninitialized => {
-                // FIXME for now this is too noisy.
-                //return Err(self.trace(format!("unsafe read access to uninitialized local '{}'", self.memory[rhs].name), vec![
-                //    (used_here.clone(), "used here".to_string())
-                //]));
+                // TODO for now this is too noisy.
+                return Err(self.trace(format!("unsafe read access to uninitialized local '{}'", self.memory[rhs].name), vec![
+                    (used_here.clone(), "used here".to_string())
+                ]));
             }
             Value::Theory{..} => {
                 return Err(self.trace(format!("taking the value of a theory is not a thing"), vec![
@@ -2992,7 +3199,24 @@ impl Symbolic {
 
                        self.len_into_ssa(lhs, used_here, prev.len())?;
                    }
+                   Value::Struct{..} => {
+                       if len != 1 {
+                           return Err(self.trace(format!("assigning arrays to struct"), vec![
+                                (used_here.clone(), format!("can only use {{0}} here"))
+                           ]));
+                       }
+
+                       if let Value::Integer(0) = self.memory[array[&0]].value {
+                       } else {
+                           return Err(self.trace(format!("assigning arrays to struct"), vec![
+                                (used_here.clone(), format!("can only use {{0}} here"))
+                           ]));
+                       }
+
+                       return self.make_all_null(lhs, used_here);
+                   }
                    _ => {
+                       value = self.memory[rhs].value.clone();
                        self.len_into_ssa(lhs, used_here, len)?;
                    }
                }
@@ -3063,7 +3287,7 @@ impl Symbolic {
         )?;
         let thsym = self.builtin.get("safe").expect("ICE: safe theory not built in");
         self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
-        self.ssa.literal(tmp, 1, smt::Type::Bool);
+        self.ssa.literal((tmp, 0), 1, smt::Type::Bool);
         Ok(())
     }
 
@@ -3084,7 +3308,7 @@ impl Symbolic {
         )?;
         let thsym = self.builtin.get("nullterm").expect("ICE: nullterm theory not built in");
         self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp,0));
-        self.ssa.literal(tmp, 1, smt::Type::Bool);
+        self.ssa.literal((tmp, 0), 1, smt::Type::Bool);
         Ok(())
     }
 
@@ -3102,7 +3326,7 @@ impl Symbolic {
         )?;
         let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
         self.ssa.invocation(*lensym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
-        self.ssa.literal(tmp, len as u64, smt::Type::Unsigned(64));
+        self.ssa.literal((tmp, 0), len as u64, smt::Type::Unsigned(64));
         Ok(())
     }
 
@@ -3193,7 +3417,7 @@ impl Symbolic {
                     Tags::new(),
                 )?;
                 self.memory[sym].value = value;
-                self.ssa.literal(sym, v as u64, self.memory[sym].t.clone());
+                self.ssa.literal((sym, 0), v as u64, self.memory[sym].t.clone());
                 self.ssa_mark_valid(sym, loc)?;
                 Ok(sym)
             },

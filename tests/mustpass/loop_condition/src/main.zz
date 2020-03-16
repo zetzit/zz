@@ -4,6 +4,11 @@ using <stdio.h>::{printf};
 
 inline fn alias(void * alias a) {}
 
+
+fn rand() -> int {
+    return 42;
+}
+
 export fn main() -> int {
 
 
@@ -39,12 +44,12 @@ export fn main() -> int {
         }
 
 
-        int uninitialized;
+        int something = rand();
 
-        if uninitialized == 2 {
+        if something == 2 {
             continue;
         }
-        static_assert(uninitialized != 2);
+        static_assert(something != 2);
 
 
         // this is a workaround until symbolic understands loop passes

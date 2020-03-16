@@ -1,7 +1,7 @@
 using <stdio.h>::{printf};
 
 export fn main() -> int {
-    int x;
+    int x = 23;
 
     if x != 2 {
         return 0;

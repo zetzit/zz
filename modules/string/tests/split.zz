@@ -30,14 +30,12 @@ test test5 {
 
 export fn main() -> int {
 
-    string::String+100 mut a;
-    string::clear(&a);
+    string::String+100 mut a = {0};
     string::fgets(&a, stdin);
 
 
     usize mut iterator = 0;
-    string::String+100 mut part;
-    string::clear(&part);
+    string::String+100 mut part = {0};
     while (string::split(&a, ':', &iterator, &part)) {
         printf(">%.*s<\n", (int)part.len, part.mem);
         string::clear(&part);
