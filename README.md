@@ -401,3 +401,41 @@ the tail is measured in number of elements of whatever is the last unsized eleme
 
 String can dynamically expand within the tail memory. in this case, we append some stuff to the string, without ever allocating any heap.
 simply returning from the current function will clear up any memory used, without the need for destructor ordering or signal safety.
+
+#### new constructors
+
+ZZ autogenerates bindings to more languages than C, and some languages are not fully compatible with C abi.
+Specifically they don't allow returning structs from functions, a standard way to create "constructor" functions in C.
+
+intstead you should be using a function that takes a mut pointer as its first argument, and call it on a zero initialized stack variable.
+zz has syntactic sugar for this with the 'new' keyword.
+
+```C++
+    struct A {
+        int a;
+        int b;
+    }
+
+    fn empty(A mut new * self, int a)
+    {
+        self->a = a;
+    }
+
+    fn main() {
+        new a = empty(3);
+        assert(a.a == 3)
+        assert(a.b == 0)
+    }
+```
+
+new creates a new local variable with the correct size and passes it as self argument to the constructor
+
+to create a local with a tail, use new like this:
+
+```C++
+    new+100 foo = string::empty();
+```
+
+
+
+

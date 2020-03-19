@@ -14,14 +14,14 @@ syn keyword zzType              u8 i8 u16 i16 u32 i32 u64 i64 isize usize int ui
 syn keyword zzStructure	        enum struct fn const trait test theory assert fntype
 syn keyword zzImport            using
 syn keyword zzVisibility        export pub
-syn keyword zzKeywords          mut as
+syn keyword zzKeywords          mut as new
 syn keyword zzSelf              self
 syn keyword zzDanger            unsafe
 syn keyword zzOperator          len safe static_attest static_assert nullterm
 syn keyword zzSSA1              where
 syn keyword zzSSA2              model
 
-syn region zzCommentLineDoc     start="//\%(//\@!\|!\)"         end="$"  contains=@Spell
+syn region zzCommentLineDoc     start="/!"         end="$"  contains=@Spell
 syn region zzString             start=+\(L\|u\|u8\|U\|R\|LR\|u8R\|uR\|UR\)\=r#"+ end=+"#+ contains=@Spell extend
 
 

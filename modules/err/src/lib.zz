@@ -123,7 +123,7 @@ export fn eprint(Err+tail mut* self)
 }
 
 export fn to_str(
-    Err mut* self,
+    Err * self,
     char mut *dest,
     usize dest_len,
 )

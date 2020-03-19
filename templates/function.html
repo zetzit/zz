@@ -1,0 +1,16 @@
+<h4> fn {{name}} (
+{% for (name, typed) in args %}
+    {{ typed }}
+    {{ name }},
+{% endfor %}
+)
+
+{% if ret.is_some() -%}
+  -&gt {{ ret.as_ref().unwrap() }}
+{%- endif %}
+
+</h4>
+
+<p class='doc_comments'>
+{{doc}}
+</p>

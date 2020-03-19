@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crate::ast;
 use ast::Tags;
 use super::parser::{emit_debug};
+use std::collections::HashSet;
 
 
 
@@ -26,6 +27,7 @@ struct Scope {
 struct Stack {
     defs:   HashMap<Name, ast::Def>,
     stack:  Vec<Scope>,
+    moretypevariants:   HashMap<Name, HashSet<u64>>,
 }
 
 impl Stack {
@@ -33,6 +35,7 @@ impl Stack {
         Self {
             defs:   HashMap::new(),
             stack:  Vec::new(),
+            moretypevariants: HashMap::new(),
         }
     }
     fn push(&mut self, name: String) {
@@ -362,6 +365,13 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
     }
 
 
+    for (t, vrs) in stack.moretypevariants {
+        for variant in vrs {
+            module.typevariants.entry(t.clone()).or_insert(HashSet::new()).insert(variant);
+        }
+    }
+
+
     Ok(())
 }
 
@@ -427,16 +437,113 @@ impl Stack {
         while i < len {
             match body[i].as_mut() {
                 ast::Statement::Var{loc, typed, tags, name, array, assign, ..} => {
-                    let mut typed = typed.clone();
-                    if array.is_some() {
-                        typed.ptr.push(ast::Pointer{
-                            loc: loc.clone(),
-                            tags: Tags::new(),
+                    if let ast::Type::New = typed.t {
+
+                        if !tags.contains("mut") {
+                            tags.insert("mut".to_string(), String::new(), loc.clone());
+                        }
+
+                        if array.is_some() {
+                            return Err(Error::new(format!("new stack initialization cannot be array"), vec![
+                                (loc.clone(), "this new statement is invalid".to_string()),
+                            ]));
+                        }
+                        if assign.is_none() {
+                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                (loc.clone(), "this new statement is uninitialized".to_string()),
+                            ]));
+                        }
+                        let assign = assign.as_mut().unwrap();
+                        if let ast::Expression::Call{loc, args, name: fname, ..} = assign {
+                            if let ast::Expression::Name(ftyped) = fname.as_ref() {
+                                if let ast::Type::Other(n) = &ftyped.t {
+                                    if let Some(ast::Def::Function{args,..}) = self.defs.get(n) {
+                                        if args.len() < 1 {
+                                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                                (loc.clone(), "first function argument must be self ptr".to_string()),
+                                            ]));
+                                        }
+                                        let arg = args.first().unwrap();
+                                        if arg.name != "self" {
+                                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                                (loc.clone(), "first function argument must be self".to_string()),
+                                            ]));
+                                        }
+                                        if arg.typed.ptr.len() != 1 {
+                                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                                (loc.clone(), "first function argument must be self ptr".to_string()),
+                                            ]));
+                                        }
+                                        let tail = typed.tail.clone();
+                                        *typed = arg.typed.clone();
+                                        typed.ptr = Vec::new();
+
+                                        if let ast::Type::Other(tn) = &typed.t {
+                                            if let ast::Tail::Static(f, _) = &tail {
+                                                self.moretypevariants.entry(tn.clone()).or_insert(HashSet::new()).insert(*f);
+                                            }
+                                        }
+                                        typed.tail = tail;
+                                    } else {
+                                        return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                            (loc.clone(), "this new statement is invalid".to_string()),
+                                        ]));
+                                    }
+                                } else {
+                                    return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                        (loc.clone(), "this new statement is invalid".to_string()),
+                                    ]));
+                                }
+                            } else {
+                                return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                    (loc.clone(), "this new statement is uninitialized".to_string()),
+                                ]));
+                            }
+
+
+                            args.insert(0, Box::new(ast::Expression::UnaryPre{
+                                loc:    loc.clone(),
+                                op:     ast::PrefixOperator::AddressOf,
+                                expr:   Box::new(ast::Expression::Name(ast::Typed{
+                                    t:      ast::Type::Other(Name::from(name.as_str())),
+                                    ptr:    Vec::new(),
+                                    tail:   ast::Tail::None,
+                                    loc: loc.clone(),
+                                })),
+                            }));
+                        } else {
+                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                (loc.clone(), "this new statement is invalid".to_string()),
+                            ]));
+                        }
+                        let stm = Box::new(ast::Statement::Expr{
+                            loc:    assign.loc().clone(),
+                            expr:   assign.clone(),
                         });
-                    }
-                    self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone(), &flatten::TypeComplete::Complete)?;
-                    if let Some(expr) = assign {
-                        self.expand_expr(expr)?;
+                        *assign = ast::Expression::ArrayInit {
+                            loc: loc.clone(),
+                            fields: vec![
+                                Box::new(ast::Expression::Literal{
+                                    loc: loc.clone(),
+                                    v:  "0".to_string(),
+                                }),
+                            ]
+                        };
+                        body.insert(i + 1, stm);
+                        i   += 1;
+                        len += 1;
+                    } else {
+                        let mut typed = typed.clone();
+                        if array.is_some() {
+                            typed.ptr.push(ast::Pointer{
+                                loc: loc.clone(),
+                                tags: Tags::new(),
+                            });
+                        }
+                        self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone(), &flatten::TypeComplete::Complete)?;
+                        if let Some(expr) = assign {
+                            self.expand_expr(expr)?;
+                        }
                     }
                 }
                 ast::Statement::If{branches}        => {

@@ -231,7 +231,7 @@ impl Emitter {
                 }
                 s
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(name.loc.clone(), format!("this should have been resolved earlier"))]
@@ -278,7 +278,7 @@ impl Emitter {
             ast::Type::Other(ref n)   => {
                 //TODO
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(typed.loc.clone(), format!("this should have been resolved earlier"))]
@@ -341,7 +341,7 @@ impl Emitter {
             ast::Type::Other(ref n)   => {
                 //TODO
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(typed.loc.clone(), format!("this should have been resolved earlier"))]

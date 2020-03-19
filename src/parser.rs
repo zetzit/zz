@@ -68,10 +68,16 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
     f.read_to_string(&mut file_str).expect(&format!("read {:?}", n));
     let file_str = Box::leak(Box::new(file_str));
     let mut file = ZZParser::parse(Rule::file, file_str)?;
-
+    let mut doccomments = String::new();
 
     for decl in PP::new(n, features.clone(), stage.clone(), file.next().unwrap().into_inner()) {
         match decl.as_rule() {
+            Rule::doccomment => {
+                let mut s = decl.as_str().to_string();
+                s.remove(0);
+                s.remove(0);
+                doccomments.push_str(&s);
+            }
             Rule::imacro => {
                 let loc = Location{
                     file: n.to_string_lossy().into(),
@@ -112,7 +118,8 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                     def:  Def::Macro{
                         args,
                         body: body.unwrap(),
-                    }
+                    },
+                    doc: std::mem::replace(&mut doccomments, String::new()),
                 });
 
             }
@@ -209,6 +216,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 match declrule {
                     Rule::function => {
                         module.locals.push(Local{
+                            doc: std::mem::replace(&mut doccomments, String::new()),
                             name,
                             vis,
                             loc,
@@ -228,6 +236,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                     }
                     Rule::theory => {
                         module.locals.push(Local{
+                            doc: std::mem::replace(&mut doccomments, String::new()),
                             name,
                             vis,
                             loc,
@@ -240,6 +249,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                     },
                     Rule::fntype => {
                         module.locals.push(Local{
+                            doc: std::mem::replace(&mut doccomments, String::new()),
                             name,
                             vis,
                             loc,
@@ -310,6 +320,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 };
 
                 module.locals.push(Local{
+                    doc: std::mem::replace(&mut doccomments, String::new()),
                     name: name.unwrap(),
                     vis,
                     loc: loc.unwrap(),
@@ -349,6 +360,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                     }
                 }
                 module.locals.push(Local{
+                    doc: std::mem::replace(&mut doccomments, String::new()),
                     name: name.unwrap_or(format!("anonymous_test_case_{}", loc.line())),
                     vis: Visibility::Object,
                     loc,
@@ -439,6 +451,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
 
 
                 module.locals.push(Local{
+                    doc: std::mem::replace(&mut doccomments, String::new()),
                     name: name.unwrap(),
                     vis,
                     loc: loc.unwrap(),
@@ -590,6 +603,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                         }
 
                         module.locals.push(Local{
+                            doc: std::mem::replace(&mut doccomments, String::new()),
                             name: name,
                             loc,
                             vis,
@@ -601,6 +615,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                     },
                     Rule::istatic => {
                         module.locals.push(Local{
+                            doc: std::mem::replace(&mut doccomments, String::new()),
                             name: name,
                             loc,
                             vis: Visibility::Object,

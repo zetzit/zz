@@ -13,8 +13,8 @@ export fn main() -> int {
     err::Err+1000 mut e;
     e.new();
 
-    address::Address recv_addr = address::from_cstr("0.0.0.0:8083");
-    address::Address send_addr = address::from_cstr("0.0.0.0:0");
+    new recv_addr = address::from_cstr("0.0.0.0:8083");
+    new send_addr = address::from_cstr("0.0.0.0:0");
 
     unix::Async+10 mut async;
     async.new();
@@ -42,7 +42,7 @@ export fn main() -> int {
         string::String+100 mut sbuf = {0};
         sbuf.clear();
 
-        address::Address mut ra = address::new();
+        new ra = address::none();
         if receiver.recvfrom(&e, &sbuf, &ra) == io::Result::Ready {
             printf("%zu >%.*s<\n", sbuf.len, (int)sbuf.len, sbuf.mem);
             break;

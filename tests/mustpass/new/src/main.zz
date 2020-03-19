@@ -1,0 +1,50 @@
+using <stdio.h>::{printf};
+
+
+struct A
+{
+    int f;
+}
+
+struct B+
+{
+    A a;
+    int b[];
+}
+
+fn borrow(A mut*self) -> A mut*
+    where self->f == 3
+    model self->f == 3
+    model safe(return)
+{
+    return self;
+}
+
+
+export fn null(A mut new * self)
+{
+    self->f = 3;
+}
+
+export fn none(B+t mut new * self)
+{
+    null(&self->a);
+}
+
+export fn get(A mut *self) -> int
+{
+    return self->f;
+}
+
+export fn main() -> int {
+
+    new a = null();
+    a.get();
+    a.get();
+    printf("hello %d\n", a.f);
+
+
+    new+100 b = none();
+
+    return 0;
+}

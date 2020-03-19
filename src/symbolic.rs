@@ -1155,6 +1155,7 @@ impl Symbolic {
         for_a_theory:   bool,
     ) -> Result<(), Error>
     {
+
         let mut callargs = std::mem::replace(called, Vec::new());
         // generated arguments
         for i in 0..defined.len() {
@@ -1316,6 +1317,7 @@ impl Symbolic {
 
                         if !for_a_theory
                             && stags.get("uninitialized").is_none()
+                            && stags.get("new").is_none()
                             && defined[i].tags.get("no-borrow-expand").is_none()  {
 
                             if let ast::Type::Other(name) = &self.memory[callptr].typed.t {
@@ -2759,6 +2761,7 @@ impl Symbolic {
 
 
             // these are actually just pollution in smt. they're casted before use
+            ast::Type::New      => crate::smt::Type::Unsigned(64),
             ast::Type::Elided   => crate::smt::Type::Unsigned(64),
             ast::Type::ULiteral => crate::smt::Type::Unsigned(64),
             ast::Type::ILiteral => crate::smt::Type::Signed(64),
