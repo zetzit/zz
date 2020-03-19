@@ -5,6 +5,7 @@ extern crate metrohash;
 #[macro_use] extern crate log;
 extern crate pbr;
 extern crate rayon;
+extern crate askama;
 
 pub mod ast;
 pub mod parser;
@@ -21,6 +22,7 @@ pub mod pp;
 pub mod symbolic;
 pub mod expand;
 pub mod smt;
+pub mod emitter_docs;
 
 use std::path::Path;
 use name::Name;
@@ -189,8 +191,12 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             let jsbridge = emitter_js::Emitter::new(&project.project, stage.clone(), module.clone());
             jsbridge.emit();
 
+            let docs = emitter_docs::Emitter::new(&project.project, stage.clone(), module.clone());
+            docs.emit();
+
             let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
             let cf = em.emit();
+
 
             if !silent {
                 working_on_these.lock().unwrap().remove(&module_human_name);

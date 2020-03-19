@@ -18,10 +18,8 @@ export struct Address {
     u8      os[24];
 }
 
-export fn new() -> Address {
-    return Address {
-        type: Type::Invalid,
-    };
+export fn none(Address mut new* self) {
+    self->type = Type::Invalid;
 }
 
 
@@ -33,26 +31,25 @@ export fn valid(Address * self) -> bool {
     return self->type != Type::Invalid;
 }
 
-export fn from_string(string::String+st *s) -> Address
+export fn from_string(Address mut new * self, string::String+st *s)
 {
     static_attest(len(s->mem) >= s->len);
-    return from_str(s->mem, s->len);
+    from_str(self, s->mem, s->len);
 }
-export fn from_cstr(char *s) -> Address
+export fn from_cstr(Address mut new * self, char *s)
     where nullterm(s)
 {
     usize slen = string::strlen(s);
     static_attest(len(s) >= slen);
 
-    return from_str(s, slen);
+    from_str(self, s, slen);
 }
 
-export fn from_str(char * mut s, usize mut slen) -> Address
+export fn from_str(Address mut new*self, char * mut s, usize mut slen)
     where len(s) >= slen
 {
-    Address mut self = new();
     if slen < 2 {
-        return self;
+        return;
     }
 
     if s[0] == '[' {
@@ -60,14 +57,14 @@ export fn from_str(char * mut s, usize mut slen) -> Address
         slen -= 1;
         static_attest(safe(s));
         static_attest(len(s) >= slen);
-        from_str_ipv6(&self, s, slen);
-        return self;
+        from_str_ipv6(self, s, slen);
+        return;
     }
-    from_str_ipv4(&self, s, slen) || from_str_ipv6(&self, s, slen);
-    return self;
+    from_str_ipv4(self, s, slen) || from_str_ipv6(self, s, slen);
+    return;
 }
 
-export fn from_str_ipv6(Address mut* self, char * s, usize slen) -> bool
+export fn from_str_ipv6(Address mut new* self, char * s, usize slen) -> bool
     where len(s) >= slen
     where slen > 0
 {
@@ -161,7 +158,7 @@ export fn from_str_ipv6(Address mut* self, char * s, usize slen) -> bool
     return true;
 }
 
-export fn from_str_ipv4(Address mut* self, char *s, usize slen) -> bool
+export fn from_str_ipv4(Address mut new* self, char *s, usize slen) -> bool
     where len(s) >= slen
 {
     memset(self, 0, sizeof(Address));

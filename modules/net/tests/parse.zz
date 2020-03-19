@@ -123,7 +123,7 @@ export fn main() -> int {
     string::String+1000 mut sin = {0};
     string::fgets(&sin, stdin);
 
-    address::Address mut sa = address::from_string(&sin);
+    new sa = address::from_string(&sin);
     if !sa.valid() {
         return 3;
     }

@@ -44,7 +44,6 @@ impl std::fmt::Display for Location {
 pub struct Tags(pub HashMap<String, HashMap<String, Location>>);
 
 
-
 #[derive(Clone, Debug)]
 pub enum Storage {
     Static,
@@ -151,6 +150,7 @@ pub struct Local {
     pub vis:        Visibility,
     pub loc:        Location,
     pub def:        Def,
+    pub doc:        String,
 }
 
 
@@ -163,8 +163,7 @@ pub struct Pointer {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-
-
+    New,
     Elided,
 
     // usigned int of x bytes
@@ -207,6 +206,7 @@ impl Type {
     pub fn signed(&self) -> bool {
         match self {
             Type::Elided
+            | Type::New
             | Type::U8
             | Type::U16
             | Type::U32
@@ -253,6 +253,7 @@ impl PartialEq for Typed{
 impl std::fmt::Display for Typed{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.t {
+            Type::New           => write!(f, "new"),
             Type::Elided        => write!(f, "elided"),
             Type::U8            => write!(f, "u8"),
             Type::U16           => write!(f, "u16"),

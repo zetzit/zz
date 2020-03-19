@@ -17,6 +17,7 @@ impl Ext {
     pub fn new() -> Self {
         let mut ext = HashMap::new();
         ext.insert(Name::from("::ext::<stddef.h>"), ast::Local {
+            doc:        String::new(),
             name:       "::ext::<stddef.h>".to_string(),
             vis:        ast::Visibility::Object,
             loc:        ast::Location::builtin(),
@@ -126,6 +127,7 @@ impl Scope{
         }
 
         match name.to_string().as_str() {
+            "new"   => { t.t = ast::Type::New;      return; },
             "let"   => { t.t = ast::Type::Elided;   return; },
             "u8"    => { t.t = ast::Type::U8;       return; },
             "u16"   => { t.t = ast::Type::U16;      return; },
@@ -675,6 +677,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     let subname = format!("{}::{}", ast.name, name);
 
                     new_locals.push(ast::Local{
+                        doc:  String::new(),
                         name: subname.clone(),
                         loc:  ast.loc.clone(),
                         vis:  ast.vis.clone(),
@@ -848,6 +851,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
             }
 
             ext.ext.insert(import.name.clone(), ast::Local {
+                doc:        String::new(),
                 name:       import.name.to_string(),
                 vis:        ast::Visibility::Object,
                 loc:        import.loc.clone(),

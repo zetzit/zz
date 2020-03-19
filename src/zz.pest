@@ -299,6 +299,7 @@ statement = _{
 block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" }
 
 
+doccomment = @{"/!" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
 
 
 
@@ -314,6 +315,7 @@ file        = { SOI ~ (struct_d
                         | import
                         | constant
                         | pp
+                        | doccomment
                         | testcase
                         | comment
                         | imacro

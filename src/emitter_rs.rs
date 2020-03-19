@@ -26,7 +26,7 @@ pub struct Emitter{
 }
 
 pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
-    format!("target/{}/rs/{}.rs", stage, module.name.0.join("_"))
+    format!("target/{}/rs/{}.rs", stage, module.name.0[1..].join("_"))
 }
 
 impl Emitter {
@@ -56,8 +56,8 @@ impl Emitter {
         //write!(self.f, "// line {} \"{}\"\n", loc.line(), loc.file).unwrap();
     }
 
-    fn to_local_typed_name(&self, name: &ast::Typed) -> String {
-        match name.t {
+    fn to_local_typed_name(&self, name: &ast::Typed) -> Option<String> {
+        Some(match name.t {
             ast::Type::U8   => "u8".to_string(),
             ast::Type::U16  => "u16".to_string(),
             ast::Type::U32  => "u32".to_string(),
@@ -75,7 +75,12 @@ impl Emitter {
             ast::Type::Bool => "bool".to_string(),
             ast::Type::F32  => "f32".to_string(),
             ast::Type::F64  => "f64".to_string(),
-            ast::Type::Other(ref _n)   => "u8".to_string(),
+            ast::Type::Other(ref _n)   => {
+                if name.ptr.len() != 1 {
+                    return None;
+                }
+                "u8".to_string()
+            }
                 /*
                 let mut s = self.to_local_name(&n);
                 match &name.tail {
@@ -87,14 +92,14 @@ impl Emitter {
                 s
             }
                 */
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
                 parser::emit_error(
                     "ICE: untyped ended up in emitter",
                     &[(name.loc.clone(), format!("this should have been resolved earlier"))]
                     );
                 std::process::exit(9);
             }
-        }
+        })
     }
     fn to_local_name(&self, s: &Name) -> String {
         if !s.is_absolute() {
@@ -120,9 +125,44 @@ impl Emitter {
         let module = self.module.clone();
         debug!("emitting rs {}", module.name);
 
+
+
+        write!(self.f, "extern crate libc;\n").unwrap();
+
+
+        for (d,complete) in &module.d {
+            let mut dmodname = Name::from(&d.name);
+            dmodname.pop();
+            if dmodname != module.name {
+                continue;
+            }
+            if complete != &flatten::TypeComplete::Complete {
+                continue
+            }
+            self.emit_loc(&d.loc);
+            match d.def {
+                ast::Def::Struct{..} => {
+                    self.emit_struct(&d, None);
+                    if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                        for v in vs {
+                            let mut d = d.clone();
+                            d.name = format!("{}_{}", d.name, v);
+                            self.emit_struct(&d, Some(*v));
+                        }
+                    }
+                },
+                _ => (),
+            }
+        }
+
         write!(self.f, "extern {{\n").unwrap();
 
         for (d,complete) in &module.d {
+            let mut dmodname = Name::from(&d.name);
+            dmodname.pop();
+            if dmodname != module.name {
+                continue;
+            }
             if complete != &flatten::TypeComplete::Complete {
                 continue
             }
@@ -144,12 +184,12 @@ impl Emitter {
                     self.emit_static(&d)
                 }
                 ast::Def::Struct{..} => {
-                    self.emit_struct(&d, None);
+                    self.emit_struct_len(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
                         for v in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
-                            self.emit_struct(&d, Some(*v));
+                            self.emit_struct_len(&d, Some(*v));
                         }
                     }
                 }
@@ -223,13 +263,130 @@ impl Emitter {
     }
 
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, _tail_variant: Option<u64>) {
+    pub fn emit_struct_len(&mut self, ast: &ast::Local, _tail_variant: Option<u64>) {
         let (_fields, _packed, _tail, _union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
         };
-        write!(self.f, "    pub static sizeof_{}: libc::size_t;\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
+        write!(self.f, "    #[link_name = \"sizeof_{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        write!(self.f, "    pub static sizeof_{}: libc::size_t;\n", shortname).unwrap();
     }
+
+    pub fn emit_struct(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
+        let (fields, _packed, tail, _union) = match &ast.def {
+            ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
+            _ => unreachable!(),
+        };
+        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
+
+         write!(self.f, r#"
+pub struct {name} {{
+    inner:  Box<__Inner{name}>,
+    tail:   usize,
+}}
+
+impl std::ops::Deref for {name} {{
+    type Target = __Inner{name};
+
+    fn deref(&self) -> &__Inner{name} {{
+        self.inner.deref()
+    }}
+}}
+
+impl std::clone::Clone for {name} {{
+    fn clone(&self) -> Self {{
+        unsafe {{
+            let size = sizeof_{name} + self.tail;
+
+
+            let mut s = Box::new(vec![0u8; size]);
+            std::ptr::copy_nonoverlapping(self._self(), s.as_mut_ptr(), size);
+
+            let ss : *mut __Inner{name}= std::mem::transmute(Box::leak(s).as_mut_ptr());
+
+            Self {{ inner: Box::from_raw(ss), tail: self.tail }}
+        }}
+    }}
+}}
+
+impl {name} {{
+    pub fn _tail(&mut self) -> usize {{
+        self.tail
+    }}
+    pub fn _self_mut(&mut self) -> *mut u8 {{
+        unsafe {{ std::mem::transmute(self.inner.as_mut() as *mut __Inner{name}) }}
+    }}
+    pub fn _self(&self) -> *const u8 {{
+        unsafe {{ std::mem::transmute(self.inner.as_ref() as *const __Inner{name}) }}
+    }}
+}}
+
+"#, name = shortname).unwrap();
+        write!(self.f, "\n\n#[repr(C)]\npub struct __Inner{} {{\n", shortname).unwrap();
+
+        for i in 0..fields.len() {
+            let field = &fields[i];
+
+            let fieldtype = match self.to_local_typed_name(&field.typed) {
+                Some(v) => v,
+                None => {
+                    continue;
+                }
+            };
+
+            if let Some(array) = &field.array {
+                if let Some(expr) = array {
+                    write!(self.f, "    pub {} : [", field.name).unwrap();
+                    self.emit_pointer(&field.typed.ptr);
+                    write!(self.f, "{};", fieldtype).unwrap();
+                    self.emit_expr(expr);
+                    write!(self.f, "]").unwrap();
+                } else {
+                    if i != (fields.len() - 1) {
+                        parser::emit_error(
+                            "tail field has no be the last field in a struct",
+                            &[(field.loc.clone(), format!("tail field would displace next field"))]
+                            );
+                        std::process::exit(9);
+                    }
+                    if let Some(tt) = tail_variant {
+                        write!(self.f, "    pub {} : [", field.name).unwrap();
+                        self.emit_pointer(&field.typed.ptr);
+                        write!(self.f, ";{}]", tt).unwrap();
+                    } else {
+                        // rust makes unsized types 128bit pointers.
+                        // maybe it also stores the size somewhere, but we can't use that to be
+                        // compatible because obviously the ABI isnt guaranteed
+                        write!(self.f, "    // {}", field.name).unwrap();
+                    }
+                }
+            } else {
+                write!(self.f, "    pub {} :", field.name).unwrap();
+                write!(self.f, "{}",fieldtype).unwrap();
+            }
+            write!(self.f, " ,\n").unwrap();
+        }
+        write!(self.f, "}}\n").unwrap();
+        write!(self.f, "impl {} {{\n", shortname).unwrap();
+
+        if tail == &ast::Tail::None || tail_variant.is_some() {
+            write!(self.f, "    pub fn new() -> Self {{\n").unwrap();
+            write!(self.f, "        let tail = 0;\n").unwrap();
+            write!(self.f, "        let size = unsafe{{sizeof_{}}};\n", shortname).unwrap();
+        } else {
+            write!(self.f, "    pub fn new(tail:  usize) -> Self {{\n").unwrap();
+            write!(self.f, "        let size = unsafe{{sizeof_{}}} + tail;\n", shortname).unwrap();
+        }
+
+        write!(self.f, "        unsafe {{\n").unwrap();
+        write!(self.f, "            let s = Box::new(vec![0u8; size]);\n").unwrap();
+        write!(self.f, "            let ss : *mut __Inner{}= std::mem::transmute(Box::leak(s).as_mut_ptr());\n", shortname).unwrap();
+        write!(self.f, "            Self {{ inner: Box::from_raw(ss), tail }} \n").unwrap();
+        write!(self.f, "        }}\n").unwrap();
+        write!(self.f, "    }}\n").unwrap();
+        write!(self.f, "}}\n").unwrap();
+   }
 
 
 
@@ -237,6 +394,12 @@ impl Emitter {
     fn function_args(&mut self, args: &Vec<ast::NamedArg>) {
         let mut first = true ;
         for arg in args {
+            let argtype = match self.to_local_typed_name(&arg.typed) {
+                Some(v) => v,
+                None => {
+                    continue
+                }
+            };
             if first {
                 first = false;
             } else {
@@ -248,7 +411,7 @@ impl Emitter {
 
 
             self.emit_pointer(&arg.typed.ptr);
-            write!(self.f, "{}", self.to_local_typed_name(&arg.typed)).unwrap();
+            write!(self.f, "{}", argtype).unwrap();
 
         }
     }
@@ -267,15 +430,25 @@ impl Emitter {
             _ => unreachable!(),
         };
 
-        write!(self.f, "    pub fn {}(", Name::from(&ast.name).0[1..].join("_")).unwrap();
+        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
+        let rettype = match &ret {
+            None => None,
+            Some(a) => match self.to_local_typed_name(&a.typed) {
+                None => return,
+                Some(v) => Some(v),
+            },
+        };
+
+        write!(self.f, "    #[link_name = \"{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        write!(self.f, "    pub fn {}(", shortname).unwrap();
 
         self.function_args(args);
         write!(self.f, ")").unwrap();
 
-        if let Some(a) = &ret {
+        if let (Some(a),Some(rettype)) = (&ret, &rettype) {
             write!(self.f, "  -> ").unwrap();
             self.emit_pointer(&a.typed.ptr);
-            write!(self.f, "{}", self.to_local_typed_name(&a.typed)).unwrap();
+            write!(self.f, "{}", rettype).unwrap();
         };
 
         write!(self.f, ";\n").unwrap();
@@ -327,7 +500,7 @@ impl Emitter {
             },
             ast::Expression::Name(name) => {
                 self.emit_loc(&name.loc);
-                write!(self.f, "    {}", self.to_local_typed_name(&name)).unwrap();
+                write!(self.f, "    {}", self.to_local_typed_name(&name).unwrap_or("()".to_string())).unwrap();
             },
             ast::Expression::LiteralString {loc, v} => {
                 self.emit_loc(&loc);
