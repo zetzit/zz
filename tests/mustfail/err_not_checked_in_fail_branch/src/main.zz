@@ -12,7 +12,7 @@ fn boh (err::Err+et mut*e)
 export fn main() -> int {
 
     err::Err+1000 mut e;
-    err::new(&e);
+    err::make(&e);
     boh(&e);
 
     // must not compile

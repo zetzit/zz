@@ -27,7 +27,7 @@ export struct Pool+ {
     u8  mem[];
 }
 
-export fn new(Pool+pt mut *self, u8 mut blocksize)
+export fn make(Pool+pt mut new*self, u8 mut blocksize)
     where pt > pt/(usize)blocksize
 {
     assert((usize)blocksize % ALIGN == 0);

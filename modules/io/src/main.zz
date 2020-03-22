@@ -10,10 +10,10 @@ using <assert.h>::{assert};
 
 export fn main() -> int {
     err::Err+1000 mut e;
-    e.new();
+    e.make();
 
     unix::Async+10 mut async;
-    async.new();
+    async.make();
 
     io::Io mut i = unix::stdin();
     unix::make_read_async(&i, (io::Async mut*)&async);

@@ -70,13 +70,12 @@ fn deserialize_vehicle(err::Err+et mut *e, json::Parser+pt mut* p, Vehicle mut *
 
 export fn main() -> int {
     err::Err+1000 mut e = {0};
-    err::new(&e);
+    err::make(&e);
 
 
     Vehicle mut v = {0};
 
-    json::Parser+100 mut parser = {0};
-    json::new(&parser,  &e, (json::deserialize_t)deserialize_vehicle, (void mut*)&v);
+    new+100 parser = json::parser(&e, (json::deserialize_t)deserialize_vehicle, (void mut*)&v);
     err::abort(&e);
     char *str = r#"{
         "height":   

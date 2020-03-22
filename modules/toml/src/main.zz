@@ -105,12 +105,12 @@ fn pretty(err::Err+et mut *e, toml::Parser+pt mut* p, usize mut * depth, char *k
 
 
 export fn main() -> int {
-    err::Err+1000 mut e = {0};
-    err::new(&e);
+
+    new+1000 e = err::make();
 
     usize depth = 0;
-    toml::Parser+100 mut parser = {0};
-    toml::new(&parser,  &e, (toml::deserialize_t)pretty, (void mut*)depth);
+
+    new+100 parser = toml::parser(&e, (toml::deserialize_t)pretty, (void mut*)depth);
     if err::check(&e) {
         err::eprint(&e);
         return 2;

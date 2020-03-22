@@ -24,16 +24,14 @@ export fn os() -> Engine*
 }
 
 
-export fn new_udp(Engine *self, err::Err+et mut*e, address::Address *local_addr, io::Async mut* unsafe async) -> udp::Socket
+export fn make_udp(udp::Socket mut new*self, Engine *engine, err::Err+et mut*e, address::Address *local_addr, io::Async mut* unsafe async)
     where err::checked(*e)
 {
-    new_udp_fn impl_new_udp = (new_udp_fn)self->impl_new_udp;
+    new_udp_fn impl_new_udp = (new_udp_fn)engine->impl_new_udp;
     if impl_new_udp == 0 {
         err::fail(e, 1, "no new_udp impl");
-        return udp::Socket {
-            impl_sendto: 0,
-        };
+        return;
     }
     static_attest(safe(impl_new_udp));
-    return impl_new_udp(self, e, local_addr, async);
+    *self = impl_new_udp(engine, e, local_addr, async);
 }

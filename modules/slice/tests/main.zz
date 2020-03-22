@@ -2,7 +2,7 @@ using slice;
 
 export fn main() -> int {
     u8 mut buf[10] = {0};
-    let mut sl = slice::mut_slice::new(buf, 10);
+    new mut sl = slice::mut_slice::make(buf, 10);
     static_assert(sl.at < 11);
     sl.push(1);
     static_assert(sl.slice.size == 10);

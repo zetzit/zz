@@ -15,7 +15,7 @@ export struct Err+ {
 };
 
 
-export fn new(Err+tail mut *self)
+export fn make(Err+tail mut *self)
     model checked(*self)
 {
     memset(self, 0, sizeof(Err));

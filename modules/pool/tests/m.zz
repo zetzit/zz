@@ -11,7 +11,7 @@ fn main() -> int {
 
 fn m2(){
     pool::Pool+10000 mut p;
-    p.new(64);
+    p.make(64);
 
     void mut * mut a = 0;
     for (usize mut i = 0;;i++) {

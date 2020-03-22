@@ -22,23 +22,17 @@ export fn borrow(MutSlice mut*self) -> MutSlice *
     return r;
 }
 
-export fn new(u8 mut*mem, usize size) -> MutSlice
+export fn make(MutSlice new mut*self, u8 mut*mem, usize size)
     @solver = yices2
     where len(mem) >= size
-    model return.slice.size == size
-    model return.slice.size == len(return.slice.mem)
-    model return.at == 0
+    model self->slice.size == size
+    model self->slice.size == len(self->slice.mem)
+    model self->at == 0
 {
-
-    let r = MutSlice {
-        slice: Slice {
-            size:   size,
-            mem:    mem,
-        },
-        at:     0,
-    };
-    static_attest(r.slice.size == len(r.slice.mem));
-    return r;
+    self->slice.size = size;
+    self->slice.mem  = mem;
+    self->at = 0;
+    static_attest(self->slice.size == len(self->slice.mem));
 }
 
 

@@ -60,8 +60,16 @@ export fn append_slice(String+tail mut * self) -> MutSlice
     };
 }
 
+/! make an empty string
+export fn make(String+tail mut new* self)
+    model self->len  == 0
+    model nullterm(self->mem)
+{
+    clear(self)
+}
+
 /! clear the string
-export fn clear(String+tail mut * self)
+export fn clear(String+tail mut new* self)
     model self->len  == 0
     model nullterm(self->mem)
 {

@@ -10,23 +10,22 @@ using io::unix;
 using net;
 
 export fn main() -> int {
-    err::Err+1000 mut e;
-    e.new();
+    new+1000 e = err::make();
 
     new recv_addr = address::from_cstr("0.0.0.0:8083");
     new send_addr = address::from_cstr("0.0.0.0:0");
 
-    unix::Async+10 mut async;
-    async.new();
+    new+10 async = unix::make();
 
-    udp::Socket mut receiver = net::os()->new_udp(&e, &recv_addr, &async);
+
+    new receiver = net::make_udp(net::os(), &e, &recv_addr, &async);
     e.abort();
 
-    udp::Socket mut sender = net::os()->new_udp(&e, &send_addr, &async);
+    new sender   = net::make_udp(net::os(), &e, &send_addr, &async);
     e.abort();
 
 
-    string::String+100 mut msg = {0};
+    new+100 msg = string::make();
     msg.append_cstr("helloouuu");
 
     sender.sendto(&e, &msg, &recv_addr);

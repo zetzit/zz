@@ -16,9 +16,8 @@ fn maybe(err::Err+et mut *e)
 }
 
 pub fn main() -> int {
+    new+500 e = err::make();
 
-    err::Err+500 mut e;
-    err::new(&e);
     maybe(&e);
     if err::check(&e) {
         return 0;

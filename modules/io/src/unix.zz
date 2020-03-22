@@ -22,7 +22,7 @@ export struct Async+ {
     pollfd_t    fds[];
 }
 
-export fn new(Async+tail mut *self) {
+export fn make(Async+tail mut new *self) {
     memset(self, 0, (usize)sizeof(Async));
 
     self->base.impl_make_timeout    = impl_make_timeout;

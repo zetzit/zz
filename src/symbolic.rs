@@ -121,6 +121,9 @@ pub enum ScopeReturn {
 
 impl Symbolic {
     fn execute_module(&mut self, module: &mut flatten::Module, fun: usize) -> Result<(), Error> {
+
+        debug!("~~~~~\nexecuting {}", module.name);
+
         self.current_module_name = module.name.human_name();
 
         // built in len theory
@@ -359,7 +362,7 @@ impl Symbolic {
                     self.copy(sym, esym, &d.loc)?;
                 },
                 ast::Def::Fntype {..} => {
-                    self.alloc(
+                    let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed{
                             t:      ast::Type::Other(Name::from(&d.name.clone())),
@@ -368,7 +371,11 @@ impl Symbolic {
                             tail:   ast::Tail::None,
                         },
                         d.loc.clone(), Tags::new()
-                    )?;
+                    );
+                    let sym = match sym {
+                        Err(_) => continue,
+                        Ok(v) => v,
+                    };
                 },
                 ast::Def::Struct {..} => {
                     let sym = self.alloc(
@@ -2773,7 +2780,7 @@ impl Symbolic {
         self.ssa.debug_loc(&loc);
 
         if let Some(prev) = self.cur().locals.get(&name).cloned() {
-            return Err(self.trace(format!("ICE: redeclation of local name '{}' should have failed in expand", name), vec![
+            return Err(self.trace(format!("ICE in {}: redeclation of local name '{}' should have failed in expand", self.current_module_name, name), vec![
                 (loc.clone(), "this declaration would shadow a previous name".to_string()),
                 (self.memory[prev].declared.clone(), "previous declaration".to_string())
             ]));
