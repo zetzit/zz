@@ -117,9 +117,12 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
 
 
     let mut ext = abs::Ext::new();
-
     let mut names : Vec<Name> = modules.keys().cloned().collect();
     names.sort_unstable();
+
+    let mut pb = pbr::ProgressBar::new(names.len() as u64);
+    pb.show_speed = false;
+
     for name in &names {
         let mut md = modules.remove(name).unwrap();
         match &mut md {
@@ -129,112 +132,160 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             }
         }
         modules.insert(name.clone(), md);
+        pb.message(&format!("abs {}", name));
+        pb.inc();
     }
+    pb.finish_print("done abs");
 
-    let mut flat = Vec::new();
-    for name in &names {
-        let mut md = modules.remove(name).unwrap();
-        match &mut md {
-            loader::Module::C(_) => (),
-            loader::Module::ZZ(ast) => {
-                flat.push(flatten::flatten(ast, &modules, &ext));
-            }
-        }
-        modules.insert(name.clone(), md);
-    }
-
-    let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(flat.len() as u64)));
+    let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(names.len() as u64)));
     pb.lock().unwrap().show_speed = false;
+
+    //let iterf =  |name: Name| {
+    //    let mut modules = modules.clone();
+    //    let mut md = modules.remove(&name).unwrap();
+    //    let flat = match &mut md {
+    //        loader::Module::C(_) => None,
+    //        loader::Module::ZZ(ast) => {
+    //            Some(flatten::flatten(ast, &modules, &ext))
+    //        }
+    //    };
+    //    // modules.insert(name.clone(), md);
+    //    pb.lock().unwrap().message(&format!("flatten {}", name));
+    //    pb.lock().unwrap().inc();
+    //    flat
+    //};
+
+    //let flat : Vec<flatten::Module> = if slow {
+    //    names.into_iter().filter_map(iterf).collect()
+    //} else {
+    //    names.into_par_iter().filter_map(iterf).collect()
+    //};
+
+
+    //pb.lock().unwrap().finish_print("done flatten");
+
+    //let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(flat.len() as u64)));
+    //pb.lock().unwrap().show_speed = false;
+
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
-
-
-
     let working_on_these = Arc::new(Mutex::new(HashSet::new()));
 
+    let iterf =  |name: Name| {
+        let (_, outname) = emitter::outname(&project.project, &stage, &name, false);
 
-    let iterf =  |mut module| {
-
-        //only emit if any source file is newer than the c file
-        let (_, outname) = emitter::outname(&project.project, &stage, &module, false);
-        if module.is_newer_than(&outname) {
-            let module_human_name = module.name.human_name();
-            if !silent {
-                working_on_these.lock().unwrap().insert(module_human_name.clone());
-                let mut indic = String::new();
-                for working_on in  working_on_these.lock().unwrap().iter() {
-                    if !indic.is_empty() {
-                        indic.push_str(", ");
+        let cachename = format!("{}.buildcache", outname);
+        let cached : Option<emitter::CFile> = match std::fs::read_to_string(&cachename) {
+            Ok(f) => {
+                match serde_json::from_str(&f) {
+                    Ok(cf) => Some(cf),
+                    Err(_) => {
+                        std::fs::remove_file(&cachename).expect(&format!("cannot remove {}", cachename));
+                        None
                     }
-                    if indic.len() > 30 {
-                        indic = format!("{}.. ", indic);
-                        break;
-                    }
-                    indic = format!("{}{} ", indic, working_on);
                 }
-                indic = format!("prove [ {}]  ", indic);
-                pb.lock().unwrap().message(&indic);
-                pb.lock().unwrap().tick();
-            }
 
-            expand::expand(&mut module)?;
-            if !symbolic::execute(&mut module) {
-                ABORT.store(true, Ordering::Relaxed);
-                return Ok(None);
-            }
+            },
+            Err(_) => None,
+        };
 
-            let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
-            header.emit();
-
-            let rsbridge = emitter_rs::Emitter::new(&project.project, stage.clone(), module.clone());
-            rsbridge.emit();
-
-            let jsbridge = emitter_js::Emitter::new(&project.project, stage.clone(), module.clone());
-            jsbridge.emit();
-
-            let docs = emitter_docs::Emitter::new(&project.project, stage.clone(), module.clone());
-            docs.emit();
-
-            let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
-            let cf = em.emit();
-
-
-            if !silent {
-                working_on_these.lock().unwrap().remove(&module_human_name);
-                let mut indic = String::new();
-                for working_on in  working_on_these.lock().unwrap().iter() {
-                    if !indic.is_empty() {
-                        indic.push_str(", ");
-                    }
-                    if indic.len() > 30 {
-                        indic = format!("{}.. ", indic);
-                        break;
-                    }
-                    indic = format!("{}{} ", indic, working_on);
+        //only emit if any source file is newer than the cache or output
+        if let Some(cached) = cached {
+            if !cached.is_newer_than(&outname) && !cached.is_newer_than(&cachename) {
+                if !silent {
+                    //pb.lock().unwrap().message(&format!("cached {} ", module.name));
+                    pb.lock().unwrap().inc();
                 }
-                indic = format!("prove [ {}]  ", indic);
-                pb.lock().unwrap().message(&indic);
-                pb.lock().unwrap().inc();
+                return Ok(Some((cached.name.clone(), cached)))
             }
-            Ok(Some((cf.name.clone(), cf)))
-        } else {
-            if !silent {
-                //pb.lock().unwrap().message(&format!("cached {} ", module.name));
-                pb.lock().unwrap().inc();
-            }
-            let cf = emitter::CFile{
-                name:       module.name,
-                filepath:   outname,
-                sources:    module.sources,
-                deps:       module.deps
-            };
-            Ok(Some((cf.name.clone(), cf)))
         }
 
+
+        let mut modules = modules.clone();
+        let mut module = modules.remove(&name).unwrap();
+
+        let mut module = match &mut module {
+            loader::Module::C(c) => {
+                let cf = emitter::CFile{
+                    name:       name,
+                    filepath:   c.to_string_lossy().into(),
+                    sources:    HashSet::new(),
+                    deps:       HashSet::new(),
+                };
+                return Ok(Some((cf.name.clone(), cf)));
+            }
+            loader::Module::ZZ(ast) => {
+                flatten::flatten(ast, &modules, &ext)
+            }
+        };
+
+        let module_human_name = module.name.human_name();
+        if !silent {
+            working_on_these.lock().unwrap().insert(module_human_name.clone());
+            let mut indic = String::new();
+            for working_on in  working_on_these.lock().unwrap().iter() {
+                if !indic.is_empty() {
+                    indic.push_str(", ");
+                }
+                if indic.len() > 30 {
+                    indic = format!("{}.. ", indic);
+                    break;
+                }
+                indic = format!("{}{} ", indic, working_on);
+            }
+            indic = format!("prove [ {}]  ", indic);
+            pb.lock().unwrap().message(&indic);
+            pb.lock().unwrap().tick();
+        }
+
+        expand::expand(&mut module)?;
+        if !symbolic::execute(&mut module) {
+            ABORT.store(true, Ordering::Relaxed);
+            return Ok(None);
+        }
+
+        let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
+        header.emit();
+
+        let rsbridge = emitter_rs::Emitter::new(&project.project, stage.clone(), module.clone());
+        rsbridge.emit();
+
+        let jsbridge = emitter_js::Emitter::new(&project.project, stage.clone(), module.clone());
+        jsbridge.emit();
+
+        let docs = emitter_docs::Emitter::new(&project.project, stage.clone(), module.clone());
+        docs.emit();
+
+        let em = emitter::Emitter::new(&project.project, stage.clone(), module, false);
+        let cf = em.emit();
+
+
+        if !silent {
+            working_on_these.lock().unwrap().remove(&module_human_name);
+            let mut indic = String::new();
+            for working_on in  working_on_these.lock().unwrap().iter() {
+                if !indic.is_empty() {
+                    indic.push_str(", ");
+                }
+                if indic.len() > 30 {
+                    indic = format!("{}.. ", indic);
+                    break;
+                }
+                indic = format!("{}{} ", indic, working_on);
+            }
+            indic = format!("prove [ {}]  ", indic);
+            pb.lock().unwrap().message(&indic);
+            pb.lock().unwrap().inc();
+        }
+
+        let cachefile = std::fs::File::create(&cachename).expect(&format!("cannot create {}", cachename));
+        serde_json::ser::to_writer(cachefile, &cf).expect(&format!("cannot write {}", cachename));
+
+        Ok(Some((cf.name.clone(), cf)))
     };
     let cfiles_r : Vec<Result<Option<(Name, emitter::CFile)>, Error>> = if slow {
-        flat.into_iter().map(iterf).collect()
+        names.into_iter().map(iterf).collect()
     } else {
-        flat.into_par_iter().map(iterf).collect()
+        names.into_par_iter().map(iterf).collect()
     };
 
     let mut cfiles = HashMap::new();

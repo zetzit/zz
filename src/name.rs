@@ -1,6 +1,7 @@
 use std::hash::{Hash, Hasher};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub struct Name (pub Vec<String>);
 
 

@@ -280,7 +280,7 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, TypeCompl
     }
 }
 
-pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ext: &Ext) -> Module {
+pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ext: &Ext) -> Module {
     debug!("flatten {}", md.name);
 
     let mut flat    = Module::default();
@@ -311,8 +311,8 @@ pub fn flatten(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>
     }
 
     let mut incomming_imports = Vec::new();
-    for import in std::mem::replace(&mut md.imports, Vec::new()) {
-        incomming_imports.push(import);
+    for import in &md.imports {
+        incomming_imports.push(import.clone());
     }
 
     let mut visited : HashSet<Name> = HashSet::new();
@@ -913,26 +913,5 @@ fn dependency_visit(
 
     for (dep,_) in &n.use_deps {
         dependency_visit(visited, unsorted, dep.clone(), &TypeComplete::Incomplete, thisobject, depth+1);
-    }
-}
-
-impl Module {
-    pub fn is_newer_than(&self, target: &str) -> bool {
-        let itarget = match std::fs::metadata(&target) {
-            Ok(v)  => v,
-            Err(_) => return true,
-        };
-        let itarget = itarget.modified().expect(&format!("cannot stat {}", target));
-
-        for source in &self.sources {
-            let isource = std::fs::metadata(source).expect(&format!("cannot stat {:?}", source));
-
-            let isource = isource.modified().expect(&format!("cannot stat {:?}", source));
-
-            if isource > itarget {
-                return true;
-            }
-        }
-        return false;
     }
 }

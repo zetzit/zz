@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{Ordering};
 use super::make::Stage;
 
+#[derive(Clone)]
 pub enum Module {
     C(PathBuf),
     ZZ(ast::Module),
@@ -74,5 +75,4 @@ pub fn load(
     if !silent{
         pb.lock().unwrap().finish_print(&format!("finished parsing {}", artifact_name));
     }
-
 }

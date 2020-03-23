@@ -8,8 +8,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use super::name::Name;
 use super::parser::{self, emit_error};
+use serde::{Serialize,Deserialize};
 
-
+#[derive(Serialize, Deserialize)]
 pub struct CFile {
     pub name:       Name,
     pub filepath:   String,
@@ -29,7 +30,7 @@ pub struct Emitter{
     emit_as_extern: HashSet<Name>,
 }
 
-pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module, header: bool) -> (bool, String) {
+pub fn outname(project: &Project, stage: &make::Stage, module: &Name , header: bool) -> (bool, String) {
     let mut cxx = false;
     if let Some(std) = &project.std {
         if std.contains("c++") {
@@ -37,7 +38,7 @@ pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module,
         }
     }
 
-    let mut ns = module.name.0.clone();
+    let mut ns = module.0.clone();
     ns.remove(0);
     if header {
         (cxx, format!("target/{}/include/zz/{}/{}.h", stage, project.name, ns.join("_")))
@@ -51,7 +52,7 @@ pub fn outname(project: &Project, stage: &make::Stage, module: &flatten::Module,
 impl Emitter {
     pub fn new(project: &Project, stage: make::Stage , module: flatten::Module, header: bool) -> Self {
 
-        let (cxx, p) = outname(project, &stage, &module, header);
+        let (cxx, p) = outname(project, &stage, &module.name, header);
         let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
         let casedir = format!("target/{}/testcases/{}", stage, module.name.0[1..].join("_"));
@@ -1335,5 +1336,26 @@ impl Emitter {
                 }
             }
         }
+    }
+}
+
+impl CFile {
+    pub fn is_newer_than(&self, target: &str) -> bool {
+        let itarget = match std::fs::metadata(&target) {
+            Ok(v)  => v,
+            Err(_) => return true,
+        };
+        let itarget = itarget.modified().expect(&format!("cannot stat {}", target));
+
+        for source in &self.sources {
+            let isource = std::fs::metadata(source).expect(&format!("cannot stat {:?}", source));
+
+            let isource = isource.modified().expect(&format!("cannot stat {:?}", source));
+
+            if isource > itarget {
+                return true;
+            }
+        }
+        return false;
     }
 }
