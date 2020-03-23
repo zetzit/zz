@@ -149,7 +149,7 @@ self.module.name.0[1..].join("::")).unwrap();
     }
 
     pub fn emit_enum(&mut self, ast: &ast::Local) {
-        let names = match &ast.def {
+        let _names = match &ast.def {
             ast::Def::Enum{names} => (names),
             _ => unreachable!(),
         };
@@ -179,7 +179,7 @@ self.module.name.0[1..].join("::")).unwrap();
         for arg in args {
             sargs.insert(arg.name.clone(), format!("{}", arg.typed));
         }
-        let mut tpl = FunctionHtml {
+        let tpl = FunctionHtml {
             doc:  ast.doc.clone().replace("\n", "<br>"),
             name: Name::from(&ast.name).0.last().unwrap().clone(),
             ret:  ret.as_ref().map(|r|{

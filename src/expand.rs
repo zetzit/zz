@@ -639,7 +639,7 @@ impl Stack {
     }
 
     fn drop_frame(&mut self, loc: &ast::Location, frame: usize) -> Result<Vec<Box<ast::Statement>>, Error> {
-        let mut r = Vec::new();
+        let r = Vec::new();
         for (name, storage) in &self.stack[frame].storage {
 
             //TODO also drop owned pointers some day
