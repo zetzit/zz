@@ -105,18 +105,19 @@ impl Make {
         let features = config.features(variant);
 
         let mut cflags : Vec<String> =
-                std::env::var("TARGET_CFLAGS")
-                .or(std::env::var("CFLAGS"))
-                .unwrap_or("".to_string()).split(" ")
-                .map(|s|s.to_string()).collect();
+            match std::env::var("TARGET_CFLAGS").or(std::env::var("CFLAGS")) {
+                Err(_) => Vec::new(),
+                Ok(s) => s.split(" ").map(|s|s.to_string()).collect()
+            };
 
         let mut lflags : Vec<String> =
-                std::env::var("TARGET_LDFLAGS")
-                .or(std::env::var("TARGET_LFLAGS"))
-                .or(std::env::var("LDFLAGS"))
-                .or(std::env::var("LFLAGS"))
-                .unwrap_or("".to_string()).split(" ")
-                .map(|s|s.to_string()).collect();
+            match std::env::var("TARGET_LDFLAGS")
+                    .or(std::env::var("TARGET_LFLAGS"))
+                    .or(std::env::var("LDFLAGS"))
+                    .or(std::env::var("LFLAGS")) {
+                Err(_) => Vec::new(),
+                Ok(s) => s.split(" ").map(|s|s.to_string()).collect()
+            };
 
         let mut cc = std::env::var("TARGET_CC")
             .or(std::env::var("CC"))
@@ -366,7 +367,7 @@ impl Make {
                     .status()
                     .expect("failed to execute cc");
                 if !status.success() {
-                    error!("{} {}", self.cc, step.args.join(" "));
+                    error!("cc: [{}] args: [{}]", self.cc, step.args.join(" "));
                     ABORT.store(true, Ordering::Relaxed);
                 }
             }

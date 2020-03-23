@@ -593,7 +593,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
     let mut scope = Scope::default();
     scope.push();
 
-    let mut newimports = Vec::new();
+    let newimports = Vec::new();
     for import in &mut md.imports {
 
         let mut fqn  = abs_import(&md.name, &import, all_modules);
