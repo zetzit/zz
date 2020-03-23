@@ -27,7 +27,6 @@ fn main() {
         .setting(clap::AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("smt-timeout").takes_value(true).required(false).long("smt-timeout"))
         .subcommand(SubCommand::with_name("check").about("check the current project"))
-        .subcommand(SubCommand::with_name("export").about("emit c files without building them"))
             .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
             .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
@@ -77,7 +76,7 @@ fn main() {
 
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::test();
-            zz::build(true, false, variant, stage.clone(), false);
+            zz::build(zz::BuildSet::Tests, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
 
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
@@ -228,7 +227,7 @@ fn main() {
                 zz::make::Stage::test()
             };
             let variant = submatches.value_of("variant").unwrap_or("default");
-            zz::build(false, false, variant, stage.clone(), false);
+            zz::build(zz::BuildSet::Run, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
 
             let mut exes = Vec::new();
@@ -257,7 +256,7 @@ fn main() {
         ("fuzz", Some(submatches)) => {
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::fuzz();
-            zz::build(true, false, variant, stage.clone(), false);
+            zz::build(zz::BuildSet::Tests, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
 
 
@@ -343,7 +342,7 @@ fn main() {
         },
         ("check", Some(submatches)) => {
             zz::parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
-            zz::build(false, true, submatches.value_of("variant").unwrap_or("default"), zz::make::Stage::test(), false)
+            zz::build(zz::BuildSet::Check, submatches.value_of("variant").unwrap_or("default"), zz::make::Stage::test(), false)
         },
         ("build", Some(submatches)) => {
             let stage = if submatches.is_present("release") {
@@ -354,21 +353,10 @@ fn main() {
                 zz::make::Stage::test()
             };
 
-            zz::build(true, false, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
-        },
-        ("export", Some(submatches)) => {
-            let stage = if submatches.is_present("release") {
-                zz::make::Stage::release()
-            } else if submatches.is_present("debug") {
-                zz::make::Stage::debug()
-            } else {
-                zz::make::Stage::test()
-            };
-
-            zz::build(false, true, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
+            zz::build(zz::BuildSet::All, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
         },
         ("", None) => {
-            zz::build(false, false, "default", zz::make::Stage::test(), false);
+            zz::build(zz::BuildSet::All, "default", zz::make::Stage::test(), false);
         },
         _ => unreachable!(),
     }

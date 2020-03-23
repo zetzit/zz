@@ -47,23 +47,15 @@ impl Error {
 
 static ABORT: AtomicBool = AtomicBool::new(false);
 
-
-
-pub fn build_rs(variant: &str) {
-    if let Err(_) = std::env::var("RUST_LOG") {
-        std::env::set_var("RUST_LOG", "info");
-    }
-    env_logger::builder()
-        //.default_format_module_path(false)
-        .default_format_timestamp(false)
-        .default_format_module_path(false)
-        .init();
-
-    make::BUILD_RS.store(true, Ordering::SeqCst);
-    build(false, false, variant, make::Stage::release(), false);
+#[derive(PartialEq)]
+pub enum BuildSet {
+    Tests,
+    Run,
+    Check,
+    All,
 }
 
-pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: bool) {
+pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) {
     use rayon::prelude::*;
     use std::sync::{Arc, Mutex};
 
@@ -313,11 +305,13 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
     }
 
     for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
-        if let project::ArtifactType::Test = artifact.typ {
-            if !tests {
-                continue;
-            }
-        }
+        match (&artifact.typ, &buildset) {
+            (project::ArtifactType::Test, BuildSet::Tests)  => (),
+            (project::ArtifactType::Test, _)                => continue,
+            (project::ArtifactType::Exe, _)                 => (),
+            (_, BuildSet::Run)                              => continue,
+            (_,_)                                           => (),
+        };
         let mut make = make::Make::new(project.clone(), variant, stage.clone(), artifact.clone());
 
         let mut main = Name::from(&artifact.main);
@@ -357,7 +351,7 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
             }
         }
 
-        if !check {
+        if buildset != BuildSet::Check {
             make.link();
         }
 
