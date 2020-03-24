@@ -102,8 +102,11 @@ pub fn build(tests: bool, check: bool, variant: &str, stage: make::Stage, slow: 
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules")
     );
 
-    if let Ok(modules_dir) = std::env::var("ZZ_MODULES_DIR") {
-        searchpaths.insert(std::path::Path::new(&modules_dir).to_path_buf());
+    if let Ok(zz_path) = std::env::var("ZZ_PATH") {
+        let module_paths = zz_path.split(":");
+        for path in module_paths {
+            searchpaths.insert(std::path::Path::new(&path).to_path_buf());
+        }
     }
 
     if let Some(deps) = &project.dependencies {
