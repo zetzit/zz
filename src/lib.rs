@@ -94,6 +94,9 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules")
     );
 
+    if let Ok(modules_dir) = std::env::var("ZZ_MODULES_DIR") {
+        searchpaths.insert(std::path::Path::new(&modules_dir).to_path_buf());
+    }
 
     if let Some(deps) = &project.dependencies {
         for (name, dep) in deps {
