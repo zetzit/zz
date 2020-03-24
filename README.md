@@ -438,15 +438,16 @@ to create a local with a tail, use new like this:
 
 #### environment variables
 
-##### `ZZ_MODULES_PATH`
+##### `ZZ_MODULE_PATHS`
 
 When ZZ imports other ZZ modules it will look in a projects `modules/`
 directory by default. The search path can be extended by defining the
-`ZZ_MODULES_PATH` environment variable much like
+`ZZ_MODULE_PATHS` environment variable much like
 [`PATH`](https://en.wikipedia.org/wiki/PATH_(variable)) environment
-variable where multiple paths can be defined separated by a colon (`:`).
+variable where multiple paths can be defined separated by a colon (`:`)
+on POSIX systems and a semi-coloon (`;`) on Windows.
 
 ```sh
-ZZ_MODULES_PATH="$PWD/path/to/modules:/usr/share/zz/modules" zz build
+ZZ_MODULE_PATHS="$PWD/path/to/modules:/usr/share/zz/modules" zz build
 ```
 
