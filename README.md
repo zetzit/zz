@@ -436,6 +436,17 @@ to create a local with a tail, use new like this:
     new+100 foo = string::empty();
 ```
 
+#### environment variables
 
+##### `ZZ_MODULES_PATH`
 
+When ZZ imports other ZZ modules it will look in a projects `modules/`
+directory by default. The search path can be extended by defining the
+`ZZ_MODULES_PATH` environment variable much like
+[`PATH`](https://en.wikipedia.org/wiki/PATH_(variable)) environment
+variable where multiple paths can be defined separated by a colon (`:`).
+
+```sh
+ZZ_MODULES_PATH="$PWD/path/to/modules:/usr/share/zz/modules" zz build
+```
 
