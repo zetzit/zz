@@ -504,3 +504,38 @@ int main() -> {
   return 0;
 }
 ```
+
+#### packed structs and unions
+
+ZZ supports packed structs and unions with the `packed` modifier. This
+modifier, when used with `struct` or `union`, omits alignment padding.
+This is typically used for architecture independant serialization at the
+cost of causing alingment faults
+
+Below is an example of a packed and unpacked struct and their static
+sizes printed to stdout.
+
+```C++
+using <stdio.h>::{ printf }
+
+struct Packed packed {
+  u8 a;
+  u8 b;
+  int b;
+}
+
+struct Unpacked {
+  u8 a;
+  u8 b;
+  int b;
+}
+
+fn main() -> int {
+  printf("sizeof(Packed) == lu\n", sizeof(Packed)); // 6
+  printf("sizeof(Unpacked) == lu\n", sizeof(Unpacked)); // 8
+  return 0;
+}
+```
+
+
+[gcc-attributes]: https://gcc.gnu.org/onlinedocs/gcc-4.0.2/gcc/Type-Attributes.html
