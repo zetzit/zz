@@ -480,6 +480,24 @@ fn abs_expr(
                 abs_expr(arg, scope, inbody, all_modules, self_md_name);
             }
         },
+        ast::Expression::MacroCall { loc, ref mut name, args, ..} => {
+            let mut t = ast::Typed {
+                t:      ast::Type::Other(name.clone()),
+                loc:    loc.clone(),
+                ptr:    Vec::new(),
+                tail:   ast::Tail::None,
+            };
+            scope.abs(&mut t, false);
+            if let ast::Type::Other(n) = t.t {
+                *name = n;
+            } else {
+                unreachable!()
+            };
+
+            for arg in args {
+                abs_expr(arg, scope, inbody, all_modules, self_md_name);
+            }
+        },
         ast::Expression::Infix {lhs, rhs,.. } => {
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, scope, inbody, all_modules, self_md_name);

@@ -89,6 +89,7 @@ pub struct Step {
 pub struct Make {
     pub artifact:   Artifact,
     pub steps:      Vec<Step>,
+    pub host_cc:    String,
     pub cc:         String,
     pub ar:         String,
     pub cflags:     Vec<String>,
@@ -118,6 +119,9 @@ impl Make {
                 Err(_) => Vec::new(),
                 Ok(s) => s.split(" ").map(|s|s.to_string()).collect()
             };
+
+        let host_cc = std::env::var("CC")
+            .unwrap_or("clang".to_string());
 
         let mut cc = std::env::var("TARGET_CC")
             .or(std::env::var("CC"))
@@ -262,6 +266,7 @@ impl Make {
             lobjs: Vec::new(),
             cflags,
             steps: Vec::new(),
+            host_cc,
         };
 
         for c in cobjects {
@@ -406,6 +411,16 @@ impl Make {
                 args.push("-o".into());
                 args.push(format!("./target/{}/lib/lib{}.so", self.stage, self.artifact.name));
             },
+            super::project::ArtifactType::Macro => {
+                std::fs::create_dir_all(format!("./target/macro/")).expect("create target dir");
+                cmd = self.host_cc.clone();
+                args.extend_from_slice(&self.lobjs);
+                if self.stage.asan {
+                    args.push("-fsanitize=address".into());
+                }
+                args.push("-o".into());
+                args.push(format!("./target/macro/{}", self.artifact.name));
+            }
             super::project::ArtifactType::Exe => {
                 std::fs::create_dir_all(format!("./target/{}/bin/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);

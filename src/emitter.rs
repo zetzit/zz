@@ -203,10 +203,6 @@ impl Emitter {
             debug!("    emitting {}", d.name);
             match d.def {
                 ast::Def::Macro{..} => {
-                    if complete != &flatten::TypeComplete::Complete {
-                        continue
-                    }
-                    self.emit_macro(&d)
                 }
                 ast::Def::Const{..} => {
                     if self.header {
@@ -395,26 +391,6 @@ impl Emitter {
         }
     }
 
-    pub fn emit_macro(&mut self, v: &ast::Local) {
-        self.emit_loc(&v.loc);
-        self.inside_macro = true;
-        let (args, body) = match &v.def {
-            ast::Def::Macro{args, body, ..} => (args, body),
-            _ => unreachable!(),
-        };
-
-        self.emit_loc(&v.loc);
-        write!(self.f, "#define {}", self.to_local_name(&Name::from(&v.name))).unwrap();
-        if args.len() > 0  {
-            write!(self.f, "({}) \\\n", args.join(",")).unwrap();
-        }
-
-        write!(self.f, " ").unwrap();
-        self.emit_zblock(&body, false);
-        write!(self.f, "\n").unwrap();
-        self.inside_macro = false;
-    }
-
     pub fn emit_static(&mut self, ast: &ast::Local) {
 
         self.emit_loc(&ast.loc);
@@ -515,7 +491,7 @@ impl Emitter {
             let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
             match expr {
                 ast::Expression::LiteralString{v,..} => {
-                    f.write_all(v).unwrap();
+                    f.write_all(v.as_bytes()).unwrap();
                 },
                 ast::Expression::ArrayInit{fields, ..} => {
                     for field in fields {
@@ -1160,6 +1136,9 @@ impl Emitter {
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
+            ast::Expression::MacroCall{loc, ..} => {
+                write!(self.f, "{{INTERNAL_ERROR_MACRO_NOT_EXPANDED}}").unwrap();
+            }
             ast::Expression::ArrayInit{fields,loc} => {
                 self.emit_loc(&loc);
                 write!(self.f, "{{").unwrap();
@@ -1219,7 +1198,7 @@ impl Emitter {
             ast::Expression::LiteralString {loc, v} => {
                 self.emit_loc(&loc);
                 write!(self.f, "    \"").unwrap();
-                for c in v {
+                for c in v.as_bytes() {
                     self.write_escaped_literal(*c, true);
                 }
                 write!(self.f, "\"").unwrap();

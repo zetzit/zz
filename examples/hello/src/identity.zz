@@ -3,7 +3,7 @@ using <stdio.h>::{printf} ;
 
 using constants::{foo};
 using err::{Err};
-using constants::{conflict as constant_conflict, ADD_IMPL};
+using constants::{conflict as constant_conflict};
 
 using main;
 

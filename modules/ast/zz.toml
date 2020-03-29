@@ -1,0 +1,17 @@
+[project]
+version = "0.1.0"
+name = "ast"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
+err     = "1"
+json    = "1"
+pool    = "1"
+string  = "1"

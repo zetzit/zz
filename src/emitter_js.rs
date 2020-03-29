@@ -804,6 +804,13 @@ napi_value js_{}(napi_env env, napi_callback_info info) {{
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
+            ast::Expression::MacroCall{loc, ..} => {
+                parser::emit_error(
+                    "ICE: incomplete macro expansion ended up in emitter",
+                    &[(loc.clone(), format!("this should have been resolved earlier"))]
+                    );
+                std::process::exit(9);
+            }
             ast::Expression::ArrayInit{..} => {
             },
             ast::Expression::StructInit{..} => {
@@ -841,8 +848,8 @@ napi_value js_{}(napi_env env, napi_callback_info info) {{
             ast::Expression::LiteralString {loc, v} => {
                 self.emit_loc(&loc);
                 write!(self.f, "    \"").unwrap();
-                for c in v {
-                    self.write_escaped_literal(*c, true);
+                for c in v.as_bytes() {
+                    self.write_escaped_literal(*c as u8, true);
                 }
                 write!(self.f, "\"").unwrap();
             }

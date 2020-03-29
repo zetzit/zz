@@ -93,7 +93,7 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
 }
 
 export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strlen)
-    @solver = yices2
+    @solver("yices2")
     where err::checked(*e)
     where len(str) >= strlen
     where tail > 2
@@ -251,7 +251,10 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
         }
         ParserState::PreVal => {
             if stack->in_array {
-                (self->capture).len = self->keylen ;
+                self->capture.clear();
+                self->capture.format("%d", self->state[self->depth].index);
+                self->capture.push(0);
+                self->keylen = self->capture.len;
             }
             if token == '"' {
                 stack->state = ParserState::StringVal;

@@ -3,11 +3,25 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::fmt;
 use super::name::Name;
+use serde::{Serialize};
+use serde::ser::{SerializeStruct, Serializer};
+
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Location {
     pub file:   String,
     pub span:   pest::Span<'static>,
+}
+
+impl Serialize for Location {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        let mut s = serializer.serialize_struct("Location", 2)?;
+        s.serialize_field("file", &self.file)?;
+        s.end()
+    }
 }
 
 impl Location {
@@ -40,7 +54,7 @@ impl std::fmt::Display for Location {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Serialize)]
 pub struct Tags(pub HashMap<String, HashMap<String, Location>>);
 
 
@@ -51,7 +65,7 @@ pub enum Storage {
     Atomic,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Visibility {
     Shared,
     Object,
@@ -69,7 +83,7 @@ pub struct Import {
     pub needs:  Vec<(Typed, Location)>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Tail {
     None,
     Dynamic,
@@ -77,6 +91,13 @@ pub enum Tail {
     Bind(String, Location),
 }
 
+
+#[derive(Clone, Debug)]
+pub struct Derive {
+    pub loc:    Location,
+    pub makro:  String,
+    pub args:   Vec<Box<Expression>>,
+}
 
 #[derive(Clone, Debug)]
 pub enum Def {
@@ -95,7 +116,7 @@ pub enum Def {
         nameloc:    Location,
         ret:        Option<AnonArg>,
         args:       Vec<NamedArg>,
-        hints:      HashMap<String, String>,
+        derives:    Vec<Derive>,
         attr:       HashMap<String, Location>,
         body:       Block,
         vararg:     bool,
@@ -144,7 +165,7 @@ pub enum Def {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Local {
     pub name:       String,
     pub vis:        Visibility,
@@ -154,14 +175,14 @@ pub struct Local {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Pointer {
     pub loc:    Location,
     pub tags:   Tags,
 }
 
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Type {
     New,
     Elided,
@@ -235,7 +256,7 @@ impl Type {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Typed {
     pub t:      Type,
     pub loc:    Location,
@@ -322,7 +343,7 @@ pub struct Field {
     pub loc:        Location,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum InfixOperator {
     Equals,
     Nequals,
@@ -423,7 +444,7 @@ impl InfixOperator {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum PrefixOperator {
     Boolnot,
     Bitnot,
@@ -433,13 +454,13 @@ pub enum PrefixOperator {
     Deref,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum PostfixOperator {
     Increment,
     Decrement,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum AssignOperator {
     Bitor,
     Bitand,
@@ -448,7 +469,7 @@ pub enum AssignOperator {
     Eq,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum EmitBehaviour {
     Default,
     Skip,
@@ -458,7 +479,7 @@ pub enum EmitBehaviour {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum Expression {
     Name(Typed),
     MemberAccess {
@@ -474,7 +495,7 @@ pub enum Expression {
     },
     LiteralString {
         loc:    Location,
-        v:      Vec<u8>,
+        v:      String,
     },
     LiteralChar {
         loc:    Location,
@@ -521,6 +542,11 @@ pub enum Expression {
         loc:        Location,
         fields:     Vec<Box<Expression>>,
     },
+    MacroCall {
+        loc:            Location,
+        name:           Name,
+        args:           Vec<Box<Expression>>,
+    }
 }
 
 impl Expression {
@@ -539,6 +565,7 @@ impl Expression {
             Expression::UnaryPre {loc,..}       => loc,
             Expression::StructInit {loc,..}     => loc,
             Expression::ArrayInit {loc,..}      => loc,
+            Expression::MacroCall {loc,..}      => loc,
         }
     }
 }

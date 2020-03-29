@@ -1,4 +1,3 @@
-#![allow(dead_code)] // dead code checker is broken
 
 #[macro_use] extern crate pest_derive;
 extern crate metrohash;
@@ -23,6 +22,7 @@ pub mod symbolic;
 pub mod expand;
 pub mod smt;
 pub mod emitter_docs;
+pub mod makro;
 
 use std::path::Path;
 use name::Name;
@@ -143,37 +143,10 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
     let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(names.len() as u64)));
     pb.lock().unwrap().show_speed = false;
 
-    //let iterf =  |name: Name| {
-    //    let mut modules = modules.clone();
-    //    let mut md = modules.remove(&name).unwrap();
-    //    let flat = match &mut md {
-    //        loader::Module::C(_) => None,
-    //        loader::Module::ZZ(ast) => {
-    //            Some(flatten::flatten(ast, &modules, &ext))
-    //        }
-    //    };
-    //    // modules.insert(name.clone(), md);
-    //    pb.lock().unwrap().message(&format!("flatten {}", name));
-    //    pb.lock().unwrap().inc();
-    //    flat
-    //};
-
-    //let flat : Vec<flatten::Module> = if slow {
-    //    names.into_iter().filter_map(iterf).collect()
-    //} else {
-    //    names.into_par_iter().filter_map(iterf).collect()
-    //};
-
-
-    //pb.lock().unwrap().finish_print("done flatten");
-
-    //let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(flat.len() as u64)));
-    //pb.lock().unwrap().show_speed = false;
-
     let silent = parser::ERRORS_AS_JSON.load(Ordering::SeqCst);
     let working_on_these = Arc::new(Mutex::new(HashSet::new()));
 
-    let iterf =  |name: Name| {
+    let iterf =  |modules: HashMap<Name, loader::Module>, macropass: bool, name: Name| {
         let (_, outname) = emitter::outname(&project.project, &stage, &name, false);
 
         let cachename = format!("{}.buildcache", outname);
@@ -198,7 +171,7 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
                     //pb.lock().unwrap().message(&format!("cached {} ", module.name));
                     pb.lock().unwrap().inc();
                 }
-                return Ok(Some((cached.name.clone(), cached)))
+                return Ok((Vec::new(), (Some((cached.name.clone(), cached)))));
             }
         }
 
@@ -206,6 +179,7 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
         let mut modules = modules.clone();
         let mut module = modules.remove(&name).unwrap();
 
+        let mut macro_mods = Vec::new();
         let mut module = match &mut module {
             loader::Module::C(c) => {
                 let cf = emitter::CFile{
@@ -214,9 +188,12 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
                     sources:    HashSet::new(),
                     deps:       HashSet::new(),
                 };
-                return Ok(Some((cf.name.clone(), cf)));
+                return Ok((Vec::new(),Some((cf.name.clone(), cf))));
             }
             loader::Module::ZZ(ast) => {
+                if macropass {
+                    macro_mods = makro::sieve(ast);
+                }
                 flatten::flatten(ast, &modules, &ext)
             }
         };
@@ -241,10 +218,12 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
         }
 
         expand::expand(&mut module)?;
-        if !symbolic::execute(&mut module) {
+        let (ok, complete) = symbolic::execute(&mut module, !macropass);
+        if !ok {
             ABORT.store(true, Ordering::Relaxed);
-            return Ok(None);
+            return Ok((Vec::new(), None));
         }
+
 
         let header  = emitter::Emitter::new(&project.project, stage.clone(), module.clone(), true);
         header.emit();
@@ -280,22 +259,99 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
             pb.lock().unwrap().inc();
         }
 
-        let cachefile = std::fs::File::create(&cachename).expect(&format!("cannot create {}", cachename));
-        serde_json::ser::to_writer(cachefile, &cf).expect(&format!("cannot write {}", cachename));
+        if complete {
+            let cachefile = std::fs::File::create(&cachename).expect(&format!("cannot create {}", cachename));
+            serde_json::ser::to_writer(cachefile, &cf).expect(&format!("cannot write {}", cachename));
+        }
 
-        Ok(Some((cf.name.clone(), cf)))
+        Ok((macro_mods, Some((cf.name.clone(), cf))))
     };
-    let cfiles_r : Vec<Result<Option<(Name, emitter::CFile)>, Error>> = if slow {
-        names.into_iter().map(iterf).collect()
+
+
+    // pass 1: sieve macros
+    *pb.lock().unwrap() = pbr::ProgressBar::new(names.len() as u64);
+    let cfiles_r : Vec<Result<(Vec<ast::Module>, Option<(Name, emitter::CFile)>), Error>> = if slow {
+        names.clone().into_iter().map(|m|iterf(modules.clone(), true,m)).collect()
     } else {
-        names.into_par_iter().map(iterf).collect()
+        names.clone().into_par_iter().map(|m|iterf(modules.clone(), true,m)).collect()
+    };
+
+    // build macros
+    let mut cfiles = HashMap::new();
+    for r in cfiles_r {
+        match r {
+            Ok((nm, cf)) => {
+                if let Some(v) = cf {
+                    cfiles.insert(v.0, v.1);
+                }
+                for macromod in nm {
+                    let artifact = project::Artifact{
+                        name:   macromod.name.0[1..].join("_"),
+                        main:   format!("{}", macromod.name),
+                        typ:    project::ArtifactType::Macro,
+                        indexjs: None,
+                    };
+                    let mut need = Vec::new();
+                    need.push(macromod.name.clone());
+
+                    let mut make = make::Make::new(project.clone(), variant, stage.clone(), artifact);
+
+                    modules.insert(macromod.name.clone(), loader::Module::ZZ(macromod));
+                    names = modules.keys().cloned().collect();
+                    names.sort_unstable();
+
+                    *pb.lock().unwrap() = pbr::ProgressBar::new(names.len() as u64);
+                    let cfiles_r : Vec<Result<(Vec<ast::Module>, Option<(Name, emitter::CFile)>), Error>> = if slow {
+                        names.clone().into_iter().map(|m|iterf(modules.clone(), true,m)).collect()
+                    } else {
+                        names.clone().into_par_iter().map(|m|iterf(modules.clone(), true,m)).collect()
+                    };
+                    if ABORT.load(Ordering::Relaxed) {
+                        std::process::exit(9);
+                    }
+                    let mut cfiles = HashMap::new();
+                    for r in cfiles_r {
+                        if let Ok((_,Some(v))) = r {
+                            cfiles.insert(v.0, v.1);
+                        }
+                    };
+
+                    let mut used = HashSet::new();
+                    while need.len() > 0 {
+                        for n in std::mem::replace(&mut need, Vec::new()) {
+                            if !used.insert(n.clone()) {
+                                continue
+                            }
+                            let n = cfiles.get(&n).expect(&format!("ICE: dependency {} module doesnt exist", n));
+                            for d in &n.deps {
+                                need.push(d.clone());
+                            }
+                            make.build(n);
+                        }
+                    }
+                    make.link();
+                }
+            },
+            Err(e) => {
+                parser::emit_error(e.message.clone(), &e.details);
+                ABORT.store(true, Ordering::Relaxed);
+            }
+        }
+    };
+
+    // pass 2: macros now available
+    *pb.lock().unwrap() = pbr::ProgressBar::new(names.len() as u64);
+    let cfiles_r : Vec<Result<(Vec<ast::Module>, Option<(Name, emitter::CFile)>), Error>> = if slow {
+        names.clone().into_iter().map(|m|iterf(modules.clone(), false ,m)).collect()
+    } else {
+        names.clone().into_par_iter().map(|m|iterf(modules.clone(), false, m)).collect()
     };
 
     let mut cfiles = HashMap::new();
     for r in cfiles_r {
         match r {
-            Ok(None) => {},
-            Ok(Some(v)) => {
+            Ok((_, None)) => {},
+            Ok((_, Some(v))) => {
                 cfiles.insert(v.0, v.1);
             }
             Err(e) => {

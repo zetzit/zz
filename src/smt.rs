@@ -740,7 +740,7 @@ impl Solver {
         }
     }
 
-    pub fn new(module_name: String, hints: &HashMap<String, String>) -> Self {
+    pub fn new(module_name: String, solver: Option<String>) -> Self {
 
         //Config::set_global_param_value(":model.partial", "true");
         //Config::set_global_param_value(":parallel.enable", "true");
@@ -748,7 +748,7 @@ impl Solver {
 
 
 
-        let conf = if let (Some("yices2"), Ok(_)) = (hints.get("solver").as_ref().map(|s|s.as_str()), which::which("yices_smt2_mt")) {
+        let conf = if let (Some("yices2"), Ok(_)) = (solver.as_ref().map(|s|s.as_str()), which::which("yices_smt2_mt")) {
             rsmt2::SmtConf::yices_2()
         } else if which::which("z3").is_ok() {
             rsmt2::SmtConf::z3()
