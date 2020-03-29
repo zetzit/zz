@@ -451,3 +451,56 @@ on POSIX systems and a semi-coloon (`;`) on Windows.
 ZZ_MODULE_PATHS="$PWD/path/to/modules:/usr/share/zz/modules" zz build
 ```
 
+#### inline included C source
+
+ZZ supports importing C source with the `using` keyword. Imported C
+source can be inlined at the call site by using the `inline` keyword. In certain
+cases the imported C source may depend on symbols defined in a ZZ
+module. ZZ symbols can be given to an imported C file with the `needs`
+keyword.
+
+In the example below the `native.h` header file depends on the
+`example_Container` type to be defined. The `lib.zz` file imports the
+header file in line and exposes the `Container` type to the header file
+by specifying it with the `needs` keyword. The `Container` type is made
+available as `example_Container` because the project name is
+`example` and the type is `Container`.
+
+```c
+// native.h
+#include <stdio.h>
+void print(example_Container *self) {
+  printf("%s\n", (char *) self->value);
+}
+
+void init(example_Container *self, void const *value) {
+  self->value = value;
+}
+```
+
+```c++
+// lib.zz
+inline using (needs Container) "native.h" as native
+
+export struct Container {
+  void *value;
+}
+
+export fn create_container(Container new mut *self, void *value) {
+  native::init(self, value);
+}
+
+pub fn print(Container *self) {
+  native::print(self);
+}
+```
+
+```C++
+using example
+
+int main() -> {
+  new container = example::create_container("hello");
+  container.print();
+  return 0;
+}
+```
