@@ -256,6 +256,14 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, TypeCompl
             }
             v
         },
+        ast::Expression::MacroCall { loc, name, args, ..} => {
+            let mut v = Vec::new();
+            v.push((name.clone(), TypeComplete::Incomplete, loc.clone()));
+            for arg in args {
+                v.extend(expr_deps(cr, arg));
+            }
+            v
+        },
         ast::Expression::UnaryPost{expr, ..} => {
             expr_deps(cr, expr)
         }

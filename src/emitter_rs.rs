@@ -468,6 +468,13 @@ impl {name} {{
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
+            ast::Expression::MacroCall{loc, ..} => {
+                parser::emit_error(
+                    "ICE: incomplete macro expansion ended up in emitter",
+                    &[(loc.clone(), format!("this should have been resolved earlier"))]
+                    );
+                std::process::exit(9);
+            }
             ast::Expression::ArrayInit{..} => {
             },
             ast::Expression::StructInit{..} => {
@@ -505,7 +512,7 @@ impl {name} {{
             ast::Expression::LiteralString {loc, v} => {
                 self.emit_loc(&loc);
                 write!(self.f, "    \"").unwrap();
-                for c in v {
+                for c in v.as_bytes() {
                     self.write_escaped_literal(*c, true);
                 }
                 write!(self.f, "\"").unwrap();

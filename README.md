@@ -83,43 +83,6 @@ so my::lib::hello becomes my_lib_hello, which is C convention.
 
 ### language reference
 
-#### top level declarations: fn, struct
-
-fn declares a function.
-struct declares a struct.
-nothing fancy here.
-
-#### storage: const, static, atomic and thread_local
-
-const and static work exactly like in rust, but with C syntax.
-
-```C
-export const uint32_t foo = 3;
-static mutable float blarg = 2.0/0.3;
-thread_local mutable bool bob = true;
-atomic mutable int marvin = 0;
-```
-
-const is inlined in each module and therefore points to different memory in each module.
-static has a global storage location, but is private to the current module.
-
-in effect, there is no way to declare a shared global writable variable.
-ZZ has no borrowchecker, and the restriction has nothing to do with preventing multithread races.
-Instead the declarations are selected so that the resulting exported binary interface can be mapped to any other language.
-
-if you need to export a global writeable memory location (which is still a bad idea, because threads),
-you can define a function that returns a pointer to the local static.
-
-thread_local and atomic are mapped directly to the C11 keywords.
-ZZ can use nicer keywords because there are no user defined names at the top level.
-
-#### visibility: pub, export
-
-by default all declarations are private to a module
-
-"export" can be used to make sure the declaration ends in the final result. that is in the binary and the export header.
-
-"pub" marks a declaration as local to the project. it is usable in other zz modules, but not exported into the resulting binary
 
 
 #### mutability: const, mut
@@ -157,6 +120,9 @@ fn main() {
     };
     assert(!c.allowed_entry());
 }
+
+
+
 
 
 ```
@@ -256,7 +222,37 @@ any other combination will lead to a compile error, such as read before open.
 
 
 
+#### storage: const, static, atomic and thread_local
 
+const and static work exactly like in rust, but with C syntax.
+
+```C
+export const uint32_t foo = 3;
+static mutable float blarg = 2.0/0.3;
+thread_local mutable bool bob = true;
+atomic mutable int marvin = 0;
+```
+
+const is inlined in each module and therefore points to different memory in each module.
+static has a global storage location, but is private to the current module.
+
+in effect, there is no way to declare a shared global writable variable.
+ZZ has no borrowchecker, and the restriction has nothing to do with preventing multithread races.
+Instead the declarations are selected so that the resulting exported binary interface can be mapped to any other language.
+
+if you need to export a global writeable memory location (which is still a bad idea, because threads),
+you can define a function that returns a pointer to the local static.
+
+thread_local and atomic are mapped directly to the C11 keywords.
+ZZ can use nicer keywords because there are no user defined names at the top level.
+
+#### visibility: pub, export
+
+by default all declarations are private to a module
+
+"export" can be used to make sure the declaration ends in the final result. that is in the binary and the export header.
+
+"pub" marks a declaration as local to the project. it is usable in other zz modules, but not exported into the resulting binary
 #### struct initialization
 
 To prepare for type elision, all expressions have to have a known type.
@@ -436,20 +432,40 @@ to create a local with a tail, use new like this:
     new+100 foo = string::empty();
 ```
 
-#### environment variables
+#### procedural macros
 
-##### `ZZ_MODULE_PATHS`
+macros in zz are fully compiled and executed at compile time for each call.
+this allows constructing arbitrary complex macros using regular zz code.
 
-When ZZ imports other ZZ modules it will look in a projects `modules/`
-directory by default. The search path can be extended by defining the
-`ZZ_MODULE_PATHS` environment variable much like
-[`PATH`](https://en.wikipedia.org/wiki/PATH_(variable)) environment
-variable where multiple paths can be defined separated by a colon (`:`)
-on POSIX systems and a semi-coloon (`;`) on Windows.
+unlike C prepro macros, macros must emit complete expressions.
+for example you cannot emit an open brace without a closing brace.
 
-```sh
-ZZ_MODULE_PATHS="$PWD/path/to/modules:/usr/share/zz/modules" zz build
+a macro is compiled to a standalone executable, automatically including all dependencies.
+the call arguments and derive context is passed as json to stdin,
+and the macro is expected to print zz code to stdout.
+
+```C++
+/! creates literal string with arg0 repeated arg1 times
+export macro repeat()  {
+
+    new+1000 a = ast::from_macro();
+    err::assert2(a.args[0].t == ast::Expression::LiteralString, "expected arg0: string");
+    err::assert2(a.args[1].t == ast::Expression::Literal,       "expected arg1: number");
+    let num = (int)atoi(a.args[1].v.string);
+
+    printf("\"");
+    for (int mut i = 0; i < num; i++) {
+        printf("%s", a.args[0].v.string);
+    }
+    printf("\"");
+}
+
+export fn main() -> int {
+    printf("hello %s\n", repeat("world ", 32));
+    return 0;
+}
 ```
+
 
 #### inline included C source
 
@@ -535,6 +551,21 @@ fn main() -> int {
   printf("sizeof(Unpacked) == lu\n", sizeof(Unpacked)); // 8
   return 0;
 }
+```
+
+#### environment variables
+
+##### `ZZ_MODULE_PATHS`
+
+When ZZ imports other ZZ modules it will look in a projects `modules/`
+directory by default. The search path can be extended by defining the
+`ZZ_MODULE_PATHS` environment variable much like
+[`PATH`](https://en.wikipedia.org/wiki/PATH_(variable)) environment
+variable where multiple paths can be defined separated by a colon (`:`)
+on POSIX systems and a semi-coloon (`;`) on Windows.
+
+```sh
+ZZ_MODULE_PATHS="$PWD/path/to/modules:/usr/share/zz/modules" zz build
 ```
 
 

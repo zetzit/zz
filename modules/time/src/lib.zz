@@ -34,7 +34,7 @@ export fn to_seconds(Time *self) -> u64 {
 }
 
 export fn to_millis(Time *self) -> u64
-    @prover = yices2
+    @prover("yices2")
 {
     if self->secs > (u64)UINT64_MAX/1000 {
         return (u64)UINT64_MAX;

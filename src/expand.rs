@@ -7,9 +7,6 @@ use ast::Tags;
 use super::parser::{emit_debug};
 use std::collections::HashSet;
 
-
-
-
 #[derive(Clone)]
 struct Storage {
     name:           Name,
@@ -323,9 +320,9 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                                 tail:   ast::Tail::None,
                             });
                             let ast_call = ast::Expression::Call{
-                                loc:    loc.clone(),
-                                name:   Box::new(ast_safe),
-                                args:   vec![Box::new(ast_argname)],
+                                loc:        loc.clone(),
+                                name:       Box::new(ast_safe),
+                                args:       vec![Box::new(ast_argname)],
                                 expanded:   true,
                                 emit:       ast::EmitBehaviour::Default,
                             };
@@ -688,6 +685,11 @@ fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewit
         ast::Expression::Literal{..} => {},
         ast::Expression::Call{ref mut name, ref mut args,..} => {
             replace_named(name, replacefrom, replacewith);
+            for arg in args {
+                replace_named(arg, replacefrom, replacewith);
+            }
+        }
+        ast::Expression::MacroCall{ref mut args,..} => {
             for arg in args {
                 replace_named(arg, replacefrom, replacewith);
             }

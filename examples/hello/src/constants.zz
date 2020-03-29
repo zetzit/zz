@@ -2,12 +2,6 @@ pub const int foo = 3 * 6;
 using <math.h>::{floor};
 using <memory.h>::{memset};
 
-pub macro ADD_IMPL (a,b)
-{
-    floor(a +
-        b)
-}
-
 using aye;
 
 export fn conflict() -> aye::bob {

@@ -23,7 +23,7 @@ export fn borrow(MutSlice mut*self) -> MutSlice *
 }
 
 export fn make(MutSlice new mut*self, u8 mut*mem, usize size)
-    @solver = yices2
+    @solver("yices2")
     where len(mem) >= size
     model self->slice.size == size
     model self->slice.size == len(self->slice.mem)
@@ -37,7 +37,7 @@ export fn make(MutSlice new mut*self, u8 mut*mem, usize size)
 
 
 export fn mem(MutSlice mut * self) -> u8 mut*
-    @solver = yices2
+    @solver("yices2")
     model len(return) >= self->slice.size
     model len(return) >= self->at
 {
@@ -47,7 +47,7 @@ export fn mem(MutSlice mut * self) -> u8 mut*
 }
 
 export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
-    @solver = yices2
+    @solver("yices2")
     where len(b) >= l
     model self->at <= self->slice.size
 {
@@ -61,7 +61,7 @@ export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
 }
 
 export fn push(MutSlice mut * self, u8 b) -> bool
-    @solver = yices2
+    @solver("yices2")
     where self->slice.size >= 1
     model self->at <= self->slice.size
 {
@@ -76,7 +76,7 @@ export fn push(MutSlice mut * self, u8 b) -> bool
 }
 
 export fn push16(MutSlice mut * self, u16 b) -> bool
-    @solver = yices2
+    @solver("yices2")
     where self->slice.size >= 2
     model self->at <= self->slice.size
 {
@@ -91,7 +91,7 @@ export fn push16(MutSlice mut * self, u16 b) -> bool
 }
 
 export fn push32(MutSlice mut * self, u32 b) -> bool
-    @solver = yices2
+    @solver("yices2")
     where self->slice.size >= 4
     model self->at <= self->slice.size
 {
@@ -106,7 +106,7 @@ export fn push32(MutSlice mut * self, u32 b) -> bool
 }
 
 export fn push64(MutSlice mut * self, u64 b) -> bool
-    @solver = yices2
+    @solver("yices2")
     where self->slice.size > 8
 {
     if self->at > self->slice.size - 8 {

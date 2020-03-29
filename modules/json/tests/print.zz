@@ -17,20 +17,21 @@ test test123  {
         "engine": {
             "rolling": "hard",
             "fuel": "electric",
-            "charge": [9229, -399888]
+            "charge": [9229, 1, -399888]
         },
         "deep": "nah"
     }"#
     stdout = r#"height : 12
 add : "[{123123}:b
 v:
-  v : 23
+  0 : 23
 engine:
   rolling : hard
   fuel : electric
   charge:
-    charge : 9229
-    charge : -399888
+    0 : 9229
+    1 : 1
+    2 : -399888
 deep : nah
 "#
 }
@@ -53,13 +54,31 @@ o"
 }
 
 test test_array {
-    stdin   = r#"{"a": [1,
-    3, "yep"
+    stdin   = r#"{"a": [
+    -3000, 1,
+    "yep"
 ]}"#
     stdout  = r#"a:
-  a : 1
-  a : 3
-  a : yep
+  0 : -3000
+  1 : 1
+  2 : yep
+"#
+}
+
+
+test _object_in_array {
+    stdin = r#"{"args":[{"LiteralString":{"loc":{"file":"/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"world"}},{"Literal":{"loc":{"file":"/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"32"}}]}"#
+    stdout = r#"args:
+  0:
+    LiteralString:
+      loc:
+        file : /home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz
+      v : world
+  1:
+    Literal:
+      loc:
+        file : /home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz
+      v : 32
 "#
 }
 

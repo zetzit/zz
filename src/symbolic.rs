@@ -6,6 +6,7 @@ use super::parser::{self, emit_warn, emit_debug};
 use ast::Tags;
 use crate::smt::{Solver, self};
 use super::Error;
+use super::makro;
 
 pub type Symbol = usize;
 pub type TemporalSymbol = (Symbol, u64);
@@ -53,6 +54,7 @@ enum Value{
     },
     Unconstrained(String),
     Integer(u64),
+    Macro(Name),
 }
 
 impl std::fmt::Display for Value {
@@ -71,6 +73,7 @@ impl std::fmt::Display for Value {
             Value::Theory{..}       => write!(f, "theory"),
             Value::Function{..}     => write!(f, "function"),
             Value::SelfCall{..}     => write!(f, "self call"),
+            Value::Macro(name)      => write!(f, "macro {}", name),
         }
     }
 }
@@ -111,6 +114,9 @@ pub struct Symbolic {
     current_call:           Vec<ast::Location>,
     in_loop:    bool,
     in_model:   bool,
+
+    macros_available:   bool,
+    incomplete:         bool,
 }
 
 
@@ -436,14 +442,15 @@ impl Symbolic {
                     let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed{
-                            t:      ast::Type::Other(Name::from(&d.name.clone())),
+                            t:      ast::Type::Other(Name::from(&d.name)),
                             ptr:    Vec::new(),
                             loc:    d.loc.clone(),
                             tail:   ast::Tail::None,
                         },
                         d.loc.clone(), Tags::new()
                     )?;
-                    self.memory[sym].value = Value::Unconstrained("macro".to_string());
+                    self.memory[sym].value = Value::Macro(Name::from(&d.name));
+                    self.ssa_mark_safe(sym, &d.loc)?;
                 },
                 ast::Def::Testcase {..} => {},
                 ast::Def::Include {..} => {},
@@ -523,14 +530,14 @@ impl Symbolic {
                             }
                             fields.last().unwrap().name.clone()
                         },
-                        _ => {
-                            return Err(self.trace(format!("tail value on non struct"), vec![
+                        o => {
+                            return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
                                 (self.memory[prev].declared.clone(), format!("cannot use tail binding"))
                             ]));
                         }
                     },
-                    _ => {
-                        return Err(self.trace(format!("tail value on non struct"), vec![
+                    o => {
+                        return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
                             (self.memory[prev].declared.clone(), format!("cannot use tail binding"))
                         ]));
                     }
@@ -1172,7 +1179,7 @@ impl Symbolic {
                     "file" => {
                         ast::Expression::LiteralString {
                             loc: loc.clone(),
-                            v: callloc.file.as_bytes().to_vec(),
+                            v: callloc.file.clone(),
                         }
                     },
                     "line" => {
@@ -1184,13 +1191,13 @@ impl Symbolic {
                     "module" => {
                         ast::Expression::LiteralString {
                             loc: loc.clone(),
-                            v: self.current_module_name.as_bytes().to_vec(),
+                            v: self.current_module_name.clone(),
                         }
                     }
                     "function" => {
                         ast::Expression::LiteralString {
                             loc: loc.clone(),
-                            v: self.current_function_name.as_bytes().to_vec(),
+                            v: self.current_function_name.clone(),
                         }
                     }
                     _ => {
@@ -1508,6 +1515,21 @@ impl Symbolic {
         let exprloc = expr.loc().clone();
         self.ssa.debug_loc(expr.loc());
         match expr {
+            ast::Expression::MacroCall{loc, name, args} => {
+                if self.macros_available {
+                    *expr = makro::expr(name, loc, args)?;
+                    self.execute_expr(expr)
+                } else {
+                    self.incomplete = true;
+                    let r = self.literal(loc, Value::Unconstrained("unavailable macro".to_string()), ast::Typed {
+                        t:      ast::Type::ULiteral,
+                        loc:    loc.clone(),
+                        ptr:    Vec::new(),
+                        tail:   ast::Tail::None,
+                    })?;
+                    Ok(r)
+                }
+            }
             ast::Expression::Name(name) => {
                 match &name.t {
                     ast::Type::Other(n) => self.name(&n, &name.loc),
@@ -1690,7 +1712,7 @@ impl Symbolic {
             },
             ast::Expression::LiteralString{ loc, v } => {
                 let tmp = self.temporary(
-                    format!("literal string \"{}\"", String::from_utf8_lossy(&v)),
+                    format!("literal string \"{}\"", v),
                     ast::Typed {
                         t: ast::Type::U8,
                         loc:    loc.clone(),
@@ -1965,6 +1987,11 @@ impl Symbolic {
                 }
 
                 match &self.memory[name_sym].value {
+                    Value::Macro(name) => {
+                        return Err(self.trace(format!("macro expansion requires @ident syntax"), vec![
+                            (loc.clone(), format!("use @macro() instead of macro()"))
+                        ]));
+                    }
                     Value::Theory{args: fargs, ret} => {
                         *emit = ast::EmitBehaviour::Error {
                             loc:        loc.clone(),
@@ -2022,7 +2049,7 @@ impl Symbolic {
                             name: Box::new(name.clone()),
                             args,
                             expanded: *expanded,
-                            emit: emit.clone(),
+                            emit:       emit.clone(),
                         };
 
                         let r = self.execute_expr(expr);
@@ -2865,14 +2892,14 @@ impl Symbolic {
                     }
                     fields.last().unwrap().name.clone()
                 },
-                _ => {
-                    return Err(self.trace(format!("tail value on non struct"), vec![
+                o => {
+                    return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
                         (loc.clone(), format!("cannot use tail binding"))
                     ]));
                 }
             },
-            _ => {
-                return Err(self.trace(format!("tail value on non struct"), vec![
+            o => {
+                return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
                     (loc.clone(), format!("cannot use tail binding"))
                 ]));
             }
@@ -3151,7 +3178,7 @@ impl Symbolic {
         ]));
     }
 
-    fn new(module_name: &Name, hints: &HashMap<String, String>) -> Self {
+    fn new(module_name: &Name, solver: Option<String>, macros_available:  bool) -> Self {
         Symbolic {
             stack:  vec![
                 Scope {
@@ -3161,7 +3188,7 @@ impl Symbolic {
                 }
             ],
             memory:  Default::default(),
-            ssa:     Solver::new(module_name.0.join("_"), hints),
+            ssa:     Solver::new(module_name.0.join("_"), solver),
             builtin: Default::default(),
             defs:    HashMap::new(),
             current_module_name:    module_name.human_name(),
@@ -3171,6 +3198,8 @@ impl Symbolic {
             current_call:           Vec::new(),
             in_loop: false,
             in_model:false,
+            macros_available,
+            incomplete: false,
         }
     }
 
@@ -3327,15 +3356,31 @@ impl Symbolic {
 }
 
 
-pub fn execute(module: &mut flatten::Module) -> bool {
+pub fn execute(module: &mut flatten::Module, macros_available: bool) -> (bool /* ok*/, bool /* complete for caching */) {
     use rayon::prelude::*;
 
+    let mut incomplete  = false;
     let mut defs        = Vec::new();
     let mut function_at = Vec::new();
     for (i, (d,complete)) in module.d.clone().into_iter().enumerate() {
-        if let ast::Def::Function{ref hints, ..} = d.def {
+        if let ast::Def::Function{ref derives , ..} = d.def {
+            let mut solver = None;
+            for derive in derives {
+                if derive.makro == "solver" {
+                    match derive.args.first().map(|x|*x.clone()) {
+                        Some(ast::Expression::LiteralString{v,..}) => {
+                            solver = Some(v);
+                        }
+                        _ => {
+                            parser::emit_error(format!("@solver macro expects one string literal argument"), &[
+                                (derive.loc.clone(), "in this derive")
+                            ]);
+                        }
+                    }
+                }
+            }
             if complete == flatten::TypeComplete::Complete {
-                function_at.push((i, d.name.clone(), module.clone(), hints.clone()));
+                function_at.push((i, d.name.clone(), module.clone(), solver));
             }
         }
         defs.push(d.clone());
@@ -3344,36 +3389,42 @@ pub fn execute(module: &mut flatten::Module) -> bool {
 
 
     // execute one in serial on the borrowed module to get modifications to globals
-    if let Some((at, name, _, hints)) = function_at.pop() {
-        let mut sym = Symbolic::new(&Name::from(&name), &hints);
+    if let Some((at, name, _, solver)) = function_at.pop() {
+        let mut sym = Symbolic::new(&Name::from(&name), solver, macros_available);
         if let Err(e) = sym.execute_module(module, at) {
             parser::emit_error(e.message.clone(), &e.details);
-            return false;
+            return (false, false);
+        }
+        if sym.incomplete {
+            incomplete = true;
         }
     }
 
-    let repl = function_at.into_par_iter().map(|(at, name, mut module, hints)|{
-        let mut sym = Symbolic::new(&Name::from(&name), &hints);
+    let repl = function_at.into_par_iter().map(|(at, name, mut module, solver)|{
+        let mut sym = Symbolic::new(&Name::from(&name), solver, macros_available);
         match sym.execute_module(&mut module, at) {
             Err(e) => {
                 parser::emit_error(e.message.clone(), &e.details);
                 None
             }
             Ok(_)  => {
-                Some((at, module.d.remove(at).0))
+                Some((at, module.d.remove(at).0, sym.incomplete))
             }
         }
-    }).collect::<Vec<Option<(usize, ast::Local)>>>();
+    }).collect::<Vec<Option<(usize, ast::Local,bool)>>> ();
 
     for r in repl {
-        if let Some((at,l)) = r {
+        if let Some((at,l, incomplete2)) = r {
             module.d[at].0 = l;
+            if incomplete2 {
+                incomplete = true;
+            }
         } else {
-            return false;
+            return (false, false);
         }
     }
 
-    true
+    (true, !incomplete)
 }
 
 

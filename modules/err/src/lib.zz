@@ -170,6 +170,33 @@ export fn assert(
     static_attest(a == true);
 }
 
+export fn assert2(
+    bool a,
+    char* callsite_source<file>      unsafe file,
+    char* callsite_source<function>  unsafe scope,
+    usize callsite_source<line>      line,
+    char*  fmt,
+    ...
+)
+    model a == true
+{
+    if (!a) {
+        fprintf(stderr, "assertion failed in %s:%zu \t%s\n", file, line, scope);
+
+        va_list mut vargs;
+        va_start(vargs, fmt);
+        vfprintf(stderr, fmt, vargs);
+        va_end(vargs);
+
+        fprintf(stderr, "\n");
+
+        for(;;){
+            cabort();
+        }
+    }
+    static_attest(a == true);
+}
+
 export fn assert_safe(
     void * unsafe a,
     char* callsite_source<file>      unsafe file,

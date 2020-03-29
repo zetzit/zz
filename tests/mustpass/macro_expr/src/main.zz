@@ -1,0 +1,33 @@
+using <stdio.h>::{printf};
+using <stdlib.h>::{atoi};
+using err;
+using ast;
+
+
+/! creates literal string with arg0 repeated arg1 times
+export macro repeat()  {
+
+    new+1000 a = ast::from_macro();
+    err::assert2(a.args[0].t == ast::Expression::LiteralString, "expected arg0: string");
+    err::assert2(a.args[1].t == ast::Expression::Literal,       "expected arg1: number");
+    let num = (int)atoi(a.args[1].v.string);
+
+    printf("\"");
+    for (int mut i = 0; i < num; i++) {
+        printf("%s", a.args[0].v.string);
+    }
+    printf("\"");
+}
+
+
+export macro make_int() {
+    printf("\"\"");
+}
+
+export fn main() -> int {
+    printf("hello %s\n", @repeat("world ", 32));
+
+    @make_int("a");
+
+    return 0;
+}

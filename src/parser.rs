@@ -140,7 +140,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 let mut callassert = Vec::new();
                 let mut calleffect = Vec::new();
                 let mut vis = Visibility::Object;
-                let mut hints = HashMap::new();
+                let mut derives = Vec::new();
 
                 for part in decl {
                     match part.as_rule() {
@@ -203,11 +203,8 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                         Rule::block => {
                             body = Some(parse_block((file_str, n), features, stage, part));
                         },
-                        Rule::fn_vattr => {
-                            let mut part = part.into_inner();
-                            let key  = part.next().unwrap().as_str().to_string();
-                            let val  = part.next().unwrap().as_str().to_string();
-                            hints.insert(key, val);
+                        Rule::macrocall => {
+                            derives.push(parse_derive((file_str, n), part));
                         }
                         e => panic!("unexpected rule {:?} in function", e),
                     }
@@ -224,7 +221,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                                 nameloc,
                                 ret,
                                 attr,
-                                hints,
+                                derives,
                                 args,
                                 body: body.unwrap(),
                                 vararg,
@@ -640,6 +637,34 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
     Ok(module)
 }
 
+pub(crate) fn parse_derive(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Derive {
+    match decl.as_rule() {
+        Rule::macrocall=> { }
+        _ => { panic!("parse_expr call called with {:?}", decl); }
+    };
+    let loc = Location{
+        file: n.1.to_string_lossy().into(),
+        span: decl.as_span(),
+    };
+
+    let mut decl = decl.into_inner();
+    let makro = decl.next().unwrap().as_str().to_string();
+
+    let mut args = Vec::new();
+    if let Some(callargs) = decl.next() {
+        for part in callargs.into_inner() {
+            args.push(Box::new(parse_expr(n, part)));
+        }
+    }
+
+    Derive {
+        loc,
+        makro,
+        args
+    }
+}
+
+
 pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Expression {
     match decl.as_rule() {
         Rule::expr  => { }
@@ -903,7 +928,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
             };
 
             Expression::LiteralString {
-                v,
+                v: String::from_utf8_lossy(&v).to_string(),
                 loc,
             }
         }
@@ -962,6 +987,25 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
         },
         Rule::call => {
             parse_call(n, expr)
+        }
+        Rule::macrocall => {
+            let mut expr = expr.into_inner();
+            let mut name = expr.next().unwrap().into_inner();
+            let name = Name::from(name.next().unwrap().as_str());
+
+            let mut args = Vec::new();
+            if let Some(callargs) = expr.next() {
+                for part in callargs.into_inner() {
+                    args.push(Box::new(parse_expr(n, part)));
+                }
+            }
+
+            Expression::MacroCall {
+                loc,
+                name,
+                args,
+            }
+
         },
         Rule::array_init => {
             let mut fields = Vec::new();

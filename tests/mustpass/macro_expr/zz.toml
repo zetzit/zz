@@ -1,0 +1,14 @@
+[project]
+version = "0.1.0"
+name = "macro_expr"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
+ast     = "1"

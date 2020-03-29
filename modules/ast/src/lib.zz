@@ -1,0 +1,145 @@
+using err;
+using json;
+using string;
+using pool;
+
+using <stdio.h>::{stdin, stderr, fprintf, printf};
+using <string.h>::{strdup, memcpy};
+
+
+//  {"args":[{"Literal":{"loc":{"file":"/Users/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"3"}}]}
+
+
+
+fn parse_v(err::Err+et mut *e, json::Parser+pt mut* p, ExpressionS mut * arg, char *k, json::Value v)
+    where err::checked(*e)
+    where nullterm(k)
+{
+    if string::cstr_eq(k, "v") {
+        switch v.t {
+            json::ValueType::String => {
+                static_attest(safe(arg->pool));
+                static_attest(safe(v.string));
+                static_attest(nullterm(v.string));
+                char mut * dup = arg->pool->alloc(string::strlen(v.string));
+                memcpy(dup, v.string, string::strlen(v.string) + 1);
+                arg->v.string = dup;
+            }
+            default => {
+            }
+        }
+    }
+}
+fn parse_arg(err::Err+et mut *e, json::Parser+pt mut* p, ExpressionS mut * arg, char *k, json::Value v)
+    where err::checked(*e)
+    where nullterm(k)
+{
+    switch v.t {
+        json::ValueType::Object => {
+            if string::cstr_eq(k, "Literal") {
+                arg->t = Expression::Literal;
+                json::next(p,  e, (json::deserialize_t)parse_v, (void mut*)arg);
+                if err::check(e) {
+                    return;
+                }
+            } else if string::cstr_eq(k, "LiteralString") {
+                arg->t = Expression::LiteralString;
+                json::next(p,  e, (json::deserialize_t)parse_v, (void mut*)arg);
+                if err::check(e) {
+                    return;
+                }
+            } else if string::cstr_eq(k, "args") {
+                json::next(p,  e, (json::deserialize_t)parse_arg, (void mut*)arg);
+                if err::check(e) {
+                    return;
+                }
+            } else {
+                err::fail(e, 2, "got %s expected Literal | LiteralString", k);
+            }
+        }
+        default => {
+            err::fail(e, 2, "got %s expected Literal | LiteralString ", k);
+        }
+    }
+}
+
+
+fn parse_arglist(err::Err+et mut *e, json::Parser+pt mut* p, Ast mut * ast, char *k, json::Value v)
+    where err::checked(*e)
+    where nullterm(k)
+{
+    switch v.t {
+        json::ValueType::Object => {
+            err::assert(v.index < static(len(ast->args)));
+            ast->args[v.index].pool = &ast->pool;
+            json::next(p,  e, (json::deserialize_t)parse_arg, (void mut*)&ast->args[v.index]);
+            if err::check(e) {
+                return;
+            }
+        }
+        default => {
+            err::fail(e, 2, "got %s expected arg object", k);
+        }
+    }
+}
+fn parse_doc(err::Err+et mut *e, json::Parser+pt mut* p, Ast mut * ast, char *k, json::Value v)
+    where err::checked(*e)
+    where nullterm(k)
+{
+    switch v.t {
+        json::ValueType::Array => {
+            if string::cstr_eq(k, "args") {
+                json::next(p,  e, (json::deserialize_t)parse_arglist, ast);
+                if err::check(e) {
+                    return;
+                }
+            } else {
+                err::fail(e, 2, "got %s expected args ", k);
+            }
+        }
+        default => {
+            err::fail(e, 2, "got %s expected args ", k);
+        }
+    }
+}
+
+
+export enum Expression
+{
+    Invalid,
+    Literal,
+    LiteralString,
+}
+
+export union ExpressionValue {
+    char * string;
+}
+
+export struct ExpressionS
+{
+    Expression      t;
+    ExpressionValue v;
+    pool::Pool mut* pool;
+}
+
+export struct Ast+
+{
+    ExpressionS     args[100];
+    pool::Pool+     mut pool;
+}
+
+pub fn from_macro(Ast+t mut new *self)
+    where t > t/64
+{
+    self->pool.make(64);
+    new+1000 e = err::make();
+    new+1000 parser = json::parser(&e, (json::deserialize_t)parse_doc, self);
+    e.abort();
+
+    new+1000 s = string::make();
+    for (; s.fgets(stdin) ; s.clear()) {
+        json::push(&parser, &e, s.mem, s.len);
+        e.abort();
+    }
+}
+
