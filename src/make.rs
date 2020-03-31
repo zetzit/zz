@@ -12,6 +12,12 @@ use super::emitter_js;
 static ABORT:           AtomicBool = AtomicBool::new(false);
 pub static BUILD_RS:    AtomicBool = AtomicBool::new(false);
 
+#[cfg(windows)]
+pub static EXE_EXT : &'static str = ".exe";
+#[cfg(not(windows))]
+pub static EXE_EXT : &'static str = "";
+
+
 
 #[derive(Clone)]
 pub struct Stage {
@@ -419,21 +425,21 @@ impl Make {
                     args.push("-fsanitize=address".into());
                 }
                 args.push("-o".into());
-                args.push(format!("./target/macro/{}", self.artifact.name));
+                args.push(format!("./target/macro/{}{}", self.artifact.name, EXE_EXT));
             }
             super::project::ArtifactType::Exe => {
                 std::fs::create_dir_all(format!("./target/{}/bin/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!("./target/{}/bin/{}", self.stage, self.artifact.name));
+                args.push(format!("./target/{}/bin/{}{}", self.stage, self.artifact.name, EXE_EXT));
             }
             super::project::ArtifactType::Test  => {
                 std::fs::create_dir_all(format!("./target/{}/bin/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!("./target/{}/bin/{}", self.stage, self.artifact.name));
+                args.push(format!("./target/{}/bin/{}{}", self.stage, self.artifact.name, EXE_EXT));
             }
             super::project::ArtifactType::Header  => {
                 panic!("cannot link header yet");

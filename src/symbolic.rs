@@ -6,7 +6,6 @@ use super::parser::{self, emit_warn, emit_debug};
 use ast::Tags;
 use crate::smt::{Solver, self};
 use super::Error;
-use super::makro;
 
 pub type Symbol = usize;
 pub type TemporalSymbol = (Symbol, u64);
@@ -313,12 +312,17 @@ impl Symbolic {
                 ast::Def::Static {tags, typed, expr, array, ..} => {
 
                     let mut typed = typed.clone();
-                    if array.is_some() {
-                        typed.ptr.push(ast::Pointer{
-                            loc:  d.loc.clone(),
-                            tags: Tags::new(),
-                        });
+
+                    match array {
+                        ast::Array::None => (),
+                        _ => {
+                            typed.ptr.push(ast::Pointer{
+                                loc:  d.loc.clone(),
+                                tags: Tags::new(),
+                            });
+                        }
                     }
+
                     let sym = self.alloc(
                         Name::from(&d.name),
                         typed.clone(),
@@ -326,8 +330,15 @@ impl Symbolic {
                         tags.clone(),
                     )?;
 
-                    if let Some(array) = array {
-                        if let Some(expr) = array {
+                    match array {
+                        ast::Array::None => (),
+                        ast::Array::Unsized => {
+                            self.memory[sym].value = Value::Array {
+                                len:    0,
+                                array:  HashMap::new(),
+                            };
+                        }
+                        ast::Array::Sized(expr)=> {
                             let asym = self.execute_expr(expr)?;
                             let val = self.ssa.value((asym, self.memory[asym].temporal), |a,_| match a {
                                 smt::Assertion::Constrained(i) => {
@@ -345,12 +356,6 @@ impl Symbolic {
                                 array:  HashMap::new(),
                             };
                             self.len_into_ssa(sym, expr.loc(), val as usize)?;
-
-                        } else {
-                            self.memory[sym].value = Value::Array {
-                                len:    0,
-                                array:  HashMap::new(),
-                            };
                         }
                     }
 
@@ -1156,6 +1161,9 @@ impl Symbolic {
                 }
                 ast::Statement::CBlock{..} => {
                 }
+                ast::Statement::MacroCall{..} => {
+                    self.incomplete = true;
+                }
             }
         }
         Ok(ScopeReturn::NoReturn)
@@ -1430,10 +1438,8 @@ impl Symbolic {
         let mut fieldtyped = field.1.typed.clone();
 
 
-        if let Some(array) = &field.1.array {
-
-            // sized array
-            if let Some(expr) = array {
+        match &field.1.array {
+            ast::Array::Sized(expr) => {
                 let mut expr = expr.clone();
                 let asym = self.execute_expr(&mut expr)?;
                 let val = self.ssa.value((asym, self.memory[asym].temporal), |a,_| match a {
@@ -1451,19 +1457,29 @@ impl Symbolic {
                     array:  HashMap::new(),
                 };
 
-            // unsized array, but container has a tail
-            } else if let ast::Tail::Static(val,_loc) = &self.memory[lhs_sym].typed.tail {
-                fieldvalue = Value::Array {
-                    len:    *val as usize,
-                    array:  HashMap::new(),
-                };
+                fieldtyped.ptr.push(ast::Pointer{
+                    loc:  field.1.loc.clone(),
+                    tags: Tags::new(),
+                });
             }
 
-            fieldtyped.ptr.push(ast::Pointer{
-                loc:  field.1.loc.clone(),
-                tags: Tags::new(),
-            });
-        }
+            // unsized array, but container has a tail
+            ast::Array::Unsized => {
+                if let ast::Tail::Static(val,_loc) = &self.memory[lhs_sym].typed.tail {
+                    fieldvalue = Value::Array {
+                        len:    *val as usize,
+                        array:  HashMap::new(),
+                    };
+                }
+
+                fieldtyped.ptr.push(ast::Pointer{
+                    loc:  field.1.loc.clone(),
+                    tags: Tags::new(),
+                });
+            }
+            ast::Array::None => (),
+        };
+
 
 
         //nested tail
@@ -1491,7 +1507,7 @@ impl Symbolic {
                 self.len_into_ssa(tmp, loc, *len)?;
                 self.ssa_mark_safe(tmp, loc)?;
             },
-            (_, Some(_)) => {
+            (_, ast::Array::Sized(_)) | (_, ast::Array::Unsized) => {
                 // access to an array member as pointer is always safe, because its part of the struct mem
                 self.ssa_mark_safe(tmp, loc)?;
             },
@@ -1516,19 +1532,14 @@ impl Symbolic {
         self.ssa.debug_loc(expr.loc());
         match expr {
             ast::Expression::MacroCall{loc, name, args} => {
-                if self.macros_available {
-                    *expr = makro::expr(name, loc, args)?;
-                    self.execute_expr(expr)
-                } else {
-                    self.incomplete = true;
-                    let r = self.literal(loc, Value::Unconstrained("unavailable macro".to_string()), ast::Typed {
-                        t:      ast::Type::ULiteral,
-                        loc:    loc.clone(),
-                        ptr:    Vec::new(),
-                        tail:   ast::Tail::None,
-                    })?;
-                    Ok(r)
-                }
+                self.incomplete = true;
+                let r = self.literal(loc, Value::Unconstrained("unavailable macro".to_string()), ast::Typed {
+                    t:      ast::Type::ULiteral,
+                    loc:    loc.clone(),
+                    ptr:    Vec::new(),
+                    tail:   ast::Tail::None,
+                })?;
+                Ok(r)
             }
             ast::Expression::Name(name) => {
                 match &name.t {

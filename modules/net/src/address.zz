@@ -5,7 +5,7 @@ using string;
 using <stdio.h>::{printf};
 using <string.h>::{memset,memcmp};
 
-inline using "os.h" as os;
+inline using "os_address.h" as os;
 
 export enum Type {
     Invalid,

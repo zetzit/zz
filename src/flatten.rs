@@ -192,6 +192,14 @@ fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, TypeComplete
         ast::Statement::CBlock{..} => {
             Vec::new()
         }
+        ast::Statement::MacroCall { loc, name, args, ..} => {
+            let mut v = Vec::new();
+            v.push((name.clone(), TypeComplete::Incomplete, loc.clone()));
+            for arg in args {
+                v.extend(expr_deps(cr, arg));
+            }
+            v
+        },
     }
 }
 
@@ -288,7 +296,7 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, TypeCompl
     }
 }
 
-pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ext: &Ext) -> Module {
+pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ext: Ext) -> Module {
     debug!("flatten {}", md.name);
 
     let mut flat    = Module::default();
@@ -346,7 +354,7 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
             let mut local = None;
 
             if name.0[1] == "ext" {
-                local = ext.ext.get(&module_name);
+                local = ext.ext.lock().unwrap().get(&module_name).cloned();
                 if local.is_none() {
                     emit_error(format!("ICE ext module {} unavable or somehow we're missing local {}", module_name, local_name ), &[
                         (loc.clone(), &format!("type '{}' unavailable in this scope", name)),
@@ -382,7 +390,7 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                 // find the local we're looking for
                 for local2 in &module.locals {
                     if local2.name == local_name {
-                        local = Some(local2);
+                        local = Some(local2.clone());
                     } else {
                         //TODO
                         //the individual import is from a time where things worked differently.
@@ -513,10 +521,8 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     for field in fields {
                         impl_deps.extend(type_deps(cr, &field.typed));
 
-                        if let Some(ref expr) = &field.array {
-                            if let Some(ref expr) = expr {
-                                impl_deps.extend(expr_deps(cr, expr));
-                            }
+                        if let ast::Array::Sized(ref expr) = &field.array {
+                            impl_deps.extend(expr_deps(cr, expr));
                         }
                     }
 

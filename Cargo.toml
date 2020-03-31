@@ -35,6 +35,8 @@ which = "3.1.0"
 askama = "0.9"
 getrandom = "0.1.14"
 lazy_static = "1.4.0"
+serde_cbor = "0.11.1"
+sha2 = "0.8"
 
 [dependencies.rsmt2-zz]
 version = "0.11.1"

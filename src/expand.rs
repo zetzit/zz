@@ -133,12 +133,16 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
             },
             ast::Def::Static {tags, typed, array, ..} => {
                 let mut typed = typed.clone();
-                if array.is_some() {
-                    typed.ptr.push(ast::Pointer{
-                        loc:  d.loc.clone(),
-                        tags: Tags::new(),
-                    });
+                match array {
+                    ast::Array::None => (),
+                    _ => {
+                        typed.ptr.push(ast::Pointer{
+                            loc:  d.loc.clone(),
+                            tags: Tags::new(),
+                        });
+                    }
                 }
+
                 stack.alloc(
                     Name::from(&d.name),
                     typed.clone(),
@@ -616,6 +620,8 @@ impl Stack {
                     self.expand_expr(expr)?;
                 }
                 ast::Statement::CBlock{..} => {}
+                ast::Statement::MacroCall{ref mut args,..} => {
+                }
             }
 
 

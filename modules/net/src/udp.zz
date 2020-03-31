@@ -15,7 +15,7 @@ inline using (needs
     io::Result,
     io::Ready,
     io::select,
-) "os.h"::{
+) "os_udp.h"::{
     os_net_udp_bind,
     os_net_udp_close,
     os_net_udp_make_async,
