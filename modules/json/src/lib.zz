@@ -107,7 +107,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
         ParserState mut state = self->state[self->depth].state;
 
         if state == ParserState::Key ||  state == ParserState::StringVal {
-            if ch == 92 {
+            if ch == 92 && !self->esc {
                 self->esc = true;
                 continue;
             } else if ch == '"' && !self->esc {

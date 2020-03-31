@@ -91,7 +91,7 @@ named_typei = _{ type_part  ~ named_typei | ident }
 
 // declarations
 
-macro_ident = ${"@" ~ ident}
+macro_ident = ${"@" ~ type_name}
 macrocall   = {macro_ident ~ "(" ~ call_args? ~ ")" }
 fn_attr     = {"inline" | "extern"}
 fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
@@ -286,6 +286,7 @@ term_statement = _{
 }
 
 statement = _{
+    (macrocall ~ ";"?)  |
     switch_stm  |
     for_stm     |
     if_stm      |
@@ -299,6 +300,8 @@ statement = _{
 }
 
 block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" }
+
+macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 
 
 doccomment = @{"/!" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
