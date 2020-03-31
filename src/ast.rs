@@ -3,58 +3,51 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::fmt;
 use super::name::Name;
-use serde::{Serialize};
-use serde::ser::{SerializeStruct, Serializer};
+use serde::{Serialize, Deserialize};
 
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct Location {
     pub file:   String,
-    pub span:   pest::Span<'static>,
-}
-
-impl Serialize for Location {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        let mut s = serializer.serialize_struct("Location", 2)?;
-        s.serialize_field("file", &self.file)?;
-        s.end()
-    }
+    pub line:   usize,
+    pub start:  usize,
+    pub end:    usize,
 }
 
 impl Location {
-    pub fn line(&self) -> usize {
-        self.span.start_pos().line_col().0
-    }
-    pub fn builtin() -> Self {
+    pub fn from_span(file: String, span: &pest::Span) -> Self
+    {
         Self {
-            file: "prelude".to_string(),
-            span: pest::Span::new(" ",0,1).unwrap(),
+            file,
+            line:   span.start_pos().line_col().0,
+            start:  span.start(),
+            end:    span.end(),
         }
     }
-    pub fn gen(here: &Location, gen: String) -> Self {
-        let (line, _col) = here.span.end_pos().line_col();
 
-        let mut sx = "\n".repeat(line);
-        sx.push_str(&gen);
-        let sx = Box::leak(Box::new(sx)).as_str();
+    pub fn to_span(&self) -> pest::Span<'static>
+    {
+        let file = read_source(self.file.clone());
+        pest::Span::new(file, self.start, self.end).unwrap()
+    }
 
+    pub fn builtin() -> Self {
         Self {
-            file: here.file.clone(),
-            span: pest::Span::new(sx, line, line+gen.len()).unwrap(),
+            file:   "".to_string(),
+            line:   1,
+            start:  0,
+            end:    0,
         }
     }
 }
 
 impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.file, self.line())
+        write!(f, "{}:{}", self.file, self.line)
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Tags(pub HashMap<String, HashMap<String, Location>>);
 
 
@@ -83,7 +76,7 @@ pub struct Import {
     pub needs:  Vec<(Typed, Location)>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Tail {
     None,
     Dynamic,
@@ -175,14 +168,14 @@ pub struct Local {
 }
 
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pointer {
     pub loc:    Location,
     pub tags:   Tags,
 }
 
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Type {
     New,
     Elided,
@@ -256,7 +249,7 @@ impl Type {
 }
 
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Typed {
     pub t:      Type,
     pub loc:    Location,
@@ -343,7 +336,7 @@ pub struct Field {
     pub loc:        Location,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum InfixOperator {
     Equals,
     Nequals,
@@ -444,7 +437,7 @@ impl InfixOperator {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PrefixOperator {
     Boolnot,
     Bitnot,
@@ -454,13 +447,13 @@ pub enum PrefixOperator {
     Deref,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PostfixOperator {
     Increment,
     Decrement,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AssignOperator {
     Bitor,
     Bitand,
@@ -469,7 +462,7 @@ pub enum AssignOperator {
     Eq,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EmitBehaviour {
     Default,
     Skip,
@@ -479,7 +472,7 @@ pub enum EmitBehaviour {
     },
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Expression {
     Name(Typed),
     MemberAccess {
@@ -677,3 +670,40 @@ impl Tags {
     }
 }
 
+use std::sync::{Arc, Mutex};
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref SOURCES: Arc<Mutex<HashMap<String, &'static str>>> = Arc::new(Mutex::new(HashMap::new()));
+}
+
+pub fn read_source(path: String) -> &'static str
+{
+    if path == "" {
+        return "<builtin>";
+    }
+    if let Some(v) = SOURCES.lock().unwrap().get(&path) {
+        return v;
+    }
+
+    let s = Box::leak(Box::new(std::fs::read_to_string(&path).expect(&format!("read {:?}", path))));
+    SOURCES.lock().unwrap().insert(path.clone(), s);
+    SOURCES.lock().unwrap().get(&path).unwrap()
+}
+
+
+pub fn generated_source(from: &str, source: String) -> (String, &'static str)
+{
+    loop {
+        let mut a = [0;8];
+        getrandom::getrandom(&mut a).unwrap();
+        let path = format!("generated<{:x}{:x}{:x}{:x}{:x}{:x}{:x}{:x}> from {}",
+            a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7],
+            from
+        );
+        if SOURCES.lock().unwrap().get(&path).is_none() {
+            SOURCES.lock().unwrap().insert(path.clone(), Box::leak(Box::new(source)));
+            return (path.clone(), SOURCES.lock().unwrap().get(&path).unwrap());
+        }
+    }
+}

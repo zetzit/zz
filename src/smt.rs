@@ -734,9 +734,7 @@ impl Solver {
         if &self.debug_loc != loc {
             self.debug_loc = loc.clone();
 
-            let code = loc.span.as_str().replace("\n", "\n; ");
-            write!(self.solver.borrow_mut(), "; : {}:{}\n", loc.file, loc.line()).unwrap();
-            write!(self.solver.borrow_mut(), "; {}\n", code).unwrap();
+            write!(self.solver.borrow_mut(), "; : {}:{}\n", loc.file, loc.line).unwrap();
         }
     }
 

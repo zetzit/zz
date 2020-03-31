@@ -81,7 +81,7 @@ impl Emitter {
     fn emit_loc(&mut self, loc: &ast::Location) {
 
         if let Some(cur_loc) = &self.cur_loc {
-            if cur_loc.file  == loc.file && cur_loc.line() == loc.line() {
+            if cur_loc.file  == loc.file && cur_loc.line == loc.line {
                 return
             }
         }
@@ -93,7 +93,7 @@ impl Emitter {
         if self.inside_macro {
             return;
         }
-        write!(self.f, "\n#line {} \"{}\"\n", loc.line(), loc.file.replace("\\", "\\\\")).unwrap();
+        write!(self.f, "\n#line {} \"{}\"\n", loc.line, loc.file.replace("\\", "\\\\")).unwrap();
     }
 
     fn to_local_typed_name(&self, name: &ast::Typed) -> String {

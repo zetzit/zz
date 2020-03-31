@@ -45,9 +45,9 @@ pub fn expr(name: &Name, loc: &ast::Location, args: &Vec<Box<ast::Expression>>) 
 
     let mut n = String::new();
     cmd.stdout.as_mut().unwrap().read_to_string(&mut n).unwrap();
-    let n = Box::leak(Box::new(n));
+    let (path, source) = ast::generated_source(&format!("{}", loc), n);
 
-    let mut pp = match parser::ZZParser::parse(parser::Rule::expr, n ) {
+    let mut pp = match parser::ZZParser::parse(parser::Rule::expr, source) {
         Ok(v) => v,
         Err(e) => {
             return Err(Error::new(format!("syntax error in proc macro return: {}", e), vec![
@@ -64,7 +64,7 @@ pub fn expr(name: &Name, loc: &ast::Location, args: &Vec<Box<ast::Expression>>) 
         Some(v) => v,
     };
 
-    let expr = parser::parse_expr((n, &mp), pp);
+    let expr = parser::parse_expr(&path, pp);
     Ok(expr)
 }
 
