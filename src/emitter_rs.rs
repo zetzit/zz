@@ -48,7 +48,7 @@ impl Emitter {
 
     fn emit_loc(&mut self, loc: &ast::Location) {
         if let Some(cur_loc) = &self.cur_loc {
-            if cur_loc.file  == loc.file && cur_loc.line() == loc.line() {
+            if cur_loc.file  == loc.file && cur_loc.line == loc.line {
                 return
             }
         }

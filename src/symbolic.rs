@@ -1185,7 +1185,7 @@ impl Symbolic {
                     "line" => {
                         ast::Expression::Literal{
                             loc: loc.clone(),
-                            v:   format!("{}", callloc.line())
+                            v:   format!("{}", callloc.line)
                         }
                     },
                     "module" => {

@@ -8,7 +8,7 @@ use crate::make::Stage;
 
 pub struct PP {
     decl:       pest::iterators::Pairs<'static, Rule>,
-    n:          PathBuf,
+    n:          String,
     stack:      Vec<bool>,
     features:   HashMap<String,bool>,
     stage:      Stage,
@@ -22,7 +22,7 @@ pub enum Value {
 
 
 impl PP {
-    pub fn new(n: &Path, features: HashMap<String,bool>, stage: Stage, decl: pest::iterators::Pairs<'static, Rule>) -> PP {
+    pub fn new(n: &str, features: HashMap<String,bool>, stage: Stage, decl: pest::iterators::Pairs<'static, Rule>) -> PP {
         PP {
             features,
             stage,
@@ -33,10 +33,7 @@ impl PP {
     }
 
     pub fn eval(&self, termish: pest::iterators::Pair<'static, Rule>)  -> Value {
-        let loc = ast::Location{
-            file: self.n.to_string_lossy().into(),
-            span: termish.as_span(),
-        };
+        let loc = ast::Location::from_span(self.n.clone(), &termish.as_span());
         let expr = termish.into_inner().next().unwrap();
         match expr.as_rule() {
             Rule::number_literal => {
@@ -222,10 +219,7 @@ impl Iterator for PP {
 
         if let Rule::pp = decl.as_rule() {
             let decl = decl.into_inner().next().unwrap();
-            let loc = ast::Location{
-                file: self.n.to_string_lossy().into(),
-                span: decl.as_span(),
-            };
+            let loc = ast::Location::from_span(self.n.clone(), &decl.as_span());
             match decl.as_rule() {
                 Rule::ppelif  => {
                     let previous = self.pop(&loc);
@@ -233,19 +227,13 @@ impl Iterator for PP {
                         self.push(loc, Value::Bool(previous));
                     } else {
                         let expr = decl.into_inner().next().unwrap();
-                        let loc = ast::Location{
-                            file: self.n.to_string_lossy().into(),
-                            span: expr.as_span(),
-                        };
+                        let loc = ast::Location::from_span(self.n.clone(), &expr.as_span());
                         self.push(loc, self.eval(expr));
                     }
                 },
                 Rule::ppif => {
                     let expr = decl.into_inner().next().unwrap();
-                    let loc = ast::Location{
-                        file: self.n.to_string_lossy().into(),
-                        span: expr.as_span(),
-                    };
+                    let loc = ast::Location::from_span(self.n.clone(), &expr.as_span());
                     self.push(loc, self.eval(expr));
                 },
                 Rule::ppelse => {

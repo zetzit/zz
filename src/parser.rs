@@ -21,7 +21,7 @@ pub fn parse(n: &Path, features: &HashMap<String, bool>, stage: &Stage) -> Modul
 {
     match p(&n, features, stage){
         Err(e) => {
-            let e = e.with_path(&n.to_string_lossy());
+            let e = e.with_path(&n.to_string_lossy().to_string());
             if ERRORS_AS_JSON.load(Ordering::SeqCst) {
 
 
@@ -63,14 +63,13 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
     module.sources.insert(n.canonicalize().unwrap());
     module.name.push(n.file_stem().expect(&format!("stem {:?}", n)).to_string_lossy().into());
 
-    let mut f = std::fs::File::open(n).expect(&format!("cannot open file {:?}", n));
-    let mut file_str = String::new();
-    f.read_to_string(&mut file_str).expect(&format!("read {:?}", n));
-    let file_str = Box::leak(Box::new(file_str));
+    let n = &n.to_string_lossy().to_string();
+    let file_str = read_source(n.clone());
+
     let mut file = ZZParser::parse(Rule::file, file_str)?;
     let mut doccomments = String::new();
 
-    for decl in PP::new(n, features.clone(), stage.clone(), file.next().unwrap().into_inner()) {
+    for decl in PP::new(&n, features.clone(), stage.clone(), file.next().unwrap().into_inner()) {
         match decl.as_rule() {
             Rule::doccomment => {
                 let mut s = decl.as_str().to_string();
@@ -79,10 +78,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 doccomments.push_str(&s);
             }
             Rule::imacro => {
-                let loc = Location{
-                    file: n.to_string_lossy().into(),
-                    span: decl.as_span(),
-                };
+                let loc = Location::from_span(n.into(), &decl.as_span());
                 let decl = decl.into_inner();
                 let mut name = None;
                 let mut args = Vec::new();
@@ -105,7 +101,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                             }
                         }
                         Rule::block if body.is_none() => {
-                            body = Some(parse_block((file_str, n), features, stage, part));
+                            body = Some(parse_block(&n, features, stage, part));
                         },
                         e => panic!("unexpected rule {:?} in macro ", e),
                     }
@@ -124,10 +120,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
 
             }
             Rule::function | Rule::fntype | Rule::theory => {
-                let loc = Location{
-                    file: n.to_string_lossy().into(),
-                    span: decl.as_span(),
-                };
+                let loc = Location::from_span(n.into(), &decl.as_span());
                 let mut nameloc = loc.clone();
                 let declrule = decl.as_rule().clone();
                 let decl = decl.into_inner();
@@ -151,37 +144,28 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                             vis = Visibility::Export;
                         }
                         Rule::ident => {
-                            nameloc = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            };
+                            nameloc = Location::from_span(n.into(), &part.as_span());
                             name = part.as_str().into();
                         }
                         Rule::ret_arg => {
                             let part = part.into_inner().next().unwrap();
                             ret = Some(AnonArg{
-                                typed: parse_anon_type((file_str, n), part),
+                                typed: parse_anon_type(n, part),
                             });
                         },
                         Rule::fn_attr => {
-                            let loc  = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            };
+                            let loc = Location::from_span(n.into(), &part.as_span());
                             attr.insert(part.as_str().into(), loc);
                         },
                         Rule::fn_args => {
                             for arg in part.into_inner() {
 
-                                let argloc  = Location{
-                                    file: n.to_string_lossy().into(),
-                                    span: arg.as_span(),
-                                };
+                                let argloc = Location::from_span(n.into(), &arg.as_span());
 
                                 if arg.as_rule() == Rule::vararg {
                                     vararg = true;
                                 } else {
-                                    let TypedName{typed, name, tags} = parse_named_type((file_str, n), arg);
+                                    let TypedName{typed, name, tags} = parse_named_type(n, arg);
 
                                     args.push(NamedArg{
                                         name,
@@ -194,17 +178,17 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                         },
                         Rule::call_assert => {
                             let part = part.into_inner().next().unwrap();
-                            callassert.push(parse_expr((file_str, n), part));
+                            callassert.push(parse_expr(n, part));
                         },
                         Rule::call_effect => {
                             let part = part.into_inner().next().unwrap();
-                            calleffect.push(parse_expr((file_str, n), part));
+                            calleffect.push(parse_expr(n, part));
                         },
                         Rule::block => {
-                            body = Some(parse_block((file_str, n), features, stage, part));
+                            body = Some(parse_block(n, features, stage, part));
                         },
                         Rule::macrocall => {
-                            derives.push(parse_derive((file_str, n), part));
+                            derives.push(parse_derive(n, part));
                         }
                         e => panic!("unexpected rule {:?} in function", e),
                     }
@@ -280,10 +264,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                             vis = Visibility::Export;
                         }
                         Rule::ident if name.is_none() => {
-                            loc  = Some(Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            });
+                            loc = Some(Location::from_span(n.into(), &part.as_span()));
                             name = Some(part.as_str().into());
 
                         }
@@ -294,13 +275,10 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                             if let Some(part) = part.next() {
                                 literal = Some(match part.as_str().to_string().parse() {
                                     Err(e) => {
-                                        let loc  = Location{
-                                            file: n.to_string_lossy().into(),
-                                            span: part.as_span(),
-                                        };
+                                        let loc = Location::from_span(n.into(), &part.as_span());
                                         emit_error(
                                             "enums must be positive integer literals",
-                                            &[(loc.clone(), format!("{}", e))]
+                                            &[(loc, format!("{}", e))]
                                         );
                                         std::process::exit(9);
                                     },
@@ -330,26 +308,20 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
             Rule::testcase => {
                 let mut name   = None;
                 let mut fields = Vec::new();
-                let mut loc    = Location{
-                    file: n.to_string_lossy().into(),
-                    span: decl.as_span(),
-                };
+                let mut loc = Location::from_span(n.into(), &decl.as_span());
 
                 let decl = decl.into_inner();
                 for part in PP::new(n,features.clone(), stage.clone(), decl) {
                     match part.as_rule() {
                         Rule::ident => {
-                            loc  = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            };
+                            loc = Location::from_span(n.into(), &part.as_span());
                             name= Some(part.as_str().into());
                         },
                         Rule::testfield => {
                             let mut part = part.into_inner();
                             let fname   = part.next().unwrap().as_str().to_string();
                             let _op      = part.next().unwrap().as_str().to_string();
-                            let expr    = parse_expr((file_str, n), part.next().unwrap());
+                            let expr    = parse_expr(n, part.next().unwrap());
                             fields.push((fname,expr));
                         }
                         e => panic!("unexpected rule {:?} in testcase", e),
@@ -358,7 +330,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 }
                 module.locals.push(Local{
                     doc: std::mem::replace(&mut doccomments, String::new()),
-                    name: name.unwrap_or(format!("anonymous_test_case_{}", loc.line())),
+                    name: name.unwrap_or(format!("anonymous_test_case_{}", loc.line)),
                     vis: Visibility::Object,
                     loc,
                     def: Def::Testcase {
@@ -400,30 +372,24 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                             vis = Visibility::Export;
                         }
                         Rule::ident => {
-                            loc  = Some(Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            });
+                            loc = Some(Location::from_span(n.into(), &part.as_span()));
                             name= Some(part.as_str().into());
                         }
                         Rule::struct_f => {
 
-                            let loc  = Location{
-                                file: n.to_string_lossy().into(),
-                                span: part.as_span(),
-                            };
+                            let loc = Location::from_span(n.into(), &part.as_span());
 
 
                             let mut part = part.into_inner();
 
-                            let TypedName{typed, name, tags} = parse_named_type((file_str, n), part.next().unwrap());
+                            let TypedName{typed, name, tags} = parse_named_type(n, part.next().unwrap());
 
                             let array = match part.next() {
                                 None => None,
                                 Some(array) => {
                                     match array.into_inner().next() {
                                         Some(expr) => {
-                                            Some(Some(parse_expr((file_str, n), expr)))
+                                            Some(Some(parse_expr(n, expr)))
                                         },
                                         None => {
                                             Some(None)
@@ -462,10 +428,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 });
             }
             Rule::import => {
-                let loc  = Location{
-                    file: n.to_string_lossy().into(),
-                    span: decl.as_span(),
-                };
+                let loc = Location::from_span(n.into(), &decl.as_span());
                 let mut vis = Visibility::Object;
                 let mut importname = None;
                 let mut alias      = None;
@@ -495,16 +458,10 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                                         Typed{
                                             t:      Type::Other(Name::from(ident.as_str())),
                                             ptr:    Vec::new(),
-                                            loc:    Location{
-                                                file: n.to_string_lossy().into(),
-                                                span: ident.as_span(),
-                                            },
+                                            loc:    Location::from_span(n.into(), &ident.as_span()),
                                             tail:   Tail::None,
                                         },
-                                        Location{
-                                            file: n.to_string_lossy().into(),
-                                            span: ident.as_span(),
-                                        }
+                                        Location::from_span(n.into(), &ident.as_span()),
                                 ));
                             }
                         }
@@ -528,10 +485,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
             Rule::comment => {},
             Rule::istatic | Rule::constant => {
                 let rule = decl.as_rule();
-                let loc  = Location{
-                    file: n.to_string_lossy().into(),
-                    span: decl.as_span(),
-                };
+                let loc = Location::from_span(n.into(), &decl.as_span());
                 let mut storage = Storage::Static;
                 let mut vis     = Visibility::Object;
                 let mut typed   = None;
@@ -554,7 +508,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                                 let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                     message: format!("cannot change visibility of static variable"),
                                 }, part.as_span());
-                                error!("{} : {}", n.to_string_lossy(), e);
+                                error!("{} : {}", n, e);
                                 std::process::exit(9);
                             } else {
                                 vis = Visibility::Shared;
@@ -565,21 +519,21 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                                 let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
                                     message: format!("cannot change visibility of static variable"),
                                 }, part.as_span());
-                                error!("{} : {}", n.to_string_lossy(), e);
+                                error!("{} : {}", n, e);
                                 std::process::exit(9);
                             } else {
                                 vis = Visibility::Export;
                             }
                         },
                         Rule::named_type => {
-                            typed = Some(parse_named_type((file_str, n), part));
+                            typed = Some(parse_named_type(n, part));
                         },
                         Rule::expr if expr.is_none() => {
-                            expr = Some(parse_expr((file_str, n), part));
+                            expr = Some(parse_expr(n, part));
                         }
                         Rule::array => {
                             if let Some(expr) = part.into_inner().next() {
-                                array = Some(Some(parse_expr((file_str, n), expr)));
+                                array = Some(Some(parse_expr(n, expr)));
                             } else {
                                 array = Some(None);
                             }
@@ -637,15 +591,12 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
     Ok(module)
 }
 
-pub(crate) fn parse_derive(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Derive {
+pub(crate) fn parse_derive(n: &str, decl: pest::iterators::Pair<'static, Rule>) -> Derive {
     match decl.as_rule() {
         Rule::macrocall=> { }
         _ => { panic!("parse_expr call called with {:?}", decl); }
     };
-    let loc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: decl.as_span(),
-    };
+    let loc = Location::from_span(n.into(), &decl.as_span());
 
     let mut decl = decl.into_inner();
     let makro = decl.next().unwrap().as_str().to_string();
@@ -665,7 +616,7 @@ pub(crate) fn parse_derive(n: (&'static str, &Path), decl: pest::iterators::Pair
 }
 
 
-pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Expression {
+pub(crate) fn parse_expr(n: &str, decl: pest::iterators::Pair<'static, Rule>) -> Expression {
     match decl.as_rule() {
         Rule::expr  => { }
         Rule::expr_to_precedence_2 => {}
@@ -708,10 +659,7 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
 
     let reduce = |lhs: Expression, op: pest::iterators::Pair<'static, Rule>, rhs: Expression | {
 
-        let loc = Location{
-            file: n.1.to_string_lossy().into(),
-            span: op.as_span(),
-        };
+        let loc = Location::from_span(n.into(), &op.as_span());
 
         if op.as_rule()  == Rule::memberaccess {
             if let Expression::Name(typed) = &rhs {
@@ -801,11 +749,9 @@ pub(crate) fn parse_expr(n: (&'static str, &Path), decl: pest::iterators::Pair<'
 }
 
 
-pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rule>) -> Expression {
-    let loc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: expr.as_span(),
-    };
+pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rule>) -> Expression {
+
+    let loc = Location::from_span(n.into(), &expr.as_span());
 
     let asrule = expr.as_rule();
     match asrule {
@@ -827,10 +773,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
             let part   = expr.next().unwrap();
             let iexpr   = match part.as_rule() {
                 Rule::type_name => {
-                    let loc = Location{
-                        file: n.1.to_string_lossy().into(),
-                        span: part.as_span(),
-                    };
+                    let loc = Location::from_span(n.into(), &part.as_span());
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed{
                         t:   Type::Other(name),
@@ -855,10 +798,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
             let part   = expr.next().unwrap();
             let iexpr   = match part.as_rule() {
                 Rule::type_name => {
-                    let loc = Location{
-                        file: n.1.to_string_lossy().into(),
-                        span: part.as_span(),
-                    };
+                    let loc = Location::from_span(n.into(), &part.as_span());
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed{
                         t:   Type::Other(name),
@@ -962,10 +902,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
             let part = expr.into_inner().next().unwrap();
             let expr = match part.as_rule() {
                 Rule::type_name => {
-                    let loc = Location{
-                        file: n.1.to_string_lossy().into(),
-                        span: part.as_span(),
-                    };
+                    let loc = Location::from_span(n.into(), &part.as_span());
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed{
                         t:   Type::Other(name),
@@ -1056,7 +993,7 @@ pub(crate) fn parse_expr_inner(n: (&'static str, &Path), expr: pest::iterators::
 }
 
 pub(crate) fn parse_statement(
-    n: (&'static str, &Path),
+    n: &str,
     features:   &HashMap<String, bool>,
     stage:      &Stage,
     stm:        pest::iterators::Pair<'static, Rule>,
@@ -1064,10 +1001,7 @@ pub(crate) fn parse_statement(
     current_if_statement: &mut Option<usize>,
 ) {
 
-    let loc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: stm.as_span(),
-    };
+    let loc = Location::from_span(n.into(), &stm.as_span());
     match stm.as_rule() {
         Rule::mark_stm => {
             let mut stm = stm.into_inner();
@@ -1352,10 +1286,7 @@ pub(crate) fn parse_statement(
         },
         Rule::cblock => {
             let stm = stm.into_inner().next().unwrap();
-            let loc = Location{
-                file: n.1.to_string_lossy().into(),
-                span: stm.as_span(),
-            };
+            let loc = Location::from_span(n.into(), &stm.as_span());
             into.push(Box::new(Statement::CBlock{
                 loc,
                 lit: stm.as_str().to_string()
@@ -1366,7 +1297,7 @@ pub(crate) fn parse_statement(
 }
 
 pub(crate) fn parse_block(
-        n:          (&'static str, &Path),
+        n:          &str,
         features:   &HashMap<String,bool>,
         stage:      &Stage,
         decl:       pest::iterators::Pair<'static, Rule>
@@ -1377,13 +1308,15 @@ pub(crate) fn parse_block(
     };
 
     let end = Location{
-        file: n.1.to_string_lossy().into(),
-        span: pest::Span::new(n.0, decl.as_span().end(), decl.as_span().end()).unwrap(),
+        file:   n.into(),
+        start:  decl.as_span().end(),
+        end:    decl.as_span().end(),
+        line:   decl.as_span().end_pos().line_col().0,
     };
 
     let mut statements = Vec::new();
     let mut cif_state = None;
-    for stm in PP::new(n.1, features.clone(), stage.clone(), decl.into_inner()) {
+    for stm in PP::new(n, features.clone(), stage.clone(), decl.into_inner()) {
         parse_statement(n, features, stage, stm, &mut statements, &mut cif_state)
     }
     Block{
@@ -1403,16 +1336,13 @@ pub(crate) struct TypedName {
     tags:   Tags,
 }
 
-pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> TypedName {
+pub(crate) fn parse_named_type(n: &str, decl: pest::iterators::Pair<'static, Rule>) -> TypedName {
     match decl.as_rule() {
         Rule::named_type => { }
         _ => { panic!("parse_named_type called with {:?}", decl); }
     };
 
-    let loc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: decl.as_span(),
-    };
+    let loc = Location::from_span(n.into(), &decl.as_span());
 
     let mut tail = Tail::None;
 
@@ -1423,10 +1353,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
     for lhs in lhsdecl {
         match lhs.as_rule() {
             Rule::tail => {
-                let loc = Location{
-                    file: n.1.to_string_lossy().into(),
-                    span: lhs.as_span(),
-                };
+                let loc = Location::from_span(n.into(), &lhs.as_span());
                 let mut part = lhs.as_str().to_string();
                 part.remove(0);
                 if part.len() > 0 {
@@ -1442,7 +1369,6 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
             e => panic!("unexpected rule {:?} in named_type lhs", e),
         }
     }
-    
 
     // the local variable name is on the right;
     let mut decl : Vec<pest::iterators::Pair<'static, Rule>> = decl.collect();
@@ -1451,22 +1377,16 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
         Rule::ident => {
             let name = name_part.as_str().to_string();
             if name == "return" {
-                let loc = Location{
-                    file: n.1.to_string_lossy().into(),
-                    span: name_part.as_span(),
-                };
+                let loc = Location::from_span(n.into(), &name_part.as_span());
                 emit_error("syntax error", &[
-                    (loc.clone(), "llegal use of keyword 'return'"),
+                    (loc, "llegal use of keyword 'return'"),
                 ]);
                 std::process::exit(9);
             }
             name
         }
         _ => {
-            let loc = Location{
-                file: n.1.to_string_lossy().into(),
-                span: name_part.as_span(),
-            };
+            let loc = Location::from_span(n.into(), &name_part.as_span());
             emit_error("syntax error", &[
                 (loc.clone(), "expected a name")
             ]);
@@ -1478,10 +1398,7 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
     let mut ptr = Vec::new();
 
     for part in decl {
-        let loc = Location{
-            file: n.1.to_string_lossy().into(),
-            span: part.as_span(),
-        };
+        let loc = Location::from_span(n.into(), &part.as_span());
         match part.as_rule() {
             Rule::ptr => {
                 ptr.push(Pointer{
@@ -1516,16 +1433,12 @@ pub(crate) fn parse_named_type(n: (&'static str, &Path), decl: pest::iterators::
     }
 }
 
-pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::Pair<'static, Rule>) -> Typed {
+pub(crate) fn parse_anon_type(n: &str, decl: pest::iterators::Pair<'static, Rule>) -> Typed {
     match decl.as_rule() {
         Rule::anon_type => { }
         _ => { panic!("parse_anon_type called with {:?}", decl); }
     };
-
-    let loc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: decl.as_span(),
-    };
+    let loc = Location::from_span(n.into(), &decl.as_span());
     //the actual type name is always on the left hand side
     let mut decl = decl.into_inner();
     let name = Name::from(decl.next().unwrap().as_str());
@@ -1535,10 +1448,7 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
     let mut tail = Tail::None;
 
     for part in decl {
-        let loc = Location{
-            file: n.1.to_string_lossy().into(),
-            span: part.as_span(),
-        };
+        let loc = Location::from_span(n.into(), &part.as_span());
         match part.as_rule() {
             Rule::ptr => {
                 ptr.push(Pointer{
@@ -1556,10 +1466,7 @@ pub(crate) fn parse_anon_type(n: (&'static str, &Path), decl: pest::iterators::P
                 tags.insert(name, value, loc);
             }
             Rule::tail => {
-                let loc = Location{
-                    file: n.1.to_string_lossy().into(),
-                    span: part.as_span(),
-                };
+                let loc = Location::from_span(n.into(), &part.as_span());
                 let mut part = part.as_str().to_string();
                 part.remove(0);
                 if part.len() > 0 {
@@ -1638,15 +1545,12 @@ pub(crate) fn parse_importname(decl: pest::iterators::Pair<Rule>) -> (Name, Vec<
     (Name(v), locals)
 }
 
-fn parse_call(n: (&'static str, &Path), expr: pest::iterators::Pair<'static, Rule>) -> Expression {
-    let loc = Location{
-        file: n.1.to_string_lossy().into(),
-        span: expr.as_span(),
-    };
+fn parse_call(n: &str, expr: pest::iterators::Pair<'static, Rule>) -> Expression {
+    let loc = Location::from_span(n.into(), &expr.as_span());
     let expr = expr.into_inner();
     //let name = expr.next().unwrap();
     //let nameloc = Location{
-    //    file: n.1.to_string_lossy().into(),
+    //    file: n.into(),
     //    span: name.as_span(),
     //};
     //let name = Box::new(parse_expr(n, name));
@@ -1705,11 +1609,12 @@ pub fn emit_error<'a, S1, S2, I>(message: S1, v: I)
 
         let mut first  = true;
         for (loc, message) in v.into_iter() {
+            let span = loc.to_span();
             j.file_name     = loc.file.clone();
-            j.line_start    = loc.span.start_pos().line_col().0;
-            j.column_start  = loc.span.start_pos().line_col().1;
-            j.line_end      = loc.span.end_pos().line_col().0;
-            j.column_end    = loc.span.end_pos().line_col().1;
+            j.line_start    = span.start_pos().line_col().0;
+            j.column_start  = span.start_pos().line_col().1;
+            j.line_end      = span.end_pos().line_col().0;
+            j.column_end    = span.end_pos().line_col().1;
 
 
             if first {
@@ -1729,9 +1634,11 @@ pub fn emit_error<'a, S1, S2, I>(message: S1, v: I)
 
     let mut s : String = message.to_string();
     for (loc, message)  in v.into_iter() {
+        let span = loc.to_span();
+
         let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
             message: message.to_string(),
-        }, loc.span.clone()).with_path(&loc.file);
+        }, span).with_path(&loc.file);
         s += &format!("\n{}\n", e);
     }
     error!("{}", s);
@@ -1749,11 +1656,12 @@ pub fn emit_warn<'a, S1, S2, I>(message: S1, v: I)
         j.file_name = "<anon>".to_string();
 
         if let Some((loc,_)) = v.into_iter().next() {
+            let span = loc.to_span();
             j.file_name     = loc.file.clone();
-            j.line_start    = loc.span.start_pos().line_col().0;
-            j.column_start  = loc.span.start_pos().line_col().1;
-            j.line_end      = loc.span.end_pos().line_col().0;
-            j.column_end    = loc.span.end_pos().line_col().1;
+            j.line_start    = span.start_pos().line_col().0;
+            j.column_start  = span.start_pos().line_col().1;
+            j.line_end      = span.end_pos().line_col().0;
+            j.column_end    = span.end_pos().line_col().1;
         }
 
         println!("{}", serde_json::to_string(&j).unwrap());
@@ -1762,9 +1670,10 @@ pub fn emit_warn<'a, S1, S2, I>(message: S1, v: I)
 
     let mut s : String = message.to_string();
     for (loc, message)  in v.into_iter() {
+        let span = loc.to_span();
         let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
             message: message.to_string(),
-        }, loc.span.clone()).with_path(&loc.file);
+        }, span).with_path(&loc.file);
         s += &format!("\n{}", e);
     }
     warn!("{}", s);
@@ -1782,9 +1691,10 @@ pub fn emit_debug<'a, S1, S2, I>(message: S1, v: I)
 
     let mut s : String = message.to_string();
     for (loc, message)  in v.into_iter() {
+        let span = loc.to_span();
         let e = pest::error::Error::<Rule>::new_from_span(pest::error::ErrorVariant::CustomError {
             message: message.to_string(),
-        }, loc.span.clone()).with_path(&loc.file);
+        }, span).with_path(&loc.file);
         s += &format!("\n{}", e);
     }
     debug!("{}", s);
