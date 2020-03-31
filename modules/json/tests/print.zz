@@ -19,7 +19,7 @@ test test123  {
     stdin = r#"{
         "height":      
             12,
-        "add": "\"[{123123}:b",
+        "add": "\"[{123123}\\:b",
         "v": [23],
         "engine": {
             "rolling": "hard",
@@ -29,7 +29,7 @@ test test123  {
         "deep": "nah"
     }"#
     stdout = r#"height : 12
-add : "[{123123}:b
+add : "[{123123}\:b
 v:
   0 : 23
 engine:

@@ -1,0 +1,14 @@
+using <stdio.h>::{printf};
+
+
+fn yah() {
+}
+
+export macro happyness() {
+    printf(r#"
+
+    printf(":)))\n");
+    printf(":)))\n");
+
+"#);
+}

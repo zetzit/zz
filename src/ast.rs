@@ -27,7 +27,7 @@ impl Location {
 
     pub fn to_span(&self) -> pest::Span<'static>
     {
-        let file = read_source(self.file.clone());
+        let (file, _) = read_source(self.file.clone());
         pest::Span::new(file, self.start, self.end).unwrap()
     }
 
@@ -51,21 +51,21 @@ impl std::fmt::Display for Location {
 pub struct Tags(pub HashMap<String, HashMap<String, Location>>);
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Storage {
     Static,
     ThreadLocal,
     Atomic,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Visibility {
     Shared,
     Object,
     Export,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Import {
     pub name:   Name,
     pub alias:  Option<String>,
@@ -85,21 +85,29 @@ pub enum Tail {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Derive {
     pub loc:    Location,
     pub makro:  String,
     pub args:   Vec<Box<Expression>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Array {
+    None,
+    Unsized,
+    Sized(Expression),
+}
+
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Def {
     Static {
         tags:       Tags,
         typed:      Typed,
         expr:       Expression,
         storage:    Storage,
-        array:      Option<Option<Expression>>,
+        array:      Array,
     },
     Const {
         typed:      Typed,
@@ -158,7 +166,7 @@ pub enum Def {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Local {
     pub name:       String,
     pub vis:        Visibility,
@@ -304,7 +312,7 @@ impl std::fmt::Display for Typed{
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Module {
     pub name:       Name,
     pub source:     PathBuf,
@@ -313,12 +321,12 @@ pub struct Module {
     pub sources:    HashSet<PathBuf>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnonArg {
     pub typed:    Typed,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NamedArg {
     pub typed:      Typed,
     pub name:       String,
@@ -326,12 +334,11 @@ pub struct NamedArg {
     pub loc:        Location,
 }
 
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Field {
     pub typed:      Typed,
     pub name:       String,
-    pub array:      Option<Option<Expression>>,
+    pub array:      Array,
     pub tags:       Tags,
     pub loc:        Location,
 }
@@ -564,7 +571,7 @@ impl Expression {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Statement {
     Mark{
         lhs:        Expression,
@@ -628,10 +635,15 @@ pub enum Statement {
     CBlock{
         loc:        Location,
         lit:        String,
-    }
+    },
+    MacroCall {
+        loc:            Location,
+        name:           Name,
+        args:           Vec<Box<Expression>>,
+    },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Block {
     pub end:        Location,
     pub statements: Vec<Box<Statement>>,
@@ -672,38 +684,43 @@ impl Tags {
 
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
+use sha2::{Sha256, Sha512, Digest};
 
 lazy_static! {
-    static ref SOURCES: Arc<Mutex<HashMap<String, &'static str>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref SOURCES: Arc<Mutex<HashMap<String, (&'static str, String)>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
-pub fn read_source(path: String) -> &'static str
+pub fn read_source(path: String) -> (&'static str, String /*sha*/ )
 {
     if path == "" {
-        return "<builtin>";
+        return ("<builtin>", "".to_string());
     }
     if let Some(v) = SOURCES.lock().unwrap().get(&path) {
-        return v;
+        return v.clone();
     }
 
     let s = Box::leak(Box::new(std::fs::read_to_string(&path).expect(&format!("read {:?}", path))));
-    SOURCES.lock().unwrap().insert(path.clone(), s);
-    SOURCES.lock().unwrap().get(&path).unwrap()
+
+    let mut hasher = Sha256::new();
+    hasher.input(s.as_bytes());
+    let hash = format!("{:x}", hasher.result());
+
+
+    SOURCES.lock().unwrap().insert(path.clone(), (s, hash));
+
+
+    SOURCES.lock().unwrap().get(&path).unwrap().clone()
+
 }
 
 
 pub fn generated_source(from: &str, source: String) -> (String, &'static str)
 {
-    loop {
-        let mut a = [0;8];
-        getrandom::getrandom(&mut a).unwrap();
-        let path = format!("generated<{:x}{:x}{:x}{:x}{:x}{:x}{:x}{:x}> from {}",
-            a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7],
-            from
-        );
-        if SOURCES.lock().unwrap().get(&path).is_none() {
-            SOURCES.lock().unwrap().insert(path.clone(), Box::leak(Box::new(source)));
-            return (path.clone(), SOURCES.lock().unwrap().get(&path).unwrap());
-        }
-    }
+   let mut hasher = Sha256::new();
+   hasher.input(source.as_bytes());
+   let hash    = format!("{:x}", hasher.result());
+   let path    = format!("generated<{}> from {}", hash, from);
+
+   SOURCES.lock().unwrap().insert(path.clone(), (Box::leak(Box::new(source)), hash));
+   return (path.clone(), SOURCES.lock().unwrap().get(&path).unwrap().0);
 }

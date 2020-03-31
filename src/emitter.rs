@@ -423,12 +423,18 @@ impl Emitter {
 
         write!(self.f, "{} ", self.to_local_name(&Name::from(&ast.name))).unwrap();
 
-        if let Some(array) = &array {
-            write!(self.f, " [ ").unwrap();
-            if let Some(array) = &array {
-                self.emit_expr(array);
+        match &array {
+            ast::Array::Sized(expr) => {
+                write!(self.f, " [ ").unwrap();
+                self.emit_expr(expr);
+                write!(self.f, " ] ").unwrap();
             }
-            write!(self.f, " ] ").unwrap();
+            ast::Array::Unsized => {
+                write!(self.f, " [ ").unwrap();
+                write!(self.f, " ] ").unwrap();
+            }
+            ast::Array::None => {
+            }
         }
 
         write!(self.f, "=").unwrap();
@@ -591,13 +597,15 @@ impl Emitter {
             self.emit_loc(&field.loc);
             write!(self.f, "   {}", self.to_local_typed_name(&field.typed)).unwrap();
             self.emit_pointer(&field.typed.ptr);
-            if let Some(array) = &field.array {
-                if let Some(expr) = array {
+
+            match &field.array {
+                ast::Array::Sized(expr) => {
                     write!(self.f, " {}", field.name).unwrap();
                     write!(self.f, "[").unwrap();
                     self.emit_expr(expr);
                     write!(self.f, "]").unwrap();
-                } else {
+                }
+                ast::Array::Unsized => {
                     if i != (fields.len() - 1) {
                         parser::emit_error(
                             "tail field has no be the last field in a struct",
@@ -609,15 +617,16 @@ impl Emitter {
                         emitted_tail = true;
                         write!(self.f, " {}[{}]", field.name, tt).unwrap();
                     } else {
-
                         //TODO emit as something else (not as pointer!)
                         // nested flexible arrays are non standard
                         write!(self.f, " {}[]", field.name).unwrap();
                     }
                 }
-            } else {
-                write!(self.f, " {}", field.name).unwrap();
+                ast::Array::None => {
+                    write!(self.f, " {}", field.name).unwrap();
+                }
             }
+
             write!(self.f, " ;\n").unwrap();
         }
         if let Some(tt) = tail_variant {
@@ -1093,6 +1102,9 @@ impl Emitter {
                 write!(self.f, "}}\n").unwrap();
                 false
             }
+            ast::Statement::MacroCall{ ..} => {
+                false
+            }
         }
     }
 
@@ -1338,3 +1350,4 @@ impl CFile {
         return false;
     }
 }
+

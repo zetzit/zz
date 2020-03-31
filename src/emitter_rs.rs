@@ -335,14 +335,15 @@ impl {name} {{
                 }
             };
 
-            if let Some(array) = &field.array {
-                if let Some(expr) = array {
+            match &field.array {
+                ast::Array::Sized(expr) => {
                     write!(self.f, "    pub {} : [", field.name).unwrap();
                     self.emit_pointer(&field.typed.ptr);
                     write!(self.f, "{};", fieldtype).unwrap();
                     self.emit_expr(expr);
                     write!(self.f, "]").unwrap();
-                } else {
+                }
+                ast::Array::Unsized => {
                     if i != (fields.len() - 1) {
                         parser::emit_error(
                             "tail field has no be the last field in a struct",
@@ -361,10 +362,12 @@ impl {name} {{
                         write!(self.f, "    // {}", field.name).unwrap();
                     }
                 }
-            } else {
-                write!(self.f, "    pub {} :", field.name).unwrap();
-                write!(self.f, "{}",fieldtype).unwrap();
+                ast::Array::None => {
+                    write!(self.f, "    pub {} :", field.name).unwrap();
+                    write!(self.f, "{}",fieldtype).unwrap();
+                }
             }
+
             write!(self.f, " ,\n").unwrap();
         }
         write!(self.f, "}}\n").unwrap();
