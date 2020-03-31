@@ -135,7 +135,7 @@ ZZ follows the C model of polymorphism: any struct can be cast to the same type 
 In ZZ the cast is implicit because it is always safe.
 
 
-```
+```C++
 struct Vehicle {
     int wheels;
 }
