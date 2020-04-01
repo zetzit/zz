@@ -2,7 +2,8 @@
 
 
 
-ZetZ is for code close to hardware, where C is and will remain the defacto standard system interface.
+ZetZ is for systems without dynamic memory, where C is and will remain the defacto standard system interface.
+Such as bare metal MCUs, embedded linux, WASM, and embedded in other languages.
 You can also use it to build cross platform libraries, with a clean portable C-standard api.
 
 A major innovative feature is that all code is formally verified by symbolic execution in a virtual machine,
@@ -28,21 +29,23 @@ ZZ has strong rust aesthetics, but remains a C dialect at the core.
 ```C++
 using <stdio.h>::{printf}
 
-export fn main() -> int {
-    let r = Random{
-        num: 42,
-    };
-    printf("your lucky number: %u\n", r.gen());
-    return 0;
-}
-
 struct Random {
     u32 num;
 }
 
-fn gen(Random *self) -> u32 {
+fn rng(Random *self) -> u32 {
     return self->num;
 }
+
+export fn main() -> int {
+    let r = Random{
+        num: 42,
+    };
+    
+    printf("your lucky number: %u\n", r.rng());
+    return 0;
+}
+
 
 ```
 
@@ -61,6 +64,8 @@ with no requirements towards compiler features.
 
 ZZ works nicely with vendor provided closed source compiler for obscure systems.
 Like arduino, esp32, propriatary firmware compilers, and integrates nicely into existing industry standard microkernels like zephyr, freertos, etc.
+
+
 
 #### safety and correctness with symbolic execution
 
