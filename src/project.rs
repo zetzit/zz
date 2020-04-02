@@ -83,17 +83,20 @@ pub enum Dependency {
     V(String)
 }
 
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     pub project:        Project,
     pub artifacts:      Option<Vec<Artifact>>,
+
 
     pub features:       Option<HashMap<String, Feature>>,
     #[serde(default)]
     pub variants:       HashMap<String, Vec<String>>,
 
     pub dependencies:   Option<HashMap<String, Value>>,
+
+    #[serde(default)]
+    pub repos:          HashMap<String, String>
 }
 
 pub fn init() {
@@ -107,6 +110,7 @@ pub fn init() {
         dependencies:   Some(HashMap::new()),
         features:       None,
         variants:       HashMap::new(),
+        repos:          HashMap::new(),
     };
     c.variants.insert("default".to_string(), Vec::new());
 

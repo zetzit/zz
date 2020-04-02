@@ -37,6 +37,8 @@ getrandom = "0.1.14"
 lazy_static = "1.4.0"
 serde_cbor = "0.11.1"
 sha2 = "0.8"
+reqwest = "0.10.4"
+url = "2.1.1"
 
 [dependencies.rsmt2-zz]
 version = "0.11.1"

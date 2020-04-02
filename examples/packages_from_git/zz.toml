@@ -1,17 +1,17 @@
 [project]
 version = "0.1.0"
-name = "net"
+name = "packages_from_git"
 cincludes = []
 cobjects = []
 pkgconfig = []
 cflags = []
 lflags = []
 
-[dependencies]
-string = "1"
-err = "1"
-byteorder = "1"
-io = "1"
-
 [variants]
 default = []
+
+[dependencies]
+io = "1"
+
+[repos]
+extra = "git://github.com/zetzit/modules.git"

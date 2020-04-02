@@ -1,0 +1,6 @@
+using <stdio.h>::{printf};
+
+export fn main() -> int {
+    printf("hello packages_from_git\n");
+    return 0;
+}
