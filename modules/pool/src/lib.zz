@@ -9,14 +9,17 @@ inline using "asan.h"::{
     ASAN_UNPOISON_MEMORY_REGION
 }
 
-
-
 const usize ALIGN = (usize)sizeof(uintptr_t);
 
+/! memory m was allocated from pool p
 pub theory member(void * m, Pool*p) -> bool;
 
+/! all allocations from pool p are exacly blocksize long,
+/! the pool has no multi-block allocations and can be used with each() 
+pub theory continuous(Pool p) -> bool;
+
 export struct Pool+ {
-    u8      blocksize;
+    usize   blocksize;
     usize   poolsize;
 
     u8 mut* used;
@@ -26,8 +29,23 @@ export struct Pool+ {
     u8  mem[];
 }
 
-export fn make(Pool+pt mut new*self, u8 mut blocksize)
+/! creates a new pool with blocksize
+/!
+/! new+1000 mypool = pool::make(10);
+/! mypool.alloc(); // get a single block of 10 bytes
+/! mypool.malloc(22); // get a continuous memory span of 22 bytes (less efficient)
+/!
+export fn make(Pool+pt mut new*self, usize mut blocksize)
+    model continuous(*self)
 {
+    // 8 byte redzone
+    blocksize += 8;
+    // 8 byte align
+    if blocksize % ALIGN > 0 {
+        blocksize += (ALIGN - (blocksize % ALIGN));
+    }
+
+
     err::assert(pt > pt/(usize)blocksize);
     err::assert((usize)blocksize % ALIGN == 0);
 
@@ -46,8 +64,11 @@ export fn make(Pool+pt mut new*self, u8 mut blocksize)
     memset(self->used, 0, usedmemlen);
 
     ASAN_POISON_MEMORY_REGION(self->pool, self->poolsize);
+
+    static_attest(continuous(*self));
 }
 
+/! get the number of bytes left in the pool
 export fn free_bytes(Pool *self) -> usize
 {
     static_attest(safe(self->used));
@@ -55,6 +76,21 @@ export fn free_bytes(Pool *self) -> usize
 
     usize mut c = 0;
     for (usize mut i = 0 ; i < self->poolsize/(usize)self->blocksize; i++) {
+
+        static_attest(i/8 < len(self->used));
+        if self->used[i/8] == 0xff {
+            i += 7;
+            continue;
+        }
+
+        static_attest(i/8 < len(self->used));
+        if self->used[i/8] == 0x00 {
+            c += 8 * (usize)self->blocksize;
+            i += 7;
+            continue;
+        }
+
+        static_attest(i/8 < len(self->used));
         if !bitarray_test(self->used, i) {
             c += (usize)self->blocksize;
         }
@@ -62,15 +98,38 @@ export fn free_bytes(Pool *self) -> usize
     return c;
 }
 
-export fn alloc(Pool mut *self, usize mut size) -> void mut*
+/! alloc a block
+/! returns null if the pool is full
+export fn alloc(Pool mut *self) -> void mut*
+    where continuous(*self)
+    model member(return, self)
+    model continuous(*self)
+{
+    let r = self->malloc(self->blocksize - 8);
+
+    static_attest(continuous(*self));
+
+    return r;
+}
+
+/! malloc a continuous memory block of any size
+/! returns null if the pool is full
+/! this is alot less efficient than alloc()
+/! as alignment requirements can lead to more blocks being allocated than you expect
+/!
+export fn malloc(Pool mut *self, usize mut size) -> void mut*
     model member(return, self)
 {
     static_attest(member(0, self));
 
+
     // 8 byte redzone
     size += 8;
     // 8 byte align
-    size += (ALIGN - (size % ALIGN));
+    if size % ALIGN > 0 {
+        size += (ALIGN - (size % ALIGN));
+    }
+
 
     usize mut blocks = size/(usize)self->blocksize;
     if size % (usize)self->blocksize != 0 {
@@ -139,16 +198,20 @@ export fn alloc(Pool mut *self, usize mut size) -> void mut*
     return 0;
 }
 
+/! free a pointer previously allocated from this pool
+/! requires pointer to be a member()
 export fn free(Pool mut *self, void * unsafe mut ptr_)
+    model continuous(*self)
     where member(ptr_, self)
 {
     let mut ptr = (u8 mut*)ptr_;
 
     if ptr == 0 {
+        static_attest(continuous(*self));
         return;
     }
 
-    u8 mut blocks;
+    usize mut blocks;
     usize mut startblock;
     unsafe {
         ptr = ptr - 8;
@@ -175,6 +238,7 @@ export fn free(Pool mut *self, void * unsafe mut ptr_)
         static_attest(i/8 < len(self->used));
         bitarray_clear(self->used, i);
     }
+    static_attest(continuous(*self));
 }
 
 fn bitarray_set(u8 mut* a, usize index)
@@ -194,3 +258,38 @@ fn bitarray_test(u8 mut* a, usize index) -> bool
 {
     return (a[index/8] & (u8)(1<<(index % 8))) > 0;
 }
+
+
+export fntype iterator(Pool mut*self, void mut *block, void mut * unsafe user);
+
+/! run an iterator on every allocated block
+/! this is useful when you want to use the pool as a vector
+/! but cannot be used if you ever malloc()'d from this pool
+/!
+/! it is safe to call free() and alloc() from iterator, because they are implemented as markers
+
+export fn each(Pool mut*self, iterator it, void mut * unsafe user)
+    where continuous(*self)
+{
+    static_attest(safe(self->used));
+    static_attest(len(self->used) == self->poolsize/(usize)self->blocksize);
+
+    for (usize mut i = 0; i < self->poolsize/(usize)self->blocksize ; i++) {
+        static_attest(i/8 < len(self->used));
+        if self->used[i/8] == 0x00 {
+            i+=7;
+            continue;
+        }
+
+        static_attest(i/8 < len(self->used));
+        if bitarray_test(self->used, i) {
+            unsafe{
+                u8 mut* mut mem = self->pool + ((usize)self->blocksize * i);
+                mem += 8;
+                it(self, mem, user);
+            }
+        }
+
+    }
+}
+

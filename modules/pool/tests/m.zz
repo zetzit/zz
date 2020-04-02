@@ -15,7 +15,7 @@ fn m2(){
 
     void mut * mut a = 0;
     for (usize mut i = 0;;i++) {
-        void mut *b = p.alloc(1 + (30 * (i%3)));
+        void mut *b = p.malloc(1 + (30 * (i%3)));
         if b == 0 {
             printf("memory full after %zu rounds\n", i);
             break;
@@ -35,10 +35,10 @@ fn m2(){
     static_attest(pool::member(a, &p));
     p.free(a);
 
-    void mut *b = p.alloc(180);
+    void mut *b = p.malloc(180);
     assert(b == 0);
 
-    void mut *c = p.alloc(1);
+    void mut *c = p.malloc(1);
     printf("last: %p\n", c);
 }
 
