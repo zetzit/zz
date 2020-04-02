@@ -1,10 +1,11 @@
 ![logo](logo2.png?raw=true)
 
 
-
 ZetZ is for systems without dynamic memory, where C is and will remain the defacto standard system interface.<br>
 Target bare metal MCUs, embedded linux, WASM, and embed it in other languages.<br>
-You can also use it to build cross platform libraries, with a clean portable C-standard api.
+
+You can also use it to build cross platform libraries, with a clean portable C-standard api. <br>
+Zetz plays nice with others and does not require rewriting everything in zetz to be useful in large projects.
 
 A major innovative feature is that all code is formally verified by symbolic execution in a virtual machine,
 at compile time.
