@@ -24,6 +24,7 @@ pub mod smt;
 pub mod emitter_docs;
 pub mod makro;
 pub mod pipeline;
+pub mod repos;
 
 use std::path::Path;
 use name::Name;
@@ -46,8 +47,6 @@ impl Error {
     }
 }
 
-static ABORT: AtomicBool = AtomicBool::new(false);
-
 #[derive(PartialEq)]
 pub enum BuildSet {
     Tests,
@@ -59,10 +58,12 @@ pub enum BuildSet {
 
 
 pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) {
-    use rayon::prelude::*;
 
     let (root, mut project) = project::load_cwd();
-    //std::env::set_current_dir(root).unwrap();
+    std::env::set_current_dir(&root).unwrap();
+    //
+    //
+    let mut searchpaths = repos::index(&project);
 
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("c")).expect("create target dir");
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("zz")).expect("create target dir");
@@ -84,13 +85,13 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
     }
 
 
-    let mut searchpaths = HashSet::new();
     searchpaths.insert(std::env::current_exe().expect("self path")
         .canonicalize().expect("self path")
         .parent().expect("self path")
         .parent().expect("self path")
         .parent().expect("self path")
-        .join("modules"));
+        .join("modules")
+    );
     searchpaths.insert(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules")
     );
