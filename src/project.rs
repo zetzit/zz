@@ -159,6 +159,15 @@ pub fn load_cwd() -> (PathBuf, Config) {
     load(&search)
 }
 
+fn sanitize(s: &mut String ){
+    *s = s.chars().map(|c| match c {
+        'A'..='Z' => c,
+        'a'..='z' => c,
+        '0'..='9' => c,
+        _ => '_'
+    }).collect()
+}
+
 pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
 
     let mut f = File::open(&search.join("zz.toml")).expect(&format!("cannot open {:?}", search));
@@ -166,6 +175,13 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
     f.read_to_string(&mut s).expect(&format!("cannot read {:?}", search));
     let mut c : Config = toml::from_str(&mut s).expect(&format!("cannot read {:?}", search));
 
+    sanitize(&mut c.project.name);
+
+    if let Some(artifacts) = &mut c.artifacts {
+        for artifact in artifacts {
+            sanitize(&mut artifact.name);
+        }
+    }
 
     // implicit features
     if !c.variants.contains_key("default") {
