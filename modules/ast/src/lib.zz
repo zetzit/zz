@@ -21,7 +21,7 @@ fn parse_v(err::Err+et mut *e, json::Parser+pt mut* p, ExpressionS mut * arg, ch
                 static_attest(safe(arg->pool));
                 static_attest(safe(v.string));
                 static_attest(nullterm(v.string));
-                char mut * dup = arg->pool->alloc(string::strlen(v.string));
+                char mut * dup = arg->pool->malloc(string::strlen(v.string));
                 memcpy(dup, v.string, string::strlen(v.string) + 1);
                 arg->v.string = dup;
             }

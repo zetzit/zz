@@ -3,7 +3,7 @@ using <stdio.h>::{printf};
 
 
 
-fn it(void mut *item, void mut * unsafe user)
+fn it(pool::Pool mut *pool, void mut *item, void mut * unsafe user)
 {
     printf("each  %x\n", item);
 }
