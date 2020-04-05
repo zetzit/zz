@@ -198,6 +198,10 @@ impl Pipeline {
             }
         }).collect::<HashMap<Name, emitter::CFile>>();
 
+        if ABORT.load(Ordering::Relaxed) {
+            std::process::exit(1);
+        }
+
         let mut main = Name::from(&artifact.main);
         if !main.is_absolute() {
             main.0.insert(0,String::new());

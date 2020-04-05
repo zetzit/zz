@@ -1390,10 +1390,20 @@ impl Symbolic {
         let struct_def = match struct_def {
             Some(v) => v,
             None => {
-                return Err(self.trace(
-                    format!("{} is not accessible as struct. it is {}", self.memory[lhs_sym].name, self.memory[lhs_sym].typed), vec![
-                    (loc.clone(), format!("cannot use as struct here"))
-                ]));
+                match &self.memory[lhs_sym].typed.t {
+                    ast::Type::Other(t) if t.0[1] == "ext"  => {
+                        return Err(self.trace(
+                            format!("{} is not safe to access. it is an untracked C type {}", self.memory[lhs_sym].name, self.memory[lhs_sym].typed), vec![
+                            (loc.clone(), format!("unsafe C expression outside of unsafe block"))
+                        ]));
+                    }
+                    _ => {
+                        return Err(self.trace(
+                            format!("{} is not accessible as struct. it is {}", self.memory[lhs_sym].name, self.memory[lhs_sym].typed), vec![
+                            (loc.clone(), format!("cannot use as struct here"))
+                        ]));
+                    }
+                }
             }
         };
 
