@@ -359,6 +359,11 @@ impl Make {
             return;
         }
 
+        if self.artifact.typ == super::project::ArtifactType::CMake{
+            super::export_cmake::export(self);
+            return;
+        }
+
         use rayon::prelude::*;
         use std::sync::{Arc, Mutex};
 
@@ -444,6 +449,7 @@ impl Make {
             super::project::ArtifactType::Header  => {
                 panic!("cannot link header yet");
             }
+            super::project::ArtifactType::CMake |
             super::project::ArtifactType::NodeModule => {
                 unreachable!();
             }

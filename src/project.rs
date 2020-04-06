@@ -20,6 +20,8 @@ pub enum ArtifactType {
     Header,
     #[serde(rename = "npm")]
     NodeModule,
+    #[serde(rename = "cmake")]
+    CMake,
     #[serde(rename = "macro")]
     Macro,
 }

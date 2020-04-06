@@ -25,6 +25,7 @@ pub mod emitter_docs;
 pub mod makro;
 pub mod pipeline;
 pub mod repos;
+pub mod export_cmake;
 
 use std::path::Path;
 use name::Name;
