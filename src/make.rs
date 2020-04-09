@@ -354,14 +354,20 @@ impl Make {
 
 
     pub fn link(mut self) {
-        if self.artifact.typ == super::project::ArtifactType::NodeModule {
-            emitter_js::make_npm_module(&self);
-            return;
-        }
-
-        if self.artifact.typ == super::project::ArtifactType::CMake{
-            super::export_cmake::export(self);
-            return;
+        match self.artifact.typ {
+            super::project::ArtifactType::NodeModule => {
+                emitter_js::make_npm_module(&self);
+                return;
+            }
+            super::project::ArtifactType::CMake => {
+                super::export_cmake::export(self);
+                return;
+            }
+            super::project::ArtifactType::Rust => {
+                super::emitter_rs::make_module(&self);
+                return;
+            }
+            _ => {}
         }
 
         use rayon::prelude::*;
@@ -450,6 +456,7 @@ impl Make {
                 panic!("cannot link header yet");
             }
             super::project::ArtifactType::CMake |
+            super::project::ArtifactType::Rust |
             super::project::ArtifactType::NodeModule => {
                 unreachable!();
             }

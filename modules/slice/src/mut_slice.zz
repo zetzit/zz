@@ -6,7 +6,6 @@ export struct MutSlice {
     usize   at;
 }
 
-
 export fn borrow(MutSlice mut*self) -> MutSlice *
     where self->slice.size >= len(self->slice.mem)
     where self->at <= self->slice.size

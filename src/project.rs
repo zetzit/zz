@@ -18,6 +18,8 @@ pub enum ArtifactType {
     Test,
     #[serde(rename = "header")]
     Header,
+    #[serde(rename = "rust")]
+    Rust,
     #[serde(rename = "npm")]
     NodeModule,
     #[serde(rename = "cmake")]
