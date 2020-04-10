@@ -1233,7 +1233,7 @@ impl Symbolic {
 
                 // cast to unsized type for the C compiler to be happy
                 if into_type.tail != ast::Tail::None {
-                    into_type.tail = ast::Tail::Dynamic;
+                    into_type.tail = ast::Tail::Dynamic(None);
                 }
                 *prev = Box::new(ast::Expression::Cast {
                     into: into_type,
@@ -1251,7 +1251,7 @@ impl Symbolic {
                         }));
                         called.push(genarg);
                     }
-                    ast::Tail::Dynamic | ast::Tail::None  => {
+                    ast::Tail::Dynamic(_) | ast::Tail::None  => {
                         return Err(self.trace(format!("tail size of {} not bound", self.memory[callptr].name), vec![
                             (prev_loc.clone(), format!("tail len required here")),
                             (defined[i].loc.clone(), format!("required by this tail binding")),
@@ -1494,7 +1494,7 @@ impl Symbolic {
 
         //nested tail
         match fieldtyped.tail {
-            ast::Tail::Dynamic => {
+            ast::Tail::Dynamic(_) => {
                 fieldtyped.tail = self.memory[lhs_sym].typed.tail.clone();
                 //return Err(self.trace(
                 //    format!("TODO: implement access to nested tail member"), vec![
@@ -2869,7 +2869,7 @@ impl Symbolic {
         self.ssa.debug_loc(loc);
         let tailval = match self.memory[sym].typed.tail.clone() {
             ast::Tail::None     => return Ok(()),
-            ast::Tail::Dynamic  => {
+            ast::Tail::Dynamic(_)  => {
                 return Err(self.trace(format!("tail size must be known for stack variables"), vec![
                     (self.memory[sym].typed.loc.clone(), format!("cannot use dynamic tail size here"))
                 ]));

@@ -79,7 +79,7 @@ pub struct Import {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Tail {
     None,
-    Dynamic,
+    Dynamic(Option<Box<Typed>> /*final*/),
     Static(u64, Location),
     Bind(String, Location),
 }
@@ -304,7 +304,7 @@ impl std::fmt::Display for Typed{
         }
         match &self.tail {
             Tail::None          => (),
-            Tail::Dynamic       => write!(f, "+")?,
+            Tail::Dynamic(_)    => write!(f, "+")?,
             Tail::Static(v, _)  => write!(f, "+{}", v)?,
             Tail::Bind(v,_)     => write!(f, "+{}", v)?,
         }

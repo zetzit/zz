@@ -100,7 +100,7 @@ self.module.name.0[1..].join("::")).unwrap();
                 ast::Def::Struct{..} => {
                     self.emit_struct(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for v in vs {
+                        for (v,_) in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
                             self.emit_struct(&d, Some(*v));

@@ -354,7 +354,7 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 for part in PP::new(n,features.clone(), stage.clone(), decl) {
                     match part.as_rule() {
                         Rule::tail => {
-                            tail = Tail::Dynamic;
+                            tail = Tail::Dynamic(None);
                         }
                         Rule::key_packed => {
                             packed = true;
@@ -1382,7 +1382,7 @@ pub(crate) fn parse_named_type(n: &str, decl: pest::iterators::Pair<'static, Rul
                         tail = Tail::Bind(part, loc);
                     }
                 } else {
-                    tail = Tail::Dynamic
+                    tail = Tail::Dynamic(None)
                 }
             },
             e => panic!("unexpected rule {:?} in named_type lhs", e),
@@ -1495,7 +1495,7 @@ pub(crate) fn parse_anon_type(n: &str, decl: pest::iterators::Pair<'static, Rule
                         tail = Tail::Bind(part, loc);
                     }
                 } else {
-                    tail = Tail::Dynamic
+                    tail = Tail::Dynamic(None)
                 }
             },
             e => panic!("unexpected rule {:?} in anon_type", e),
