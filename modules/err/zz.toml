@@ -4,3 +4,4 @@ name = "err"
 
 [dependencies]
 string = "1"
+log  = "1"

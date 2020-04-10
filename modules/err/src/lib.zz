@@ -5,6 +5,7 @@ using <stdlib.h>::{abort as cabort};
 using <stdarg.h>::{va_list, va_start, va_end};
 using string::{String};
 using string;
+using log;
 
 pub theory checked(Err * self) -> bool;
 
@@ -119,8 +120,9 @@ model checked(*self)
 
 export fn eprint(Err+tail mut* self)
 {
-    fprintf(stderr, "error %u: %s%s\n", self->error, self->description, (self->locations).mem);
+    log::error("%u: %s%s\n", self->error, self->description, (self->locations).mem);
 }
+
 
 export fn to_str(
     Err * self,

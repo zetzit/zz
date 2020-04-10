@@ -40,7 +40,7 @@ pub struct Module {
     pub aliases:        HashMap<Name, String>,
     pub deps:           HashSet<Name>,
 
-    pub typevariants:   HashMap<Name, HashSet<u64>>,
+    pub typevariants:   HashMap<Name, HashMap<u64, ast::Location>>,
 }
 
 #[derive(Clone)]
@@ -57,7 +57,7 @@ struct Local {
 
 #[derive(Default)]
 struct Collector {
-    typevariants:   HashMap<Name, HashSet<u64>>,
+    typevariants:   HashMap<Name, HashMap<u64, ast::Location>>,
 }
 
 #[derive(Default)]
@@ -91,9 +91,9 @@ fn type_deps(cr: &mut Collector, typed: &ast::Typed) -> Vec<(Name, TypeComplete,
         r.extend(tag_deps(cr, &ptr.tags));
     }
 
-    if let ast::Tail::Static(v,_) = &typed.tail {
+    if let ast::Tail::Static(v,vloc) = &typed.tail {
         if let ast::Type::Other(name) = &typed.t {
-            cr.typevariants.entry(name.clone()).or_default().insert(v.clone());
+            cr.typevariants.entry(name.clone()).or_default().insert(v.clone(), vloc.clone());
         }
     }
 

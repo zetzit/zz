@@ -167,7 +167,7 @@ impl Emitter {
                 ast::Def::Struct{..} => {
                     self.emit_struct(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for v in vs {
+                        for (v, tvloc) in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
                             self.emit_struct(&d, Some(*v));
@@ -216,7 +216,7 @@ impl Emitter {
                     self.emit_struct_len(&d, None);
 
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for v in vs {
+                        for (v,_) in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
                             self.emit_struct_len(&d, Some(*v));
@@ -318,14 +318,20 @@ impl Emitter {
     }
 
 
-    pub fn emit_struct_len(&mut self, ast: &ast::Local, _tail_variant: Option<u64>) {
-        let (_fields, _packed, _tail, _union) = match &ast.def {
+    pub fn emit_struct_len(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
+        let (_fields, _packed, tail, _union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
         };
         let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
-        write!(self.f, "    #[link_name = \"sizeof_{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
-        write!(self.f, "    pub static sizeof_{}: libc::size_t;\n", shortname).unwrap();
+
+        if tail == &ast::Tail::None || tail_variant.is_some() {
+            write!(self.f, "    #[link_name = \"sizeof_{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+            write!(self.f, "    pub static sizeof_{}: libc::size_t;\n", shortname).unwrap();
+        } else {
+            write!(self.f, "    #[link_name = \"sizeof_{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+            write!(self.f, "    pub fn sizeof_{}(tail: libc::size_t) -> libc::size_t;\n", shortname).unwrap();
+        }
     }
 
     pub fn emit_struct(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
@@ -360,9 +366,15 @@ impl std::ops::Deref for rs{name} {{
 impl std::clone::Clone for rs{name} {{
     fn clone(&self) -> Self {{
         unsafe {{
-            let size = sizeof_{name} + self.tail;
+"#, name = shortname).unwrap();
 
+    if tail == &ast::Tail::None || tail_variant.is_some() {
+        write!(self.f, "            let size = sizeof_{name};\n", name = shortname).unwrap();
+    } else {
+        write!(self.f, "            let size = sizeof_{name}(self.tail);\n", name = shortname).unwrap();
+    }
 
+        write!(self.f, r#"
             let mut s = Box::new(vec![0u8; size]);
             std::ptr::copy_nonoverlapping(self._self(), s.as_mut_ptr(), size);
 
@@ -386,6 +398,7 @@ impl rs{name} {{
 }}
 
 "#, name = shortname).unwrap();
+
         write!(self.f, "\n\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
 
         for i in 0..fields.len() {
@@ -436,7 +449,7 @@ impl rs{name} {{
             write!(self.f, "        let size = unsafe{{sizeof_{}}};\n", shortname).unwrap();
         } else {
             write!(self.f, "    pub fn new(tail:  usize) -> Self {{\n").unwrap();
-            write!(self.f, "        let size = unsafe{{sizeof_{}}} + tail;\n", shortname).unwrap();
+            write!(self.f, "        let size = unsafe{{sizeof_{}(tail)}};\n", shortname).unwrap();
         }
 
         write!(self.f, "        unsafe {{\n").unwrap();

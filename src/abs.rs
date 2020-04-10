@@ -916,7 +916,7 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
 
                     match field.typed.tail {
                         ast::Tail::None | ast::Tail::Static(_, _) => {},
-                        ast::Tail::Bind(_,_) | ast::Tail::Dynamic => {
+                        ast::Tail::Bind(_,_) | ast::Tail::Dynamic(_) => {
                             if i != fieldslen - 1 {
                                 emit_error(format!("nested tail must be last field"), &[
                                     (field.loc.clone(), format!("field {} is non static tail, but not the last field", field.name)),
@@ -1023,7 +1023,7 @@ fn abs_args(
         match &arg.typed.tail {
             ast::Tail::None => {
             },
-            ast::Tail::Dynamic => {
+            ast::Tail::Dynamic(_) => {
                 emit_error(format!("missing tail binding "), &[
                            (arg.loc.clone(), "+ without a name makes no sense in this context"),
                 ]);

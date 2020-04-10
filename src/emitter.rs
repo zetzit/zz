@@ -118,7 +118,7 @@ impl Emitter {
             ast::Type::Other(ref n)   => {
                 let mut s = self.to_local_name(&n);
                 match &name.tail {
-                    ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
+                    ast::Tail::Dynamic(_) | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
                     ast::Tail::Static(v,_) => {
                         s = format!("{}_{}", s, v);
                     }
@@ -188,10 +188,10 @@ impl Emitter {
                 ast::Def::Struct{..} => {
                     self.emit_struct_def(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for v in vs {
+                        for (v, loc) in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
-                            self.emit_struct_def(&d, Some(*v));
+                            self.emit_struct_def(&d, Some((v.clone(),loc.clone())));
                         }
                     }
                 }
@@ -282,7 +282,7 @@ impl Emitter {
                         }
 
                         if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                            for v in vs {
+                            for (v,tvloc) in vs {
                                 let mut d = d.clone();
                                 d.name = format!("{}_{}", d.name, v);
                                 if self.header {
@@ -291,7 +291,7 @@ impl Emitter {
 #define ZZ_EXPORT_{tn}_{v}
 "#,                                 tn = self.to_local_name_mangle(&Name::from(&d.name)),  v=v).unwrap();
                                 }
-                                self.emit_struct(&d, isimpl, Some(*v));
+                                self.emit_struct(&d, isimpl, Some((*v, tvloc.clone())));
                                 if self.header {
                                     write!(self.f, "\n#endif\n").unwrap();
                                 }
@@ -546,7 +546,7 @@ impl Emitter {
     }
 
 
-    pub fn emit_struct_def(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
+    pub fn emit_struct_def(&mut self, ast: &ast::Local, tail_variant: Option<(u64, ast::Location)>) {
         let (fields, packed, _tail, union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
@@ -573,8 +573,9 @@ impl Emitter {
 
     }
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, isimpl: bool, tail_variant: Option<u64>) {
-        let (fields, packed, _tail, union) = match &ast.def {
+
+    pub fn emit_struct(&mut self, ast: &ast::Local, isimpl: bool, tail_variant: Option<(u64, ast::Location)>) {
+        let (fields, packed, structtail, union) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
             _ => unreachable!(),
         };
@@ -591,7 +592,7 @@ impl Emitter {
 
 
         write!(self.f, "{{\n").unwrap();
-        let mut emitted_tail = false;
+        let mut emitted_exact_tail = false;
         for i in 0..fields.len() {
             let field = &fields[i];
             self.emit_loc(&field.loc);
@@ -613,8 +614,8 @@ impl Emitter {
                             );
                         std::process::exit(9);
                     }
-                    if let Some(tt) = tail_variant {
-                        emitted_tail = true;
+                    if let Some((tt, _)) = &tail_variant {
+                        emitted_exact_tail = true;
                         write!(self.f, " {}[{}]", field.name, tt).unwrap();
                     } else {
                         //TODO emit as something else (not as pointer!)
@@ -629,9 +630,26 @@ impl Emitter {
 
             write!(self.f, " ;\n").unwrap();
         }
-        if let Some(tt) = tail_variant {
-            if !emitted_tail {
-                write!(self.f, "   uint8_t _____tail [{}];\n", tt).unwrap();
+
+
+        if let Some((tt, loc)) = &tail_variant {
+            if !emitted_exact_tail {
+                match &structtail {
+                    ast::Tail::Dynamic(Some(t)) => {
+                        write!(self.f, "   {} _____tail [{}];\n",
+                               self.to_local_typed_name(&t),
+                               tt
+                              ).unwrap();
+                    }
+                    o => {
+                        parser::emit_error(
+                            "no field available", &[
+                            (ast.loc.clone(), format!("tail field is {:?}", o)),
+                            (loc.clone(), format!("when expanding type here"))
+                            ]);
+                        std::process::exit(9);
+                    }
+                }
             }
         }
         write!(self.f, "}}\n").unwrap();
@@ -642,11 +660,31 @@ impl Emitter {
 
         write!(self.f, ";\n").unwrap();
 
-        if ast.vis == ast::Visibility::Export && isimpl && !self.header {
-            write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
-            self.to_local_name(&Name::from(&ast.name)),
-            self.to_local_name(&Name::from(&ast.name)),
-            ).unwrap();
+        if (ast.vis == ast::Visibility::Export && isimpl) || self.header {
+            if self.header {
+                if structtail == &ast::Tail::None || tail_variant.is_some() {
+                    write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
+                        self.to_local_name(&Name::from(&ast.name)),
+                        self.to_local_name(&Name::from(&ast.name)),
+                    ).unwrap();
+                } else if let ast::Tail::Dynamic(_) = structtail {
+                    write!(self.f, "size_t sizeof_{name}(size_t tail);\n",
+                    name  = self.to_local_name(&Name::from(&ast.name))
+                    ).unwrap();
+                }
+            } else {
+                if structtail == &ast::Tail::None || tail_variant.is_some() {
+                    write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
+                        self.to_local_name(&Name::from(&ast.name)),
+                        self.to_local_name(&Name::from(&ast.name)),
+                    ).unwrap();
+                } else if let ast::Tail::Dynamic(Some(t)) = structtail {
+                    write!(self.f, "size_t sizeof_{name}(size_t tail) {{ return sizeof({name}) + (tail * sizeof({tailt})); }}\n",
+                    name  = self.to_local_name(&Name::from(&ast.name)),
+                    tailt = self.to_local_typed_name(&t),
+                    ).unwrap();
+                }
+            }
         }
     }
 

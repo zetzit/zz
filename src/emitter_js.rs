@@ -224,7 +224,7 @@ impl Emitter {
             ast::Type::Other(ref n)   => {
                 let mut s = self.to_local_name(&n);
                 match &name.tail {
-                    ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
+                    ast::Tail::Dynamic(_) | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
                     ast::Tail::Static(v,_) => {
                         s = format!("{}_{}", s, v);
                     }
@@ -421,7 +421,7 @@ self.module.name.0[1..].join("_")).unwrap();
                 ast::Def::Struct{..} => {
                     self.emit_struct(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for v in vs {
+                        for (v,_) in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
                             self.emit_struct(&d, Some(*v));
@@ -500,8 +500,8 @@ self.module.name.0[1..].join("_")).unwrap();
     }
 
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, _tail_variant: Option<u64>) {
-        let (fields, _packed, _tail, _union, impls) = match &ast.def {
+    pub fn emit_struct(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
+        let (fields, _packed, tail, _union, impls) = match &ast.def {
             ast::Def::Struct{fields, packed, tail, union, impls, ..} => (fields, packed, tail, union, impls),
             _ => unreachable!(),
         };
@@ -583,7 +583,7 @@ s = longname,
 void js_delete_{}(napi_env env, void *obj, void*hint) {{
     free(obj);
 }}
-napi_value js_new_{}(napi_env env, napi_callback_info info) {{
+napi_value js_new_{n}(napi_env env, napi_callback_info info) {{
     napi_status status;
 
     napi_value target;
@@ -608,17 +608,31 @@ napi_value js_new_{}(napi_env env, napi_callback_info info) {{
         status = napi_get_value_uint32(env, args[0], (uint32_t*)&tail);
         assert(status == napi_ok);
     }}
-
-    void *obj = malloc(sizeof(size_t) + sizeof({}) + tail);
-    memset(obj, 0, sizeof(size_t) + sizeof({}) + tail);
+    "#, n = longname, ).unwrap();
 
 
+    if tail == &ast::Tail::None || tail_variant.is_some() {
+
+        write!(self.f, r#"
+    void *obj = malloc(sizeof(size_t) + sizeof_{n});
+    memset(obj, 0, sizeof(size_t) + sizeof_{n});
+"#, n = longname, ).unwrap();
+
+    } else {
+
+        write!(self.f, r#"
+    void *obj = malloc(sizeof(size_t) + sizeof_{n}(tail));
+    memset(obj, 0, sizeof(size_t) + sizeof_{n}(tail));
+"#, n = longname, ).unwrap();
+    }
+
+write!(self.f, r#"
     *((size_t *)obj) = tail;
 
     status = napi_wrap(env,
             jsthis,
             obj,
-            js_delete_{}, // destructor
+            js_delete_{n}, // destructor
             0,  // finalize_hint
             0
     );
@@ -628,11 +642,7 @@ napi_value js_new_{}(napi_env env, napi_callback_info info) {{
 }}
 
 "#,
-    longname,
-    longname,
-    longname,
-    longname,
-    longname
+    n = longname,
 ).unwrap();
 
         write!(self.f, "void js_register_{} (napi_env env, napi_value exports) {{\n", longname).unwrap();

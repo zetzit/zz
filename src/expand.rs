@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use crate::ast;
 use ast::Tags;
 use super::parser::{emit_debug};
-use std::collections::HashSet;
 
 #[derive(Clone)]
 struct Storage {
@@ -24,7 +23,7 @@ struct Scope {
 struct Stack {
     defs:   HashMap<Name, ast::Def>,
     stack:  Vec<Scope>,
-    moretypevariants:   HashMap<Name, HashSet<u64>>,
+    moretypevariants:   HashMap<Name, HashMap<u64, ast::Location>>,
 }
 
 impl Stack {
@@ -90,6 +89,71 @@ impl Stack {
         Ok(())
 
     }
+
+    pub fn struct_final_tail_type(&self,
+        fields:     &Vec<ast::Field>,
+        tail:       &ast::Tail,
+    ) -> Result<Option<Box<ast::Typed>>, Error> {
+
+        // find final tail type
+        if let Some(field) = fields.last() {
+            match &field.typed.tail {
+
+                // String+ string;
+                ast::Tail::Dynamic(fin) => {
+                    if let ast::Tail::Dynamic(_) = tail {} else {
+                        return Err(Error::new(format!("undeclared nested tail"), vec![
+                            (field.loc.clone(), format!("nested tail but parent type not declared as having a tail"))
+                        ]));
+                    }
+                    if let ast::Type::Other(name) = &field.typed.t {
+                        match self.defs.get(name) {
+                            Some(ast::Def::Struct{fields, tail, ..}) => {
+                                return self.struct_final_tail_type(fields, tail);
+                            }
+                            other => {
+                                return Err(Error::new(format!("unavailable type used as tail"), vec![
+                                    (field.loc.clone(), format!("cannot use {} as struct: {:?}", name, other))
+                                ]));
+                            }
+                        }
+                    } else {
+                        return Err(Error::new(format!("flat type used as tail"), vec![
+                            (field.loc.clone(), format!("type {} has no tail", field.typed))
+                        ]));
+                    }
+
+                },
+
+                // no tail because last field is statically sized
+                // String+100 string;
+                ast::Tail::Static(_, _) => {
+                    if tail != &ast::Tail::None {
+                        return Err(Error::new(format!("struct declared as having a tail, but has no tail"), vec![
+                            (field.loc.clone(), format!("this is not a tail"))
+                        ]));
+                    }
+                }
+                ast::Tail::None => {
+                    if let ast::Array::Unsized = field.array {
+                        return Ok(Some(Box::new(field.typed.clone())));
+                    } else {
+                        if tail != &ast::Tail::None {
+                            return Err(Error::new(format!("struct declared as having a tail, but has no tail"), vec![
+                                (field.loc.clone(), format!("this is not a tail"))
+                            ]));
+                        }
+                    }
+                },
+                ast::Tail::Bind(_, _) => {
+                    return Err(Error::new(format!("tail sized binding on struct declaration is invalid"), vec![
+                        (field.loc.clone(), format!("tail must be static number or unsized"))
+                    ]));
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
@@ -99,7 +163,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
 
     // declaration run
-    for (d,complete) in &mut module.d {
+    for (d, complete) in &mut module.d {
         stack.defs.insert(Name::from(&d.name), d.def.clone());
 
         match &mut d.def {
@@ -184,11 +248,6 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     d.loc.clone(), Tags::new(),
                     complete,
                 )?;
-                if *union {
-                    for field in fields {
-                        //stack.cannot_drop_union(&field, &field.loc, 0)?;
-                    }
-                }
             },
             ast::Def::Enum{..} => {
                 stack.alloc(
@@ -252,6 +311,19 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
     for (d, complete) in &mut module.d {
         match &mut d.def {
             ast::Def::Theory{..} => {},
+            ast::Def::Struct {fields, union, tail, ..} => {
+                if *union {
+                    for field in fields.iter() {
+                        //stack.cannot_drop_union(&field, &field.loc, 0)?;
+                    }
+                }
+
+                let dump_fucking_rust = tail.clone();
+                if let ast::Tail::Dynamic(ref mut fin) = tail {
+                    let ff = stack.struct_final_tail_type(fields, &dump_fucking_rust)?;
+                    *fin = ff;
+                }
+            },
             ast::Def::Function{args, body, callassert, callattests, calleffect, ..} => {
 
                 for farg in args.iter_mut() {
@@ -368,7 +440,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
     for (t, vrs) in stack.moretypevariants {
         for variant in vrs {
-            module.typevariants.entry(t.clone()).or_insert(HashSet::new()).insert(variant);
+            module.typevariants.entry(t.clone()).or_insert(HashMap::new()).insert(variant.0, variant.1);
         }
     }
 
@@ -480,8 +552,9 @@ impl Stack {
                                         typed.ptr = Vec::new();
 
                                         if let ast::Type::Other(tn) = &typed.t {
-                                            if let ast::Tail::Static(f, _) = &tail {
-                                                self.moretypevariants.entry(tn.clone()).or_insert(HashSet::new()).insert(*f);
+                                            if let ast::Tail::Static(f, tvloc) = &tail {
+                                                self.moretypevariants.entry(tn.clone()).or_insert(HashMap::new())
+                                                    .insert(*f, tvloc.clone());
                                             }
                                         }
                                         typed.tail = tail;
