@@ -1,4 +1,4 @@
-using <stdio.h>::{printf, fread, stdin};
+using <stdio.h>::{printf, fread, stdin, stderr};
 using <stdlib.h>::{atoi};
 using <string.h>::{strcmp, memset};
 using err;
@@ -112,7 +112,7 @@ export fn main() -> int {
 
     new+100 parser = toml::parser(&e, (toml::deserialize_t)pretty, (void mut*)depth);
     if err::check(&e) {
-        err::eprint(&e);
+        err::eprintf(&e, stderr);
         return 2;
     }
     static_attest(err::checked(e));
@@ -128,7 +128,7 @@ export fn main() -> int {
         static_attest(bin < len(buf));
         toml::push(&parser, &e, buf, bin);
         if err::check(&e) {
-            err::eprint(&e);
+            err::eprintf(&e,stderr);
             return 2;
         }
     }

@@ -1,9 +1,12 @@
 using err;
 
+
+symbol BadThings;
+
 fn bad(err::Err+et mut *e)
     where err::checked(*e)
 {
-    err::fail(e, 1, "no you cannot %s", "do this");
+    err::fail(e, BadThings , "no you cannot %s", "do this");
 }
 
 fn maybe(err::Err+et mut *e)

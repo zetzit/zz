@@ -439,6 +439,7 @@ self.module.name.0[1..].join("_")).unwrap();
                 ast::Def::Fntype{..} => {
                     self.emit_fntype(&d);
                 }
+                ast::Def::Symbol{..} => {}
                 ast::Def::Theory{..} => {}
                 ast::Def::Testcase {..} => {}
                 ast::Def::Include{..} => {}

@@ -247,6 +247,36 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
                 }
             },
             Rule::EOI => {},
+            Rule::symbol => {
+                let decl = decl.into_inner();
+                let mut vis    = Visibility::Object;
+                let mut name   = None;
+                let mut loc    = None;
+                for part in PP::new(n, features.clone(), stage.clone(), decl) {
+                    match part.as_rule() {
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
+                        }
+                        Rule::exported => {
+                            vis = Visibility::Export;
+                        }
+                        Rule::ident if name.is_none() => {
+                            loc = Some(Location::from_span(n.into(), &part.as_span()));
+                            name = Some(part.as_str().into());
+                        }
+                        e => panic!("unexpected rule {:?} in enum", e),
+                    }
+                };
+
+                module.locals.push(Local{
+                    doc: std::mem::replace(&mut doccomments, String::new()),
+                    name: name.unwrap(),
+                    vis,
+                    loc: loc.unwrap(),
+                    def: Def::Symbol {}
+                });
+
+            },
             Rule::ienum => {
                 let decl = decl.into_inner();
 

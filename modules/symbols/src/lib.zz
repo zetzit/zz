@@ -1,0 +1,22 @@
+using <stdio.h>::{printf};
+inline using "lib.h"::{
+    __zz_symbol_names_len,
+    __zz_symbol_names,
+};
+
+export fn nameof(usize s) -> char*
+    where symbol(s)
+{
+    static_attest(s < len(__zz_symbol_names));
+    return __zz_symbol_names[s];
+}
+
+export fn nameof_checked(usize s) -> char*
+{
+    static_attest((usize)__zz_symbol_names_len == len(__zz_symbol_names));
+    if s <= 0 || s >= (usize)__zz_symbol_names_len {
+        return 0;
+    }
+    static_attest(symbol(s));
+    return nameof(s);
+}

@@ -1,4 +1,4 @@
-using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, vfprintf, stderr};
+using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, vfprintf, stderr, FILE};
 using <string.h>::{memset, strncat, strlen};
 using <errno.h>::{errno, strerror};
 using <stdlib.h>::{abort as cabort};
@@ -6,21 +6,26 @@ using <stdarg.h>::{va_list, va_start, va_end};
 using string::{String};
 using string;
 using log;
+using symbols;
 
 pub theory checked(Err * self) -> bool;
 
-export struct Err+ {
-    u8      mut error;
-    char    mut description[255];
-    String+ mut locations;
-};
+export symbol SystemError;
+export symbol OutOfTail;
+export symbol InvalidArgument;
+export symbol NotImplemented;
 
+export struct Err+ {
+    usize   mut error;
+    int     mut system;
+    String+ mut trace;
+};
 
 export fn make(Err+tail mut *self)
     model checked(*self)
 {
     memset(self, 0, sizeof(Err));
-    string::clear(&(self->locations));
+    string::clear(&(self->trace));
     static_attest(checked(*self));
 }
 
@@ -30,7 +35,7 @@ export  fn check(
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
 ) -> bool
-    model return == true || checked(*self)
+model return == true || checked(*self)
 {
     if (self->error != 0) {
         backtrace(self, file, scope, line);
@@ -43,10 +48,8 @@ export  fn check(
 
 export fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line)
 {
-    if tail > 0 {
-        static_attest((self->locations).len < tail);
-        string::format(&(self->locations), "\n  %s:%zu \t%s", file, line, scope);
-    }
+    static_attest((self->trace).len < tail);
+    self->trace.format("  - %s:%zu \t%s\n", file, line, scope);
 }
 
 export fn fail_with_errno(
@@ -57,44 +60,58 @@ export fn fail_with_errno(
         char*  fmt,
         ...
 )
-    where checked(*self)
     model checked(*self)
 {
-    self->error = (u8)errno;
+    self->error  = SystemError;
+    self->system = (int)errno;
+
+    if tail > 2 && self->trace.len > 0 {
+        self->trace.push('\n');
+    }
+    self->trace.format("%s : ", strerror(errno));
 
     va_list mut vargs;
     va_start(vargs, fmt);
-    vsnprintf(self->description, sizeof(self->description), fmt, vargs);
+    static_attest((self->trace).len < tail);
+    self->trace.vformat(fmt, vargs);
     va_end(vargs);
 
-    strncat(self->description, " : ", as<usize>(sizeof(self->description)) - as<usize>(strlen(self->description)));
-    strncat(self->description, strerror(errno), as<usize>(sizeof(self->description)) - as<usize>(strlen(self->description)));
-
-    string::clear(&(self->locations));
+    self->trace.format("\n");
     backtrace(self, file, scope, line);
     static_attest(checked(*self));
 }
 
 export fn fail(
         Err+tail mut* self,
-        u8  e,
+        usize e,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
         char*  fmt,
         ...
 )
-    where checked(*self)
+    where symbol(e)
     model checked(*self)
 {
+    static_attest((self->trace).len < tail);
+
     self->error = e;
+
+    if tail > 2 && self->trace.len > 0 {
+        self->trace.push('\n');
+    }
+    if symbols::nameof_checked(self->error) == 0 {
+        self->trace.format("%zu : ", self->error);
+    } else {
+        self->trace.format("%s : ", symbols::nameof(self->error));
+    }
 
     va_list mut vargs;
     va_start(vargs, fmt);
-    vsnprintf(self->description, sizeof(self->description), fmt, vargs);
+    self->trace.vformat(fmt, vargs);
     va_end(vargs);
 
-    string::clear(&(self->locations));
+    self->trace.format("\n");
     backtrace(self, file, scope, line);
     static_attest(checked(*self));
 }
@@ -110,7 +127,7 @@ model checked(*self)
     if (self->error != 0) {
         static_attest(checked(*self));
         backtrace(self, file, scope, line);
-        fprintf(stderr, "fatal error %u: %s%s\n", self->error, self->description, (self->locations).mem);
+        self->eprintf((FILE mut *)stderr);
         for(;;){
             cabort();
         }
@@ -118,19 +135,23 @@ model checked(*self)
     static_attest(checked(*self));
 }
 
-export fn eprint(Err+tail mut* self)
+export fn elog(Err+tail mut* self)
 {
-    log::error("%u: %s%s\n", self->error, self->description, (self->locations).mem);
+    log::error("%s\n", self->error, self->trace, (self->trace).mem);
 }
 
+export fn eprintf(Err+tail mut* self, FILE mut * unsafe out)
+{
+    fprintf(out, "%s\n", self->trace.cstr());
+}
 
-export fn to_str(
+export fn cstr(
     Err * self,
     char mut *dest,
     usize dest_len,
 )
 {
-    snprintf(dest, dest_len, "%s%s\n", self->description, (self->locations).mem);
+    snprintf(dest, dest_len, "%s\n", self->trace.cstr());
 }
 
 export fn panic(

@@ -107,6 +107,8 @@ self.module.name.0[1..].join("::")).unwrap();
                         }
                     }
                 }
+                ast::Def::Symbol{..} => {
+                }
                 ast::Def::Enum{..} => {
                     self.emit_enum(&d)
                 }

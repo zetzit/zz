@@ -226,6 +226,41 @@ impl Symbolic {
 
 
 
+        // built in symbol theory
+        let sym = self.alloc(Name::from("symbol"), ast::Typed{
+            t:      ast::Type::Other(Name::from("theory")),
+            ptr:    Vec::new(),
+            loc:    ast::Location::builtin(),
+            tail:   ast::Tail::None,
+        },
+        ast::Location::builtin(), Tags::new()
+        )?;
+        self.memory[sym].value = Value::Theory{args: vec![ast::NamedArg{
+            typed: ast::Typed{
+                t:      ast::Type::Other("::ext::<stddef.h>::char".into()),
+                ptr:    vec![ast::Pointer{
+                    tags: ast::Tags::new(),
+                    loc:  ast::Location::builtin(),
+                }],
+                loc:    ast::Location::builtin(),
+                tail:   ast::Tail::None,
+            },
+            name:   "cstr".to_string(),
+            tags:   ast::Tags::new(),
+            loc:    ast::Location::builtin(),
+        }], ret: ast::Typed{
+            t:      ast::Type::Bool,
+            ptr:    Vec::new(),
+            loc:    ast::Location::builtin(),
+            tail:   ast::Tail::None,
+        }};
+        self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "symbol", smt::Type::Bool);
+        self.builtin.insert("symbol".to_string(), sym);
+
+
+
+
+
         for (name,loc) in &module.c_names {
             let sym = self.alloc(
                 name.clone(),
@@ -404,6 +439,35 @@ impl Symbolic {
                         Ok(v) => v,
                     };
                 },
+                ast::Def::Symbol{} => {
+                    let sym = self.alloc(
+                        Name::from(&d.name),
+                        ast::Typed{
+                            t:      ast::Type::ULiteral,
+                            ptr:    Vec::new(),
+                            loc:    d.loc.clone(),
+                            tail:   ast::Tail::None,
+                        },
+                        d.loc.clone(), Tags::new()
+                    )?;
+                    self.memory[sym].value = Value::Unconstrained("symbolic".to_string());
+
+                    let tmp = self.temporary(
+                        format!("true"),
+                        ast::Typed{
+                            t:      ast::Type::Bool,
+                            ptr:    Vec::new(),
+                            loc:    d.loc.clone(),
+                            tail:   ast::Tail::None,
+                        },
+                        d.loc.clone(),
+                        Tags::new(),
+                    )?;
+                    let thsym = self.builtin.get("symbol").expect("ICE: symbol theory not built in");
+                    self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp,0));
+                    self.ssa.literal(tmp, 1, smt::Type::Bool);
+
+                }
                 ast::Def::Enum{names} => {
                     self.alloc(
                         Name::from(&d.name),

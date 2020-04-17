@@ -107,6 +107,8 @@ enum_i      = { ident ~ ( "=" ~ int_literal)? }
 enum_list   = _{ (pp | enum_i ) ~ "," ~ enum_list | pp | enum_i  }
 ienum       = { (exported | key_shared)? ~ "enum" ~ ident ~ "{" ~ enum_list? ~ ","?  ~ "}"  }
 
+symbol        = { ( exported | key_shared)? ~ "symbol" ~ ident  ~ ";" }
+
 cimport     = ${ ("<" ~ (!">" ~ ANY)* ~ ">") | ("\"" ~ (!"\"" ~ ANY)* ~ "\"")  }
 importalias = { "as" ~ ident }
 importname  = ${ ( ident | cimport ) ~ ( "::" ~ (local | importname))? }
@@ -317,6 +319,7 @@ file        = { SOI ~ (struct_d
                         | fntype
                         | theory
                         | ienum
+                        | symbol
                         | import
                         | constant
                         | pp

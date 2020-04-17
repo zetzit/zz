@@ -431,7 +431,6 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     let mut ns = module_name.clone();
                     ns.push(ast_name.clone());
 
-
                     expecting_sub_type = false;
                     //flat.aliases.insert(name.clone(), format!("enum {}", name.0[1..].join("_")));
                     for (subname, _) in names {
@@ -445,6 +444,9 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                             in_scope_here:  loc.clone(),
                         });
                     }
+                    forceinline.insert(name.clone());
+                }
+                ast::Def::Symbol{} => {
                     forceinline.insert(name.clone());
                 }
                 ast::Def::Static{typed,expr,..} => {

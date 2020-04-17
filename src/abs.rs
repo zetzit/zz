@@ -793,6 +793,9 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
         let mut ns = md.name.clone();
         ns.0.push(ast.name.clone());
         match &mut ast.def {
+            ast::Def::Symbol{} => {
+                scope.insert(ast.name.clone(), ns, &ast.loc, false, true);
+            }
             ast::Def::Enum{names,..} => {
                 let mut value = 0;
                 for (_, val) in names.iter_mut() {
@@ -926,6 +929,8 @@ pub fn abs(md: &mut ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                         }
                     }
                 }
+            }
+            ast::Def::Symbol{..} => {
             }
             ast::Def::Enum{..} => {
             }

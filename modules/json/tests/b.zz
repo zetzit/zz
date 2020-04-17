@@ -22,6 +22,8 @@ struct Vehicle {
     Engine engine;
 }
 
+symbol InvalidValue;
+
 fn deserialize_charge(err::Err+et mut *e, json::Parser+pt mut* p, int mut *into, char *k, json::Value v)
     where err::checked(*e)
 {
@@ -40,7 +42,7 @@ fn deserialize_engine(err::Err+et mut *e, json::Parser+pt mut* p, Engine mut *in
         } else if string::cstr_eq("electric", v.string)  {
             into->fuel = Fuel::Electric;
         } else {
-            err::fail(e, 10, "invalid fuel value %s", v);
+            err::fail(e, InvalidValue , "invalid fuel value %s", v);
         }
     } else if string::cstr_eq("charge", k) && v.t == json::ValueType::Array {
         json::next(p, e, (json::deserialize_t)deserialize_charge, &(into->charge));

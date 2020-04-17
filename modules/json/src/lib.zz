@@ -11,6 +11,8 @@ const usize MAX_DEPTH = 64;
 fntype deserialize_t(err::Err+et mut *e, Parser+pt mut* p, void mut *user, char *k, Value v);
 fntype deserialize_i(err::Err+et mut *e, void mut* p, void mut *user, char *k, Value v);
 
+export symbol ParseError;
+
 pub enum ValueType {
     String,
     Object,
@@ -77,7 +79,7 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
 
 {
     if self->depth >= MAX_DEPTH {
-        err::fail(e, 12, "json structure too deep");
+        err::fail(e, err::OutOfTail, "json structure too deep");
         return;
     }
 
@@ -85,7 +87,7 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
     ParserStack mut * mut stack = &((self->state)[self->depth]);
 
     if stack->state != ParserState::Object && (stack->state != ParserState::PreVal || !stack->in_array) {
-        err::fail(e, 12, "invalid parser state for next(), can only call when value is object or array");
+        err::fail(e, ParseError, "invalid parser state for next(), can only call when value is object or array");
     }
 
     ((self->state)[self->depth]).de     = (deserialize_i)de;
@@ -127,14 +129,14 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         '"' => { ch = '"'   }
                         '/' => { ch = '/'   }
                         default => {
-                            err::fail(e, 9, "invalid escape character '%c' at: %u:%u", ch, self->line, self->col);
+                            err::fail(e, ParseError, "invalid escape character '%c' at: %u:%u", ch, self->line, self->col);
                             return;
                         }
                     }
                 }
                 self->esc = false;
                 if !(self->capture).push(ch) {
-                    err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
+                    err::fail(e, err::OutOfTail, "buffer overflow at %u:%u", self->line, self->col);
                     return;
                 }
             }
@@ -186,11 +188,11 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
 
                     if state == ParserState::IntVal {
                         if !string::push(&(self->capture), ch) {
-                            err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
+                            err::fail(e, err::OutOfTail, "buffer overflow at %u:%u", self->line, self->col);
                             return;
                         }
                     } else {
-                        err::fail(e, 10, "unexpected '%c' at %u:%u while %u", ch, self->line, self->col, state);
+                        err::fail(e, ParseError, "unexpected '%c' at %u:%u while %u", ch, self->line, self->col, state);
                         return;
                     }
                 }
@@ -212,7 +214,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
             if token == '{' {
                  stack->state = ParserState::Object;
             } else {
-                err::fail(e, 1, "unexpected '%c', expected { at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected { at %u:%u", token, self->line, self->col);
                 return;
             }
         }
@@ -227,7 +229,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     stack->state = ParserState::Document;
                 }
             } else {
-                err::fail(e, 2, "unexpected '%c', expected '\"' or } at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected '\"' or } at %u:%u", token, self->line, self->col);
                 return;
             }
         }
@@ -235,7 +237,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
             if token == '"' {
                 stack->state = ParserState::PostKey;
             } else {
-                err::fail(e, 3, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
                 return;
             }
         }
@@ -245,7 +247,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                 string::push(&(self->capture), 0);
                 self->keylen = (self->capture).len;
             } else {
-                err::fail(e, 4, "unexpected '%c', expected ':' at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected ':' at %u:%u", token, self->line, self->col);
                 return;
             }
         }
@@ -263,7 +265,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
             } else if token == '{' {
                 stack->state = ParserState::PostVal;
                 if self->depth >= MAX_DEPTH - 1 {
-                    err::fail(e, 12, "json structure too deep");
+                    err::fail(e, err::OutOfTail, "json structure too deep");
                     return;
                 } else {
                     (self->depth)+=1;
@@ -289,7 +291,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                 stack->state = ParserState::PostVal;
                 (self->depth)+=1;
                 if self->depth >= MAX_DEPTH {
-                    err::fail(e, 12, "json structure too deep");
+                    err::fail(e, err::OutOfTail, "json structure too deep");
                     return;
                 } else {
                     ParserStack mut * previous_stack = stack;
@@ -318,7 +320,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     stack->state = ParserState::Document;
                 }
             } else {
-                err::fail(e, 6, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
                 return;
             }
         }
@@ -341,7 +343,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     stack->index += 1;
                 }
             } else {
-                err::fail(e, 7, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
                 return;
             }
         }
@@ -361,7 +363,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     stack->state = ParserState::Document;
                 }
             } else {
-                err::fail(e, 7, "unexpected '%c', expected [0-9] or ',' or ' ' at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected [0-9] or ',' or ' ' at %u:%u", token, self->line, self->col);
                 return;
             }
 
@@ -394,7 +396,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     stack->state = ParserState::Document;
                 }
             } else {
-                err::fail(e, 6, "unexpected '%c', expected ',' or '}' at %u:%u", token, self->line, self->col);
+                err::fail(e, ParseError, "unexpected '%c', expected ',' or '}' at %u:%u", token, self->line, self->col);
                 return;
             }
         }

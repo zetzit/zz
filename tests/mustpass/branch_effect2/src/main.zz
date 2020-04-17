@@ -3,10 +3,13 @@ using err;
 
 
 
+symbol Bad;
+
+
 fn boh (err::Err+et mut*e)
     where err::checked(*e)
 {
-    err::fail(e, 12, "buh");
+    err::fail(e, Bad, "buh");
 }
 
 export fn main() -> int {
