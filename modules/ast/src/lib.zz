@@ -6,6 +6,8 @@ using pool;
 using <stdio.h>::{stdin, stderr, fprintf, printf};
 using <string.h>::{strdup, memcpy};
 
+export symbol ParseError;
+
 
 //  {"args":[{"Literal":{"loc":{"file":"/Users/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"3"}}]}
 
@@ -54,11 +56,11 @@ fn parse_arg(err::Err+et mut *e, json::Parser+pt mut* p, ExpressionS mut * arg, 
                     return;
                 }
             } else {
-                err::fail(e, 2, "got %s expected Literal | LiteralString", k);
+                err::fail(e, ParseError, "got %s expected Literal | LiteralString", k);
             }
         }
         default => {
-            err::fail(e, 2, "got %s expected Literal | LiteralString ", k);
+            err::fail(e, ParseError, "got %s expected Literal | LiteralString ", k);
         }
     }
 }
@@ -78,10 +80,11 @@ fn parse_arglist(err::Err+et mut *e, json::Parser+pt mut* p, Ast mut * ast, char
             }
         }
         default => {
-            err::fail(e, 2, "got %s expected arg object", k);
+            err::fail(e, ParseError, "got %s expected arg object", k);
         }
     }
 }
+
 fn parse_doc(err::Err+et mut *e, json::Parser+pt mut* p, Ast mut * ast, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
@@ -94,11 +97,11 @@ fn parse_doc(err::Err+et mut *e, json::Parser+pt mut* p, Ast mut * ast, char *k,
                     return;
                 }
             } else {
-                err::fail(e, 2, "got %s expected args ", k);
+                err::fail(e, ParseError, "got %s expected args ", k);
             }
         }
         default => {
-            err::fail(e, 2, "got %s expected args ", k);
+            err::fail(e, ParseError, "got %s expected args ", k);
         }
     }
 }

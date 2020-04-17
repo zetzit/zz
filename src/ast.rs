@@ -146,6 +146,8 @@ pub enum Def {
         union:      bool,
         impls:      HashMap<String, (Name, Location)>,
     },
+    Symbol {
+    },
     Enum {
         names:      Vec<(String, Option<u64>)>,
     },

@@ -183,10 +183,19 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
     where tail > 0
     model self->len < tail
 {
-    static_attest(self->len < tail);
-
     va_list mut args;
     va_start (args, fmt);
+    int r = vformat(self, fmt, args);
+    va_end (args);
+
+    return r;
+}
+
+export fn vformat(String+tail mut * self, char *fmt, va_list mut args) -> int
+    where tail > 0
+    model self->len < tail
+{
+    static_attest(self->len < tail);
 
     usize isfree = tail - self->len;
 
@@ -196,7 +205,6 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
         fmt,
         args
     ));
-    va_end (args);
 
     if r > 0 {
         if (usize)r >= isfree {
@@ -211,6 +219,7 @@ export fn format(String+tail mut * self, char *fmt, ...) -> int
 
     return r;
 }
+
 
 /! test if this string is equal with a c string
 export fn eq_cstr(String+tail* self, char * unsafe b) -> bool

@@ -16,6 +16,7 @@ pub struct CFile {
     pub filepath:   String,
     pub sources:    HashSet<PathBuf>,
     pub deps:       HashSet<Name>,
+    pub symbols:    HashSet<Name>
 }
 
 pub struct Emitter{
@@ -28,6 +29,7 @@ pub struct Emitter{
     cur_loc:        Option<ast::Location>,
     casedir:        String,
     emit_as_extern: HashSet<Name>,
+    symbols:        HashSet<Name>
 }
 
 pub fn outname(project: &Project, stage: &make::Stage, module: &Name , header: bool) -> (bool, String) {
@@ -74,6 +76,7 @@ impl Emitter {
             inside_macro: false,
             cur_loc: None,
             emit_as_extern: HashSet::new(),
+            symbols: HashSet::new(),
         }
     }
 
@@ -225,6 +228,26 @@ impl Emitter {
                     }
                     self.emit_static(&d)
                 }
+                ast::Def::Symbol{..} => {
+                    if complete != &flatten::TypeComplete::Complete {
+                        continue
+                    }
+                    if self.header {
+                        write!(self.f, r#"
+#ifndef ZZ_EXPORT_{tn}
+#define ZZ_EXPORT_{tn}
+"#,
+                            tn = self.to_local_name_mangle(&Name::from(&d.name))).unwrap();
+
+                        self.emit_symbol(&d);
+                        write!(self.f, "\n#endif\n").unwrap();
+                    } else {
+                        self.emit_symbol(&d);
+                    }
+
+
+                    self.symbols.insert(Name::from(&d.name));
+                }
                 ast::Def::Enum{..} => {
                     if complete != &flatten::TypeComplete::Complete {
                         continue
@@ -331,6 +354,7 @@ impl Emitter {
             filepath:   self.p,
             sources:    module.sources,
             deps:       module.deps,
+            symbols:    self.symbols,
         }
     }
 
@@ -460,6 +484,14 @@ impl Emitter {
         write!(self.f, ")").unwrap();
         self.emit_expr(&expr);
         write!(self.f, ")\n").unwrap();
+    }
+
+    pub fn emit_symbol(&mut self, ast: &ast::Local) {
+        self.emit_loc(&ast.loc);
+
+        write!(self.f, "extern const __attribute__ ((unused)) size_t {};\n",
+            self.to_local_name(&Name::from(&ast.name))
+        ).unwrap();
     }
 
     pub fn emit_enum(&mut self, ast: &ast::Local) {
@@ -1389,3 +1421,41 @@ impl CFile {
     }
 }
 
+pub fn builtin(project: &Project, stage: &make::Stage, artifact: &super::project::Artifact, symbols: HashSet<Name>) ->  CFile
+{
+    let p = format!("target/{}/zz/__zz_builtins_{}_{}.c", stage, project.name, artifact.name);
+    let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
+
+    write!(f, "#ifndef ZZ_EXPORT_HEADER___zz__builtins\n#define ZZ_EXPORT_HEADER___zz__builtins\n").unwrap();
+    write!(f, "#include <stddef.h>\n").unwrap();
+
+    let mut i = 1;
+    for symbol in &symbols {
+        write!(f, "const __attribute__ ((unused)) size_t {} = {};\n",
+               symbol.0[1..].join("_"),
+               i
+        ).unwrap();
+        i += 1;
+    }
+
+    write!(f, "size_t __attribute__ ((unused)) __zz_symbol_names_len = {};\n", i).unwrap();
+    write!(f, "const char * __attribute__ ((unused)) __zz_symbol_names[] = {{0,\n").unwrap();
+    for symbol in &symbols {
+        write!(f, "    \"{}\",\n", symbol.0[1..].join("::")).unwrap();
+    }
+    write!(f, "}};\n").unwrap();
+
+
+
+
+
+    write!(f, "#endif\n").unwrap();
+
+    CFile {
+        name:       Name::from("__zz_builtins"),
+        filepath:   p,
+        sources:    HashSet::new(),
+        deps:       HashSet::new(),
+        symbols:    HashSet::new(),
+    }
+}

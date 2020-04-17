@@ -11,7 +11,7 @@ unlet b:current_syntax
 
 
 syn keyword zzType              u8 i8 u16 i16 u32 i32 u64 i64 isize usize int uint f32 f64 bool let
-syn keyword zzStructure	        enum struct fn const trait test theory assert fntype
+syn keyword zzStructure	        enum struct fn const trait test theory assert fntype symbol
 syn keyword zzImport            using
 syn keyword zzVisibility        export pub
 syn keyword zzKeywords          mut as new

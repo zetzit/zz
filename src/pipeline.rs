@@ -174,6 +174,7 @@ impl Pipeline {
                         filepath:   c.to_string_lossy().into(),
                         sources:    HashSet::new(),
                         deps:       HashSet::new(),
+                        symbols:    HashSet::new(),
                     }))
                 }
                 loader::Module::ZZ(ast) => {
@@ -208,8 +209,9 @@ impl Pipeline {
         }
         let mut need = vec![main];
         let mut used : HashSet<Name> = HashSet::new();
+        let mut symbols : HashSet<Name> = HashSet::new();
 
-        let mut make = make::Make::new(self.project.clone(), &self.variant, self.stage.clone(), artifact);
+        let mut make = make::Make::new(self.project.clone(), &self.variant, self.stage.clone(), artifact.clone());
 
         while need.len() > 0 {
             for n in std::mem::replace(&mut need, Vec::new()) {
@@ -220,6 +222,7 @@ impl Pipeline {
                 for d in &n.deps {
                     need.push(d.clone());
                 }
+                symbols.extend(n.symbols.clone());
                 make.build(n);
             }
         }
@@ -233,6 +236,8 @@ impl Pipeline {
                 }
             }
         }
+
+        make.build(&emitter::builtin(&self.project.project, &self.stage, &artifact, symbols));
 
 
         if buildset != &super::BuildSet::Check {

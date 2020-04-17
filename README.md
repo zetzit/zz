@@ -404,6 +404,30 @@ the tail is measured in number of elements of whatever is the last unsized eleme
 String can dynamically expand within the tail memory. in this case, we append some stuff to the string, without ever allocating any heap.
 simply returning from the current function will clear up any memory used, without the need for destructor ordering or signal safety.
 
+#### symbols
+
+Symbols are a big global enum that lets you create unique values from anywhere in your code.
+
+```C++
+    using symbols;
+
+    symbol Car;
+    symbol Bike;
+
+    fn drive_this(usize sym)
+        where symbol(sym)
+    {
+        if sym == Car {
+            printf("bzzzz\n");
+        } else {
+            printf("what do i do with a %s?\n", symbols::nameof(sym));
+        }
+    }
+```
+
+note that you cannot make assumptions about the integer value of a symbol,
+as it depends on compilation and loading order
+
 #### new constructors
 
 ZZ autogenerates bindings to more languages than C, and some languages are not fully compatible with C abi.

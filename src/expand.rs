@@ -249,6 +249,19 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     complete,
                 )?;
             },
+            ast::Def::Symbol{..} => {
+                stack.alloc(
+                    Name::from(&d.name),
+                    ast::Typed{
+                        t:      ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr:    Vec::new(),
+                        loc:    d.loc.clone(),
+                        tail:   ast::Tail::None,
+                    },
+                    d.loc.clone(), Tags::new(),
+                    complete,
+                )?;
+            }
             ast::Def::Enum{..} => {
                 stack.alloc(
                     Name::from(&d.name),

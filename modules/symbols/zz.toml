@@ -1,0 +1,15 @@
+[project]
+version = "0.1.0"
+name = "symbols"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
+
+[repos]
