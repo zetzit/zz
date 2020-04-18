@@ -1,0 +1,37 @@
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+
+
+
+
+struct A+ {
+    u8 blah;
+    u8 mem[];
+}
+
+
+
+export fn gimmetail(A+t*a) -> usize
+{
+    return t;
+}
+
+
+export fn use_as_A(u8*mem, usize l) -> usize
+    where len(mem) >= l
+{
+    A+l * a = (A*)mem;
+
+
+    return a->gimmetail();
+}
+
+export fn main() -> int {
+
+    u8 mem[100];
+    usize tail = use_as_A(mem, static(len(mem)));
+
+    assert(tail == static(len(mem)));
+
+    return 0;
+}

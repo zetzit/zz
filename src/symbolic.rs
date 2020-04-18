@@ -2931,7 +2931,8 @@ impl Symbolic {
 
     fn tail_into_ssa(&mut self, sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
         self.ssa.debug_loc(loc);
-        let tailval = match self.memory[sym].typed.tail.clone() {
+
+        let tailsym = match self.memory[sym].typed.tail.clone() {
             ast::Tail::None     => return Ok(()),
             ast::Tail::Dynamic(_)  => {
                 return Err(self.trace(format!("tail size must be known for stack variables"), vec![
@@ -2939,29 +2940,17 @@ impl Symbolic {
                 ]));
             },
             ast::Tail::Static(val,_)   => {
-                val
+                self.literal(loc, Value::Integer(val), ast::Typed {
+                    t:      ast::Type::ULiteral,
+                    loc:    loc.clone(),
+                    ptr:    Vec::new(),
+                    tail:   ast::Tail::None,
+                })?
             },
             ast::Tail::Bind(name, loc)   => {
                 self.ssa.debug_loc(&loc);
                 self.ssa.debug("tail_into_ssa");
-                let sym = self.name(&Name::from(&name), &loc)?;
-                let val = self.ssa.value((sym, self.memory[sym].temporal), |a,model|match a{
-                    smt::Assertion::Unsolveable => {
-                        Err(self.trace(format!("tail size is not solveable"), vec![
-                            (loc.clone(), format!("there may be conflicting constraints"))
-                        ]))
-                    }
-                    smt::Assertion::Unconstrained(_) => {
-                        let mut estack = vec![(loc.clone(),
-                        format!("you may need an if condition or callsite_assert to increase confidence"))];
-                        estack.extend(self.demonstrate(model.as_ref().unwrap(), (sym, self.memory[sym].temporal), 0));
-                        Err(self.trace(format!("tail size is unconstrained"), estack))
-                    }
-                    smt::Assertion::Constrained(val) => {
-                        Ok(val)
-                    }
-                })?;
-                val
+                self.name(&Name::from(&name), &loc)?
             }
         };
 
@@ -2991,9 +2980,9 @@ impl Symbolic {
         };
 
         let member_sym = self.member_access(sym, &field_name, loc)?;
-        self.len_into_ssa(member_sym, loc, tailval as usize)?;
 
-
+        let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
+        self.ssa.invocation(*lensym, vec![(member_sym, self.memory[member_sym].temporal)], (tailsym, self.memory[tailsym].temporal));
         Ok(())
     }
 
