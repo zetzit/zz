@@ -1,13 +1,15 @@
 [project]
 version = "0.1.0"
-name = "std"
+name = "struct_init_inline"
 cincludes = []
 cobjects = []
 pkgconfig = []
 cflags = []
 lflags = []
 
-[dependencies]
-
 [variants]
 default = []
+
+[dependencies]
+
+[repos]

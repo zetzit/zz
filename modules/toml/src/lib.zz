@@ -7,7 +7,6 @@ using string;
 
 const usize MAX_DEPTH = 64;
 
-fntype deserialize_t(err::Err+et mut *e, Parser+pt mut* p, void mut *user, char *k, Value v);
 
 export symbol ParseError;
 
@@ -37,10 +36,20 @@ enum ParserState {
     PostVal,
 }
 
+export fntype Iter      (U *u, err::Err+et mut *e, Parser+pt mut* p, char *k, Value v);
+export fntype Pop       (U *u, err::Err+et mut *e, Parser+pt mut* p);
+
+export struct U {
+    Iter    it;
+    Pop     pop;
+
+    void mut*   user1;
+    usize       user2;
+}
+
 struct ParserStack {
     ParserState     state;
-    deserialize_t   de;
-    void mut*       user;
+    U               user;
     bool            in_array;
     usize           index;
 }
@@ -58,10 +67,10 @@ export struct Parser+ {
     String+         mut capture;
 }
 
-export fn parser(Parser+tail mut new *self, err::Err+et mut *e, deserialize_t de, void mut * unsafe user)
+export fn parser(Parser+tail mut new *self, err::Err+et mut *e, U u)
     where err::checked(*e)
     where tail > 1
-    where safe(de)
+    where safe(u.it)
 
 {
     memset(self, 0, sizeof(Parser));
@@ -69,13 +78,12 @@ export fn parser(Parser+tail mut new *self, err::Err+et mut *e, deserialize_t de
 
     self->line  = 1;
 
-    ((self->state)[0]).de     = (deserialize_t)de;
-    ((self->state)[0]).user   = user;
+    ((self->state)[0]).user   = u;
 }
 
-export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void mut * unsafe user)
+export fn next(Parser+tail mut*self, err::Err+et mut *e, U u)
     where err::checked(*e)
-    where safe(de)
+    where safe(u.it)
 
 {
     if self->depth >= MAX_DEPTH {
@@ -90,8 +98,26 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
         err::fail(e, err::InvalidArgument, "invalid parser state for next(), can only call when value is object or array");
     }
 
-    ((self->state)[self->depth]).de     = (deserialize_t)de;
-    ((self->state)[self->depth]).user   = user;
+    ((self->state)[self->depth]).user   = u;
+}
+
+export fn close(Parser+tail mut *self, err::Err+et mut *e)
+{
+    for (;;) {
+        static_attest(self->depth < len(self->state));
+        ParserStack mut * mut stack = &((self->state)[self->depth]);
+        if stack->user.pop != 0 {
+            static_attest(safe(stack->user.pop));
+            stack->user.pop(&stack->user, e, self);
+            if err::check(e) {
+                return;
+            }
+        }
+        if self->depth == 0 {
+            break;
+        }
+        self->depth -= 1;
+    }
 }
 
 export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strlen)
@@ -133,6 +159,15 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
             ParserState::Document, ParserState::Object => {
                 if ch  == ' ' || ch == '\t' || ch == '\n' {
                 } else if ch  == '[' {
+                    if self->depth > 0 {
+                        if stack->user.pop != 0 {
+                            static_attest(safe(stack->user.pop));
+                            stack->user.pop(&stack->user, e, self);
+                            if err::check(e) {
+                                return;
+                            }
+                        }
+                    }
                     self->depth = 0;
                     static_attest(self->depth < len(self->state));
                     stack = &((self->state)[self->depth]);
@@ -173,14 +208,14 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         stack = &((self->state)[self->depth]);
                         memset(stack, 0, sizeof(ParserStack));
                         stack->state = ParserState::Object;
-                        if previous_stack->de != 0 {
-                            static_attest(safe(previous_stack->de));
-                            deserialize_t de = (deserialize_t)previous_stack->de;
+                        if previous_stack->user.it != 0 {
+                            static_attest(safe(previous_stack->user.it));
+                            Iter de = (Iter)previous_stack->user.it;
                             Value val = Value{
                                 index:  previous_stack->index,
                                 t:      ValueType::Object,
                             };
-                            de(e, self, previous_stack->user, (self->capture).mem, val);
+                            de(&previous_stack->user, e, self, (self->capture).mem, val);
                             if err::check(e) {
                                 return;
                             }
@@ -239,14 +274,14 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         memset(stack, 0, sizeof(ParserStack));
                         stack->state = ParserState::PreVal;
                         stack->in_array = true;
-                        if previous_stack->de != 0 {
-                            static_attest(safe(previous_stack->de));
-                            deserialize_t de = (deserialize_t)previous_stack->de;
+                        if previous_stack->user.it != 0 {
+                            static_attest(safe(previous_stack->user.it));
+                            Iter de = (Iter)previous_stack->user.it;
                             Value val = Value{
                                 index:  previous_stack->index,
                                 t:      ValueType::Array,
                             };
-                            de(e, self, previous_stack->user, (self->capture).mem, val);
+                            de(&previous_stack->user, e, self, (self->capture).mem, val);
                             if err::check(e) {
                                 return;
                             }
@@ -272,15 +307,15 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     } else {
                         stack->state = ParserState::PostVal;
                     }
-                    if stack->de != 0 {
-                        static_attest(safe(stack->de));
+                    if stack->user.it != 0 {
+                        static_attest(safe(stack->user.it));
                         static_attest(self->keylen < len((self->capture).mem));
                         Value val = Value{
                             index:      stack->index,
                             t:          ValueType::Integer,
                             integer:    as<int>(atoi((self->capture).mem + self->keylen)),
                         };
-                        stack->de(e, self, stack->user, (self->capture).mem, val);
+                        stack->user.it(&stack->user, e, self, (self->capture).mem, val);
                         if err::check(e) {
                             return;
                         }
@@ -299,15 +334,15 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
 
                 if ch == '"' && !self->esc {
                     stack->state = ParserState::PostVal;
-                    if stack->de != 0 {
-                        static_attest(safe(stack->de));
+                    if stack->user.it != 0 {
+                        static_attest(safe(stack->user.it));
                         static_attest(self->keylen < len((self->capture).mem));
                         Value val = Value{
                             index:  stack->index,
                             t:      ValueType::String,
                             string: ((self->capture).mem + self->keylen),
                         };
-                        stack->de(e, self, stack->user, (self->capture).mem, val);
+                        stack->user.it(&stack->user, e, self, (self->capture).mem, val);
                         if err::check(e) {
                             return;
                         }
@@ -355,6 +390,14 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                 } else if (ch == '}' && !stack->in_array) || (ch == ']' && stack->in_array) {
                     if self->depth > 0 {
                         (self->depth) -=1;
+                        if stack->user.pop != 0 {
+                            static_attest(safe(stack->user.pop));
+                            stack->user.pop(&stack->user, e, self);
+                            if err::check(e) {
+                                return;
+                            }
+                        }
+
                     } else {
                         stack->state = ParserState::Document;
                     }

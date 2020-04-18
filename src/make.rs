@@ -320,6 +320,7 @@ impl Make {
         args.push("-Wpedantic".to_string());
         args.push("-Wall".to_string());
         args.push("-Wno-unused-function".to_string());
+        args.push("-Wgnu-binary-literal".to_string());
         args.push("-Wno-parentheses-equality".to_string());
 
         // should translate tails to something not else. nested flexible arrays are not standard

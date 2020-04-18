@@ -27,15 +27,18 @@ charge = [
 "#
     stdout = r#"height : 12
 add : "[{123123}:b
-v:
+v: [
   0 : 23
+]
 deep : nah
-engine:
+engine: {
   rolling : hard
   fuel : electric
-  charge:
+  charge: [
     0 : 9229
     1 : -399888
+  ]
+}
 "#
 }
 
@@ -60,33 +63,40 @@ test test_array {
     stdin   = r#"a = [1,
     3, "yep"
 ]"#
-    stdout  = r#"a:
+    stdout  = r#"a: [
   0 : 1
   1 : 3
   2 : yep
+]
 "#
 }
 
-
-
-fn pretty(err::Err+et mut *e, toml::Parser+pt mut* p, usize mut * depth, char *k, toml::Value v)
+fn pretty(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p, char *k, toml::Value v)
     where err::checked(*e)
 {
-    for (usize mut i = 0; i < (usize)depth * 2; i++) {
+    for (usize mut i = 0; i < self->user2 * 2; i++) {
         printf(" ");
     }
 
     switch v.t {
         toml::ValueType::Object => {
-            printf("%s:\n", k);
-            toml::next(p,  e, (toml::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            printf("%s: {\n", k);
+            toml::next(p,  e, toml::U{
+                it:     pretty,
+                pop:    pop_object,
+                user2:  self->user2 + 1
+            });
             if err::check(e) {
                 return;
             }
         }
         toml::ValueType::Array => {
-            printf("%s:\n", k);
-            toml::next(p,  e, (toml::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            printf("%s: [\n", k);
+            toml::next(p,  e, toml::U{
+                it:     pretty,
+                pop:    pop_array,
+                user2:  self->user2 + 1
+            });
             if err::check(e) {
                 return;
             }
@@ -100,15 +110,30 @@ fn pretty(err::Err+et mut *e, toml::Parser+pt mut* p, usize mut * depth, char *k
     }
 }
 
+fn pop_array(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p)
+{
+    for (usize mut i = 0; i < (self->user2 - 1) * 2; i++) {
+        printf(" ");
+    }
+    printf("]\n");
+}
+
+fn pop_object(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p)
+{
+    for (usize mut i = 0; i < (self->user2  - 1) * 2; i++) {
+        printf(" ");
+    }
+    printf("}\n");
+}
+
 
 
 export fn main() -> int {
     err::Err+1000 mut e = {0};
     err::make(&e);
 
-    usize depth = 0;
     toml::Parser+100 mut parser = {0};
-    toml::parser(&parser,  &e, (toml::deserialize_t)pretty, (void mut*)depth);
+    toml::parser(&parser,  &e, toml::U{it: pretty, user2: 0});
     if err::check(&e) {
         err::eprintf(&e, stderr);
         return 2;
@@ -129,6 +154,12 @@ export fn main() -> int {
             err::eprintf(&e, stderr);
             return 2;
         }
+    }
+
+    parser.close(&e);
+    if err::check(&e) {
+        err::eprintf(&e, stderr);
+        return 2;
     }
 
 

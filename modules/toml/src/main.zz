@@ -71,46 +71,70 @@ test test_array {
 
 
 
-fn pretty(err::Err+et mut *e, toml::Parser+pt mut* p, usize mut * depth, char *k, toml::Value v)
+fn pretty(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p, char *k, toml::Value v)
     where err::checked(*e)
 {
-    for (usize mut i = 0; i < (usize)depth * 2; i++) {
+    for (usize mut i = 0; i < self->user2 * 2; i++) {
         printf(" ");
     }
 
     switch v.t {
         toml::ValueType::Object => {
-            printf("%s:\n", k);
-            toml::next(p,  e, (toml::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            printf("\"%s\": {\n", k);
+            toml::next(p,  e, toml::U{
+                it:     pretty,
+                pop:    pop_object,
+                user2:  self->user2 + 1
+            });
             if err::check(e) {
                 return;
             }
         }
         toml::ValueType::Array => {
-            printf("%s:\n", k);
-            toml::next(p,  e, (toml::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            printf("\"%s\": [\n", k);
+            toml::next(p,  e, toml::U{
+                it:     pretty,
+                pop:    pop_array,
+                user2:  self->user2 + 1
+            });
             if err::check(e) {
                 return;
             }
         }
         toml::ValueType::String => {
-            printf("%s : %s\n", k, v.string);
+            printf("\"%s\" : \"%s\"\n", k, v.string);
         }
         toml::ValueType::Integer => {
-            printf("%s : %d\n", k, v.integer);
+            printf("\"%s\" : %d\n", k, v.integer);
         }
     }
 }
 
+fn pop_array(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p)
+{
+    for (usize mut i = 0; i < (self->user2 - 1) * 2; i++) {
+        printf(" ");
+    }
+    printf("]\n");
+}
 
+fn pop_object(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p)
+{
+    for (usize mut i = 0; i < (self->user2  - 1) * 2; i++) {
+        printf(" ");
+    }
+    printf("}\n");
+}
 
 export fn main() -> int {
 
     new+1000 e = err::make();
 
-    usize depth = 0;
+    new+100 parser = toml::parser(&e, toml::U{
+        it:     pretty,
+        user2: 0 
+    });
 
-    new+100 parser = toml::parser(&e, (toml::deserialize_t)pretty, (void mut*)depth);
     if err::check(&e) {
         err::eprintf(&e, stderr);
         return 2;
@@ -126,11 +150,17 @@ export fn main() -> int {
             break;
         }
         static_attest(bin < len(buf));
-        toml::push(&parser, &e, buf, bin);
+        parser.push(&e, buf, bin);
         if err::check(&e) {
             err::eprintf(&e,stderr);
             return 2;
         }
+    }
+
+    parser.close(&e);
+    if err::check(&e) {
+        err::eprintf(&e,stderr);
+        return 2;
     }
 
 
