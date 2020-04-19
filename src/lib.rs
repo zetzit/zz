@@ -67,6 +67,7 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) 
     let mut searchpaths = repos::index(&project);
 
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("c")).expect("create target dir");
+    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("gen")).expect("create target dir");
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("zz")).expect("create target dir");
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("include")
                             .join("zz").join(&project.project.name)).expect("create target dir");

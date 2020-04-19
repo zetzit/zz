@@ -1423,7 +1423,7 @@ impl CFile {
 
 pub fn builtin(project: &Project, stage: &make::Stage, artifact: &super::project::Artifact, symbols: HashSet<Name>) ->  CFile
 {
-    let p = format!("target/{}/zz/__zz_builtins_{}_{}.c", stage, project.name, artifact.name);
+    let p = format!("target/{}/gen/zz_builtins_{}_{}_{:?}.c", stage, project.name, artifact.name, artifact.typ);
     let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
     write!(f, "#ifndef ZZ_EXPORT_HEADER___zz__builtins\n#define ZZ_EXPORT_HEADER___zz__builtins\n").unwrap();

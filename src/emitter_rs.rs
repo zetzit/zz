@@ -532,7 +532,7 @@ impl rs{name} {{
         };
 
         write!(self.f, "    #[link_name = \"{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
-        write!(self.f, "    pub fn {}(", shortname).unwrap();
+        write!(self.f, "    pub fn r#{}(", shortname).unwrap();
 
         self.function_args(args);
         write!(self.f, ")").unwrap();

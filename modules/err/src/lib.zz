@@ -137,7 +137,7 @@ model checked(*self)
 
 export fn elog(Err+tail mut* self)
 {
-    log::error("%s\n", self->error, self->trace, (self->trace).mem);
+    log::error("%s\n", self->trace.cstr());
 }
 
 export fn eprintf(Err+tail mut* self, FILE mut * unsafe out)

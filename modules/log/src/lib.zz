@@ -1,5 +1,8 @@
 using <stdarg.h>::{va_list, va_start, va_end};
 using <stdio.h>::{vfprintf, fprintf, stderr};
+using <stdlib.h>::{getenv};
+using string;
+
 inline using "os.h"::{
     os_zz_log_error,
     os_zz_log_warn,
@@ -8,23 +11,74 @@ inline using "os.h"::{
 }
 
 
+enum LogLevel {
+    Invalid = 99999,
+    None  = 0,
+    Error = 1,
+    Warn  = 2,
+    Info  = 3,
+    Debug = 4,
+}
+
+
+static LogLevel mut s_log_level = LogLevel::Invalid;
+
+fn log_level() -> LogLevel {
+    if s_log_level == LogLevel::Invalid {
+        s_log_level = LogLevel::Info;
+
+        char * e = getenv("ZZLOG");
+        if e != 0 {
+            static_attest(safe(e));
+            static_attest(nullterm(e));
+            if string::cstr_eq(e, "info") {
+                s_log_level = LogLevel::Info;
+            } else if string::cstr_eq(e, "info") {
+                s_log_level = LogLevel::Info;
+            } else if string::cstr_eq(e, "err") {
+                s_log_level = LogLevel::Error;
+            } else if string::cstr_eq(e, "error") {
+                s_log_level = LogLevel::Error;
+            } else if string::cstr_eq(e, "debug") {
+                s_log_level = LogLevel::Debug;
+            } else if string::cstr_eq(e, "none") {
+                s_log_level = LogLevel::None;
+            }
+        }
+    }
+    return s_log_level;
+}
+
+
 export fn error(char * callsite_source<module> module, char *fmt, ...)
 {
+    if log_level() < LogLevel::Error {
+        return;
+    }
     os_zz_log_error(module, fmt);
 }
 
 export fn warn(char * callsite_source<module> module, char *fmt, ...)
 {
+    if log_level() < LogLevel::Warn {
+        return;
+    }
     os_zz_log_warn(module, fmt);
 }
 
 export fn info(char * callsite_source<module> module, char *fmt, ...)
 {
+    if log_level() < LogLevel::Info {
+        return;
+    }
     os_zz_log_info(module, fmt);
 }
 
 export fn debug(char * callsite_source<module> module, char *fmt, ...)
 {
+    if log_level() < LogLevel::Debug {
+        return;
+    }
     os_zz_log_debug(module, fmt);
 }
 

@@ -39,9 +39,11 @@ export fn mem(MutSlice mut * self) -> u8 mut*
     @solver("yices2")
     model len(return) >= self->slice.size
     model len(return) >= self->at
+    model safe(return)
 {
     u8 mut* m = (u8 mut *)self->slice.mem;
     static_attest(len(m) >= self->slice.size);
+    static_attest(safe(m));
     return m;
 }
 

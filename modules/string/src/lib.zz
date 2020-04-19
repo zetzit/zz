@@ -23,8 +23,15 @@ we need conditions that get checked for every use of a struct automatically
 
 */
 
+
+/! length of string (excluding null terminator)
+export fn slen(String * self) -> usize {
+    return self->len;
+}
+
 /! string as null terminated c string
 export fn cstr(String * self) -> char *
+    model safe(return)
     model nullterm(return)
 {
     static_attest(nullterm(self->mem));

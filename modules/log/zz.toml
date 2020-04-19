@@ -11,3 +11,4 @@ lflags = []
 default = []
 
 [dependencies]
+string = "1"
