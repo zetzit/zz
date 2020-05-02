@@ -86,6 +86,7 @@ impl std::fmt::Display for  Stage {
 
 pub struct Step {
     pub source: PathBuf,
+    pub cxx:    bool,
     pub args:   Vec<String>,
 
     pub deps:   HashSet<PathBuf>,
@@ -97,6 +98,8 @@ pub struct Make {
     pub steps:      Vec<Step>,
     pub host_cc:    String,
     pub cc:         String,
+    pub host_cxx:   String,
+    pub cxx:        String,
     pub ar:         String,
     pub cflags:     Vec<String>,
     pub lflags:     Vec<String>,
@@ -133,15 +136,17 @@ impl Make {
             .or(std::env::var("CC"))
             .unwrap_or("clang".to_string());
 
-        let mut cxx = false;
+
+        let host_cxx = std::env::var("CXX")
+            .unwrap_or("clang++".to_string());
+
+        let mut cxx = std::env::var("TARGET_CXX")
+            .or(std::env::var("CXX"))
+            .unwrap_or("clang++".to_string());
+
+
         if let Some(std) = config.project.std {
             cflags.push(format!("-std={}", std));
-            if std.contains("c++") {
-                cxx = true;
-                cc = std::env::var("TARGET_CXX")
-                    .or(std::env::var("CXX"))
-                    .unwrap_or("clang++".to_string());
-            }
         }
         let ar = std::env::var("TARGET_AR")
             .or(std::env::var("AR"))
@@ -150,6 +155,7 @@ impl Make {
 
         if stage.fuzz {
             cc = "afl-clang".to_string();
+            cxx = "afl-clang++".to_string();
         }
 
 
@@ -246,18 +252,6 @@ impl Make {
         }
 
 
-        if !cxx && !stage.debug {
-            cflags.push("-fomit-frame-pointer".into());
-            cflags.push("-fno-exceptions".into());
-            cflags.push("-fno-asynchronous-unwind-tables".into());
-            cflags.push("-fno-unwind-tables".into());
-            lflags.push("-fomit-frame-pointer".into());
-            lflags.push("-fno-exceptions".into());
-            lflags.push("-fno-asynchronous-unwind-tables".into());
-            lflags.push("-fno-unwind-tables".into());
-        }
-
-
         cflags.extend(user_cflags);
         lflags.extend(user_lflags);
 
@@ -273,6 +267,8 @@ impl Make {
             cflags,
             steps: Vec::new(),
             host_cc,
+            cxx,
+            host_cxx,
         };
 
         for c in cobjects {
@@ -291,7 +287,7 @@ impl Make {
 
         let mut hasher: MetroHash128 = MetroHash128::default();
         hasher.write(args.join(" ").as_bytes());
-        let hash = hasher.finish128();    
+        let hash = hasher.finish128();
 
         let outp = inp.to_string_lossy().replace(|c: char| !c.is_alphanumeric(), "_");
         let outp = format!("{}_{:x}{:x}", outp, hash.0, hash.1);
@@ -302,7 +298,14 @@ impl Make {
         let mut sources = HashSet::new();
         sources.insert(inp.into());
 
+        let cxx = if let Some("cpp") = inp.extension().map(|v|v.to_str().expect("invalid file name")) {
+            true
+        } else {
+            false
+        };
+
         self.steps.push(Step{
+            cxx,
             source: inp.into(),
             args,
             deps: sources,
@@ -314,25 +317,30 @@ impl Make {
 
     pub fn build(&mut self, cf: &super::emitter::CFile) {
         let mut args = self.cflags.clone();
+
+        args.push("-fomit-frame-pointer".into());
+        args.push("-fno-exceptions".into());
+        args.push("-fno-asynchronous-unwind-tables".into());
+        args.push("-fno-unwind-tables".into());
+
         args.push("-Werror=implicit-function-declaration".to_string());
         args.push("-Werror=incompatible-pointer-types".to_string());
         args.push("-Werror=return-type".to_string());
         args.push("-Wpedantic".to_string());
         args.push("-Wall".to_string());
         args.push("-Wno-unused-function".to_string());
-        args.push("-Wgnu-binary-literal".to_string());
         args.push("-Wno-parentheses-equality".to_string());
 
         // should translate tails to something not else. nested flexible arrays are not standard
         args.push("-Wno-flexible-array-extensions".to_string());
         args.push("-Wno-gnu-variable-sized-type-not-at-end".to_string());
 
+
         args.push("-Werror=pointer-sign".to_string());
         args.push("-Werror=int-to-pointer-cast".to_string());
         args.push("-c".to_string());
         args.push(cf.filepath.clone());
         args.push("-o".to_string());
-
 
         let mut b = args.join(" ").as_bytes().to_vec();
         b.extend(self.cc.as_bytes());
@@ -345,6 +353,7 @@ impl Make {
         args.push(outp.clone());
 
         self.steps.push(Step{
+            cxx: false,
             source: Path::new(&cf.filepath).into(),
             args,
             deps: cf.sources.clone(),
@@ -374,23 +383,31 @@ impl Make {
         use rayon::prelude::*;
         use std::sync::{Arc, Mutex};
 
+
+        let has_used_cxx = AtomicBool::new(false);
+
         let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(self.steps.len() as u64)));
         pb.lock().unwrap().show_speed = false;
         self.steps.par_iter().for_each(|step|{
             if ABORT.load(Ordering::Relaxed) {
                 return;
             };
+            let mut cmd = self.cc.clone();
+            if step.cxx {
+                cmd = self.cxx.clone();
+                has_used_cxx.store(true, Ordering::Relaxed);
+            }
             pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
             if step.is_dirty() {
-                debug!("{} {:?}", self.cc, step.args);
-                let status = Command::new(&self.cc)
+                debug!("{} {:?}", cmd, step.args);
+                let status = Command::new(&cmd)
                     .env("AFL_USE_ASAN", "1")
                     .args(&step.args)
                     .status()
                     .expect("failed to execute cc");
                 if !status.success() {
-                    error!("cc: [{}] args: [{}]", self.cc, step.args.join(" "));
+                    error!("cc: [{}] args: [{}]", cmd, step.args.join(" "));
                     ABORT.store(true, Ordering::Relaxed);
                 }
             }
@@ -402,7 +419,7 @@ impl Make {
             std::process::exit(11);
         }
 
-        let mut cmd     = self.cc.clone();
+        let mut cmd     = if has_used_cxx.load(Ordering::Relaxed) { self.cxx.clone() } else { self.cc.clone() };
         let mut args    = Vec::new();
 
         match self.artifact.typ {
@@ -462,7 +479,15 @@ impl Make {
                 unreachable!();
             }
         }
-        self.lflags.push("-fvisibility=hidden".into());
+
+        args.push("-fvisibility=hidden".into());
+        if !has_used_cxx.load(Ordering::Relaxed) {
+            args.push("-fomit-frame-pointer".into());
+            args.push("-fno-exceptions".into());
+            args.push("-fno-asynchronous-unwind-tables".into());
+            args.push("-fno-unwind-tables".into());
+        }
+
 
         pb.lock().unwrap().message(&format!("ld [{:?}] {} ", self.artifact.typ, self.artifact.name));
         pb.lock().unwrap().tick();

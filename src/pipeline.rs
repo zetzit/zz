@@ -234,6 +234,9 @@ impl Pipeline {
                 if let Some("c") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
                     make.cobject(&path);
                 }
+                if let Some("cpp") = path.extension().map(|v|v.to_str().expect("invalid file name")) {
+                    make.cobject(&path);
+                }
             }
         }
 

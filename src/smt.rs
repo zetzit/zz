@@ -529,7 +529,14 @@ impl Solver {
     // must call from within assert or value
     pub fn extract(&self, _model: &ModelRef, lhs: TemporalSymbol) -> Option<u64> {
         let smt_lhs  = self.var(&lhs);
-        let value = self.solver.borrow_mut().get_values(&[smt_lhs]).unwrap().get(0).unwrap().1.clone();
+        let value = match self.solver.borrow_mut().get_values(&[smt_lhs]) {
+            Ok(v) => v.get(0).unwrap().1.clone(),
+            Err(e) => {
+                eprintln!("{:?}", e);
+                return None;
+            }
+        };
+
 
         debug!("extracted: {}", value);
         if value == "false" {
@@ -714,7 +721,13 @@ impl Solver {
 
 
     pub fn solve(&self) -> bool {
-        self.solver.borrow_mut().check_sat().unwrap()
+        match self.solver.borrow_mut().check_sat(){
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("{:?}", e);
+                false
+            }
+        }
     }
 
     #[cfg(debug_assertions)]
