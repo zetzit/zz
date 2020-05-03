@@ -61,6 +61,15 @@ export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
     return true;
 }
 
+export fn append_cstr(MutSlice mut * self, char *b) -> bool
+    where nullterm(b)
+    model self->at <= self->slice.size
+{
+    let l = unsafe<usize>(c_string::strlen(b));
+    static_attest(len(b) >= l);
+    return append_bytes(self, (u8*)b, l);
+}
+
 export fn push(MutSlice mut * self, u8 b) -> bool
     @solver("yices2")
     where self->slice.size >= 1

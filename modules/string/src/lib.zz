@@ -252,6 +252,20 @@ export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
     return as<int>(c_string::strncmp(self->mem,a,alen)) == 0;
 }
 
+/! test if self ends with other string
+export fn ends_with_cstr(String+tail *self, char *unsafe a) -> bool
+{
+    static_attest(self->len < len(self->mem));
+
+    usize alen = as<usize>(c_string::strlen(a));
+    if alen > self->len {
+        return false;
+    }
+
+    usize start = self->len - alen;
+    return as<int>(c_string::strncmp(self->mem + start, a , alen)) == 0;
+}
+
 /! append to this string by reading from a FILE
 export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
 {
