@@ -19,3 +19,10 @@ pub fn set(void mut * dst, u8 c, usize n)
 {
     libc::memset(dst, c, n);
 }
+
+pub fn eq(void * a, void * b, usize n) -> bool
+    where len(a) >= n
+    where len(b) >= n
+{
+    return libc::memcmp(a,b, n) == 0;
+}

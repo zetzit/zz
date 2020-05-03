@@ -1605,6 +1605,15 @@ impl Symbolic {
         let exprloc = expr.loc().clone();
         self.ssa.debug_loc(expr.loc());
         match expr {
+            ast::Expression::Unsafe{into, loc, ..} => {
+                let r = self.temporary("unsafe expression".to_string(),
+                    into.clone(),
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                self.memory[r].value = Value::Unconstrained("unsafe expression".to_string());
+                Ok(r)
+            }
             ast::Expression::MacroCall{loc, name, args} => {
                 self.incomplete = true;
                 let r = self.literal(loc, Value::Unconstrained("unavailable macro".to_string()), ast::Typed {

@@ -1218,6 +1218,9 @@ impl Emitter {
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
+            ast::Expression::Unsafe{expr, ..} => {
+                self.emit_expr(expr);
+            }
             ast::Expression::MacroCall{loc, ..} => {
                 write!(self.f, "{{INTERNAL_ERROR_MACRO_NOT_EXPANDED}}").unwrap();
             }

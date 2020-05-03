@@ -548,6 +548,11 @@ pub enum Expression {
         loc:            Location,
         name:           Name,
         args:           Vec<Box<Expression>>,
+    },
+    Unsafe {
+        loc:    Location,
+        into:   Typed,
+        expr:   Box<Expression>
     }
 }
 
@@ -568,6 +573,7 @@ impl Expression {
             Expression::StructInit {loc,..}     => loc,
             Expression::ArrayInit {loc,..}      => loc,
             Expression::MacroCall {loc,..}      => loc,
+            Expression::Unsafe{loc, ..}         => loc,
         }
     }
 }

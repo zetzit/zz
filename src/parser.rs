@@ -873,6 +873,18 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                 expr: Box::new(expr),
             }
         },
+        Rule::unsafe_expr => {
+            let mut expr = expr.into_inner();
+            let part  = expr.next().unwrap();
+            let into = parse_anon_type(n, part);
+            let part  = expr.next().unwrap();
+            let expr = parse_expr(n, part);
+            Expression::Unsafe{
+                loc,
+                into,
+                expr: Box::new(expr),
+            }
+        },
         Rule::type_name => {
             let name = Name::from(expr.as_str());
             Expression::Name(Typed{

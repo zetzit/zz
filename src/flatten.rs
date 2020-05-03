@@ -253,6 +253,19 @@ fn expr_deps(cr: &mut Collector, expr: &ast::Expression) -> Vec<(Name, TypeCompl
             v.extend(expr_deps(cr, expr));
             v
         }
+        ast::Expression::Unsafe{expr, into,..} => {
+            let mut v = Vec::new();
+            if let ast::Type::Other(n) = &into.t {
+                let cc = if into.ptr.len() > 0 {
+                    TypeComplete::Incomplete
+                } else {
+                    TypeComplete::Complete
+                };
+                v.push((n.clone(), cc, into.loc.clone()));
+            }
+            v.extend(expr_deps(cr, expr));
+            v
+        }
         ast::Expression::Literal {..} | ast::Expression::LiteralString {..} | ast::Expression::LiteralChar {..}=> {
             Vec::new()
         }

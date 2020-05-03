@@ -220,7 +220,7 @@ postop = _{ increment |  decrement }
 
 term    = _{
     unarypost | number_literal | char_literal | string_literal |bool_literal| struct_init | array_init |
-    unarypre | takeref | deref | cast | type_name | "(" ~ expr ~ ")"
+    unarypre | takeref | deref | cast | type_name | unsafe_expr | "(" ~ expr ~ ")"
 }
 
 unarypost       = { ( type_name | "(" ~ expr ~ ")") ~ postop }
@@ -268,6 +268,7 @@ break_stm   = { key_break }
 label       = ${ ident ~ ":"}
 mark_stm    = ${ expr ~ WHITESPACE+ ~ "is" ~ WHITESPACE+ ~ tag_name }
 unsafe_block = {"unsafe" ~ block }
+unsafe_expr  = {"unsafe" ~ "<" ~ anon_type ~ ">" ~"(" ~ expr ~ ")" }
 
 cblock_inner = { ( (!"}}@" ~ ANY))*}
 cblock       = !{ "@{{" ~ cblock_inner ~ "}}@" }
@@ -284,24 +285,25 @@ term_statement = _{
     return_stm |
     break_stm  |
     continue_stm |
-    expr_stm
+    expr_stm |
+    unsafe_expr
 }
 
 statement = _{
     (macrocall ~ ";"?)  |
-    switch_stm  |
-    for_stm     |
-    if_stm      |
-    while_stm   |
-    else_stm    |
-    elseif_stm  |
-    block       |
-    cblock      |
+    switch_stm   |
+    for_stm      |
+    if_stm       |
+    while_stm    |
+    else_stm     |
+    elseif_stm   |
+    block        |
+    cblock       |
     unsafe_block |
     (term_statement ~ ";")
 }
 
-block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" }
+block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" ~ ";"? }
 
 macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 

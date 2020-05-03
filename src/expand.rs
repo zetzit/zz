@@ -793,6 +793,9 @@ fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewit
         ast::Expression::Cast {ref mut expr,..} => {
             replace_named(expr, replacefrom, replacewith);
         }
+        ast::Expression::Unsafe {ref mut expr,..} => {
+            replace_named(expr, replacefrom, replacewith);
+        }
         ast::Expression::UnaryPost {ref mut expr, ..} => {
             replace_named(expr, replacefrom, replacewith);
         }

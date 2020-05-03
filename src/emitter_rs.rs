@@ -560,6 +560,9 @@ impl rs{name} {{
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
+            ast::Expression::Unsafe{expr, ..} => {
+                self.emit_expr(expr);
+            }
             ast::Expression::MacroCall{loc, ..} => {
                 parser::emit_error(
                     "ICE: incomplete macro expansion ended up in emitter",

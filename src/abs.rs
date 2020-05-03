@@ -466,6 +466,10 @@ fn abs_expr(
             abs_expr(expr, scope, inbody, all_modules, self_md_name);
             scope.abs(into, inbody);
         }
+        ast::Expression::Unsafe{expr, into, ..} => {
+            abs_expr(expr, scope, inbody, all_modules, self_md_name);
+            scope.abs(into, inbody);
+        }
         ast::Expression::MemberAccess{lhs,..}  => {
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
         }
