@@ -394,9 +394,15 @@ impl Symbolic {
                         }
                     }
 
-                    let esym = self.execute_expr(expr)?;
-                    self.copy(sym, esym, &d.loc)?;
-                    self.tail_into_ssa(sym, &d.loc)?;
+
+                    // we have no precondition checks for globals,
+                    // so they can only be constrained if they're const
+                    if !tags.contains("mut") {
+                        let esym = self.execute_expr(expr)?;
+                        self.copy(sym, esym, &d.loc)?;
+                        self.tail_into_ssa(sym, &d.loc)?;
+                    }
+
                 },
                 ast::Def::Const { typed, expr} => {
                     let sym = self.alloc(
@@ -958,9 +964,11 @@ impl Symbolic {
 
                             self.ssa.bool_value(sym, |a,_model| match a {
                                 smt::Assertion::Constrained(val) => {
-                                    emit_warn("unnecessary branch condition", &[
-                                        (branch_expr.loc().clone(), format!("expression is always {}", val))
-                                    ]);
+                                    if !self.in_loop {
+                                        emit_warn("unnecessary branch condition", &[
+                                            (branch_expr.loc().clone(), format!("expression is always {}", val))
+                                        ]);
+                                    }
                                 }
                                 _ => {}
                             });
@@ -1182,11 +1190,16 @@ impl Symbolic {
                         self.cur().trace.push((sym.clone(), expr.loc().clone(),false));
                         if !self.ssa.attest(sym, true) {
                             return Err(self.trace(format!("condition breaks ssa"), vec![
-                                (expr.loc().clone(), format!("there may be conflicting constraints"))
+                                                  (expr.loc().clone(), format!("there may be conflicting constraints"))
                             ]));
                         }
                     }
 
+
+                    // this would fix loop variants, but it's just too damn slow
+                    //self.push("loop pass 0 ".to_string());
+                    //self.execute_scope(&mut body.statements.clone())?;
+                    //self.pop();
 
                     self.execute_scope(&mut body.statements)?;
                     self.in_loop = prev_loop;

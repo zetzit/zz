@@ -3,6 +3,7 @@ using <stdio.h> as stdio;
 using <stdarg.h>::{va_list, va_start, va_end};
 using <stdio.h>::{vsnprintf, printf, FILE};
 using slice::{Slice, MutSlice};
+using <assert.h>::{assert};
 
 export struct String+ {
     usize   len;
@@ -324,13 +325,7 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
     //TODO i'm not sure what ssa is confused about
     static_attest(size + other->len < tail2);
 
-    //printf("B len1: %zu, len2: %zu, from: %zu, size: %zu\n",
-    //    self->len, other->len, from, size);
-
-
-    if size == 0 {
-        return;
-    }
+    assert(size != 0);
 
     c_string::memcpy(other->mem + other->len, self->mem + from, size);
     (other->mem)[size + other->len] = 0;
