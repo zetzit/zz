@@ -5,7 +5,7 @@ using ast;
 
 using bam;
 
-/! creates literal string with arg0 repeated arg1 times
+/// creates literal string with arg0 repeated arg1 times
 export macro repeat()  {
 
     new+1000 a = ast::from_macro();
@@ -21,11 +21,11 @@ export macro repeat()  {
 }
 
 
-/! tests if call in statement context will correctly expand to multiple statements
-/!
-/! TODO: statementm macros are still weird, because the first pass will yield nothing
-/!       resulting in var declarations not being available in the first pass
-/!       the workaround for users is to have macros in separate modules.
+/// tests if call in statement context will correctly expand to multiple statements
+///
+/// TODO: statementm macros are still weird, because the first pass will yield nothing
+///       resulting in var declarations not being available in the first pass
+///       the workaround for users is to have macros in separate modules.
 
 export macro make_int() {
     printf("int mut a = 0;\n");

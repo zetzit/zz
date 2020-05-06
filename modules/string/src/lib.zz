@@ -24,12 +24,12 @@ we need conditions that get checked for every use of a struct automatically
 */
 
 
-/! length of string (excluding null terminator)
+/// length of string (excluding null terminator)
 export fn slen(String * self) -> usize {
     return self->len;
 }
 
-/! string as null terminated c string
+/// string as null terminated c string
 export fn cstr(String * self) -> char *
     model safe(return)
     model nullterm(return)
@@ -38,7 +38,7 @@ export fn cstr(String * self) -> char *
     return self->mem;
 }
 
-/! string as slice
+/// string as slice
 export fn slice(String+tail mut * self) -> Slice
     model return.size <= tail
 {
@@ -49,7 +49,7 @@ export fn slice(String+tail mut * self) -> Slice
     };
 }
 
-/! append a slice to this string
+/// append a slice to this string
 export fn append_slice(String+tail mut * self) -> MutSlice
     model return.slice.size == tail
     model return.at         <= tail
@@ -67,7 +67,7 @@ export fn append_slice(String+tail mut * self) -> MutSlice
     };
 }
 
-/! make an empty string
+/// make an empty string
 export fn make(String+tail mut new* self)
     model self->len  == 0
     model nullterm(self->mem)
@@ -75,7 +75,7 @@ export fn make(String+tail mut new* self)
     clear(self)
 }
 
-/! clear the string
+/// clear the string
 export fn clear(String+tail mut new* self)
     model self->len  == 0
     model nullterm(self->mem)
@@ -86,7 +86,7 @@ export fn clear(String+tail mut new* self)
     static_attest(nullterm(self->mem));
 }
 
-/! push a single character
+/// push a single character
 export fn push(String+t mut * self, char cstr) -> bool
     @solver("yices2")
     where t > 2
@@ -107,9 +107,9 @@ export fn push(String+t mut * self, char cstr) -> bool
     return true;
 }
 
-/! remove the last character
-/!
-/! returns false if string was empty
+/// remove the last character
+///
+/// returns false if string was empty
 
 export fn pop(String+t mut * self) -> bool
     model self->len < t
@@ -124,7 +124,7 @@ export fn pop(String+t mut * self) -> bool
     return true;
 }
 
-/! append a null terminated c string
+/// append a null terminated c string
 export fn append_cstr(String+t mut * self, char * cstr)
     @solver("yices2")
     where nullterm(cstr)
@@ -146,7 +146,7 @@ export fn append_cstr(String+t mut * self, char * cstr)
     static_attest(nullterm(self->mem))
 }
 
-/! append another string
+/// append another string
 export fn append(String+t mut * self, String+t2 * other)
     @solver("yices2")
     model self->len < t
@@ -167,7 +167,7 @@ export fn append(String+t mut * self, String+t2 * other)
 }
 
 
-/! append raw bytes with given len
+/// append raw bytes with given len
 export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
     @solver("yices2")
     where len(bytes) >= inlen
@@ -186,7 +186,7 @@ export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
     static_attest(nullterm(self->mem))
 }
 
-/! append formated string with vsnprintf
+/// append formated string with vsnprintf
 export fn format(String+tail mut * self, char *fmt, ...) -> int
     where tail > 0
     model self->len < tail
@@ -229,14 +229,14 @@ export fn vformat(String+tail mut * self, char *fmt, va_list mut args) -> int
 }
 
 
-/! test if this string is equal with a c string
+/// test if this string is equal with a c string
 export fn eq_cstr(String+tail* self, char * unsafe b) -> bool
     where nullterm(b)
 {
     return as<int>(c_string::strcmp(self->mem,b)) == 0;
 }
 
-/! test if some c string is equal another c string
+/// test if some c string is equal another c string
 export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
     where a == 0 || nullterm(a)
     where b == 0 || nullterm(b)
@@ -244,7 +244,7 @@ export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
     return as<int>(c_string::strcmp(a,b)) == 0;
 }
 
-/! test if this string begings with some c string
+/// test if this string begings with some c string
 export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
     usize alen = as<usize>(c_string::strlen(a));
     if alen > self->len {
@@ -253,7 +253,7 @@ export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
     return as<int>(c_string::strncmp(self->mem,a,alen)) == 0;
 }
 
-/! test if self ends with other string
+/// test if self ends with other string
 export fn ends_with_cstr(String+tail *self, char *unsafe a) -> bool
 {
     static_attest(self->len < len(self->mem));
@@ -267,7 +267,7 @@ export fn ends_with_cstr(String+tail *self, char *unsafe a) -> bool
     return as<int>(c_string::strncmp(self->mem + start, a , alen)) == 0;
 }
 
-/! append to this string by reading from a FILE
+/// append to this string by reading from a FILE
 export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
 {
     static_attest(self->len < tail);
@@ -284,7 +284,7 @@ export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
     return true;
 }
 
-/! copy parts of this string to other string
+/// copy parts of this string to other string
 export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut* other)
     @solver("yices2")
     where tail  > 0
@@ -337,7 +337,7 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
     other->len += size;
 }
 
-/! split this string by token and copy the substring into other
+/// split this string by token and copy the substring into other
 export fn split(String+tail *self, char token, usize mut *iterator, String+tail2 mut* other) -> bool
     model self->len  < tail
     where other->len < tail2
@@ -368,14 +368,14 @@ export fn split(String+tail *self, char token, usize mut *iterator, String+tail2
 }
 
 
-/! returns the amount of bytes still left in the tail
+/// returns the amount of bytes still left in the tail
 export fn space(String+tail *self) -> usize
     model return == tail - self->len
 {
     return tail - self->len;
 }
 
-/! length of a null terminated c string
+/// length of a null terminated c string
 export fn strlen(char *s) -> usize
     where nullterm(s)
     model return == len(s)

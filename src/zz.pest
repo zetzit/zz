@@ -1,7 +1,12 @@
 WHITESPACE  = _{ " " | "\t" | NEWLINE}
-COMMENT     = _{
-    ("/*" ~ (!"*/" ~ ANY)* ~ "*/") |
-    ("//" ~ (!NEWLINE ~ ANY)* ~ NEWLINE)
+COMMENT = _{
+    ("/*" ~ (!"*" ~ ANY) ~ (!"*/" ~ ANY)* ~ "*/") |
+    ("//" ~ (!"/" ~ ANY) ~ (!NEWLINE ~ ANY)* ~ NEWLINE )
+}
+doc_comment = @{
+    ("/**" ~ (!"*/" ~ ANY)* ~ "*/") |
+    ("///" ~ (!NEWLINE ~ ANY)* ~ NEWLINE)
+
 }
 
 
@@ -139,7 +144,7 @@ testfield   = { ident ~ testop ~ expr }
 testcase    = { "test" ~ ident? ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
-struct_c    = _{"{" ~ (pp | struct_f )* ~ "}" }
+struct_c    = _{"{" ~ (pp | doc_comment |  struct_f )* ~ "}" }
 struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail? ~ (key_packed)* ~ struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
@@ -153,8 +158,6 @@ istatic     = {
     (key_static | key_atomic | key_thread_local) ~
     named_type  ~ array? ~ "=" ~ expr ~ ";"
 }
-
-comment     = @{ "//" ~ (!"\n"  ~ ANY)*  ~ "\n" }
 
 vararg          = @{"..."}
 macro_args      = {ident ~ ( "," ~ ( ident | vararg) )* }
@@ -308,7 +311,6 @@ block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" ~ ";"? }
 macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 
 
-doccomment = @{"/!" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
 
 
 
@@ -317,6 +319,7 @@ doccomment = @{"/!" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
 
 
 file        = { SOI ~ (struct_d
+                        | doc_comment
                         | function
                         | fntype
                         | theory
@@ -325,9 +328,7 @@ file        = { SOI ~ (struct_d
                         | import
                         | constant
                         | pp
-                        | doccomment
                         | testcase
-                        | comment
                         | imacro
                         | istatic
                         | NEWLINE )+  ~ EOI}

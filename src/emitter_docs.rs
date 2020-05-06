@@ -30,13 +30,13 @@ pub struct Emitter{
 }
 
 pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
-    format!("target/{}/docs/{}.html", stage, module.name.0[1..].join("_"))
+    format!("target/docs/{}.html", module.name.0[1..].join("_"))
 }
 
 impl Emitter {
     pub fn new(project: &Project, stage: make::Stage , module: flatten::Module) -> Self {
 
-        std::fs::create_dir_all(format!("target/{}/docs/", stage)).unwrap();
+        std::fs::create_dir_all(format!("target/docs/")).unwrap();
         let p = outname(project, &stage, &module);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 

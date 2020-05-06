@@ -17,12 +17,12 @@ pub fn parse_query(Store mut*store, usize answers) -> bool
 
     bool mut it;
     while it  {
-        /// the bug was that we did a deref here
+        // the bug was that we did a deref here
         ((store->broker)[storepos]).protocol = 2;
     }
-    /// and the symbol for the deref is lost here in smt but not in symbolic,
-    /// because in smt, the declarations are removed on pop
-    /// but in symbolic, symbols are a global counter exactly so we can carry over deref
+    // and the symbol for the deref is lost here in smt but not in symbolic,
+    // because in smt, the declarations are removed on pop
+    // but in symbolic, symbols are a global counter exactly so we can carry over deref
 
     if ((store->broker)[storepos]).protocol >0 {
         storepos += 1;

@@ -71,8 +71,9 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
 
     for decl in PP::new(&n, features.clone(), stage.clone(), file.next().unwrap().into_inner()) {
         match decl.as_rule() {
-            Rule::doccomment => {
+            Rule::doc_comment => {
                 let mut s = decl.as_str().to_string();
+                s.remove(0);
                 s.remove(0);
                 s.remove(0);
                 doccomments.push_str(&s);
@@ -383,6 +384,9 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
 
                 for part in PP::new(n,features.clone(), stage.clone(), decl) {
                     match part.as_rule() {
+                        Rule::doc_comment=> {
+                            //TODO
+                        }
                         Rule::tail => {
                             tail = Tail::Dynamic(None);
                         }
@@ -512,7 +516,6 @@ fn p(n: &Path, features: &HashMap<String, bool> , stage: &Stage) -> Result<Modul
 
 
             },
-            Rule::comment => {},
             Rule::istatic | Rule::constant => {
                 let rule = decl.as_rule();
                 let loc = Location::from_span(n.into(), &decl.as_span());
