@@ -629,10 +629,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsmt2-zz"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "168c95a5aa5c4bf92deec42be02ce9c688cc517b89c044f7102de5df0e81d8e3"
+name = "rsmt2"
+version = "0.11.0"
+source = "git+https://github.com/kino-mc/rsmt2?rev=ebce2e4#ebce2e403d25ca739cfd717817be68844f80f13c"
 dependencies = [
  "error-chain",
 ]
@@ -938,7 +937,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "rayon",
- "rsmt2-zz",
+ "rsmt2",
  "serde",
  "serde_cbor",
  "serde_json",

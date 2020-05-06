@@ -5,7 +5,7 @@ use std::io::Write;
 use std::cell::{RefCell};
 use std::sync::atomic::{AtomicUsize};
 use super::parser::{emit_warn};
-use rsmt2_zz as rsmt2;
+use rsmt2;
 pub static TIMEOUT: AtomicUsize = AtomicUsize::new(5000);
 
 pub enum Assertion<T> {
@@ -759,12 +759,25 @@ impl Solver {
 
 
 
-        let conf = if let (Some("yices2"), Ok(_)) = (solver.as_ref().map(|s|s.as_str()), which::which("yices_smt2_mt")) {
-            rsmt2::SmtConf::yices_2()
+        let conf = if which::which("yices_smt2_mt").is_ok() {
+            let mut conf = rsmt2::SmtConf::yices_2();
+            conf.incremental();
+            conf.cmd("yices_smt2_mt");
+            conf
+        } else if which::which("yices_smt2").is_ok() {
+            let mut conf = rsmt2::SmtConf::yices_2();
+            conf.incremental();
+            conf.cmd("yices_smt2");
+            conf
+        } else if which::which("yices-smt2").is_ok() {
+            let mut conf = rsmt2::SmtConf::yices_2();
+            conf.incremental();
+            conf.cmd("yices-smt2");
+            conf
         } else if which::which("z3").is_ok() {
             rsmt2::SmtConf::z3()
         } else {
-            panic!("z3 required in PATH")
+            panic!("z3 or yices-smt2 required in PATH")
         };
 
 
