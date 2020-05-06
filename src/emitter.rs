@@ -529,6 +529,11 @@ impl Emitter {
             let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
             match expr {
                 ast::Expression::LiteralString{v,..} => {
+                    let mut v = v.clone();
+
+                    // TODO this is a hack to work around string literals containing
+                    // native file endings
+                    v.retain(|i|i!='\r');
                     f.write_all(v.as_bytes()).unwrap();
                 },
                 ast::Expression::ArrayInit{fields, ..} => {

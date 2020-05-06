@@ -108,7 +108,6 @@ fn main() {
                                     Ok(mut f) => {
                                         let mut v = Vec::new();
                                         f.read_to_end(&mut v).unwrap();
-                                        v.retain(|&i|i!=b'\r');
                                         stdin = Some(v);
                                     },
                                     Err(_) => {eprintln!("stdin testfile not found {}", path.to_string_lossy());}
@@ -117,7 +116,6 @@ fn main() {
                                     Ok(mut f) => {
                                         let mut v = Vec::new();
                                         f.read_to_end(&mut v).unwrap();
-                                        v.retain(|&i|i!=b'\r');
                                         stdout = Some(v);
                                     },
                                     Err(_) => {eprintln!("stdout testfile not found {}", path.to_string_lossy());}
