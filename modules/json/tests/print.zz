@@ -10,8 +10,7 @@ using json;
 
 test backspace {
     stdin = r#"{"developers": "C:\\developers\\developers"}"#
-    stdout = r#"developers : C:\developers\developers
-"#
+    stdout = "developers : C:\\developers\\developers\n"
 }
 
 
