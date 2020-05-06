@@ -142,6 +142,7 @@ export fn append_cstr(String+t mut * self, char * cstr)
     c_string::memcpy(self->mem + self->len, cstr, inlen);
     self->len += inlen;
 
+    (self->mem)[self->len] = 0;
     static_attest(nullterm(self->mem))
 }
 

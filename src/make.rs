@@ -439,6 +439,16 @@ impl Make {
 
             },
             super::project::ArtifactType::Lib => {
+
+                args.push("-fvisibility=hidden".into());
+                if !has_used_cxx.load(Ordering::Relaxed) {
+                    args.push("-fomit-frame-pointer".into());
+                    args.push("-fno-exceptions".into());
+                    args.push("-fno-asynchronous-unwind-tables".into());
+                    args.push("-fno-unwind-tables".into());
+                }
+                args.push("-fPIC".into());
+
                 std::fs::create_dir_all(format!("./target/{}/lib/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
@@ -457,6 +467,15 @@ impl Make {
                 args.push(format!("./target/macro/{}{}", self.artifact.name, EXE_EXT));
             }
             super::project::ArtifactType::Exe => {
+
+                args.push("-fvisibility=hidden".into());
+                if !has_used_cxx.load(Ordering::Relaxed) {
+                    args.push("-fomit-frame-pointer".into());
+                    args.push("-fno-exceptions".into());
+                    args.push("-fno-asynchronous-unwind-tables".into());
+                    args.push("-fno-unwind-tables".into());
+                }
+
                 std::fs::create_dir_all(format!("./target/{}/bin/", self.stage)).expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
@@ -480,13 +499,6 @@ impl Make {
             }
         }
 
-        args.push("-fvisibility=hidden".into());
-        if !has_used_cxx.load(Ordering::Relaxed) {
-            args.push("-fomit-frame-pointer".into());
-            args.push("-fno-exceptions".into());
-            args.push("-fno-asynchronous-unwind-tables".into());
-            args.push("-fno-unwind-tables".into());
-        }
 
 
         pb.lock().unwrap().message(&format!("ld [{:?}] {} ", self.artifact.typ, self.artifact.name));
