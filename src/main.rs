@@ -293,7 +293,7 @@ fn main() {
             }
 
             let indir = tempdir::TempDir::new("zzfuzz").unwrap();
-            let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("_{}", &exes[0].1));
+            let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("{}",exes[0].1.replace("::","_")));
             let mut havesome = false;
             match std::fs::read_dir(casedir) {
                 Err(_) => (),

@@ -255,9 +255,16 @@ impl Make {
         cflags.extend(user_cflags);
         lflags.extend(user_lflags);
 
+
+
+        let mut stage = stage.clone();
+        if let Ok(_) = std::env::var("ZZ_BUILD_NO_PIC") {
+            stage.pic = false;
+        }
+
         let mut m = Make {
             variant: variant.to_string(),
-            stage:   stage.clone(),
+            stage,
             cc,
             ar,
             artifact,

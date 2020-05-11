@@ -1,0 +1,22 @@
+using string;
+using <stdio.h>::{printf, stdin};
+using <stdlib.h>::{free};
+inline using "native.h"::{getline};
+
+
+test {
+    stdin  = "hello world"
+    stdout = "11\n"
+}
+
+test {
+    stdin  = ""
+    stdout = "0\n"
+}
+
+export fn main() -> int {
+    string::String+50 mut s = {0};
+    s.fgets(stdin);
+    printf("%u\n", string::strlen(s.cstr()));
+    return 0;
+}

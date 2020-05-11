@@ -54,5 +54,3 @@ inline static uint64_t bswap_64(uint64_t x)
 {
     return (bswap_32(x) + ((uint64_t)0)) <<32 | bswap_32(x>>32);
 }
-
-

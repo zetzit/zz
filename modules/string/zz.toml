@@ -9,6 +9,7 @@ lflags = []
 
 [dependencies]
 slice = "1"
+mem   = "1"
 
 [variants]
 default = []

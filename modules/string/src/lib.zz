@@ -1,9 +1,8 @@
-using <string.h> as c_string;
-using <stdio.h> as stdio;
 using <stdarg.h>::{va_list, va_start, va_end};
-using <stdio.h>::{vsnprintf, printf, FILE};
 using slice::{Slice, MutSlice};
-using <assert.h>::{assert};
+using mem;
+
+inline using "native.h" as native;
 
 export struct String+ {
     usize   len;
@@ -81,7 +80,7 @@ export fn clear(String+tail mut new* self)
     model self->len  == 0
     model nullterm(self->mem)
 {
-    c_string::memset(self->mem, 0, tail);
+    mem::set(self->mem, 0, tail);
     self->len = 0;
 
     static_attest(nullterm(self->mem));
@@ -140,7 +139,7 @@ export fn append_cstr(String+t mut * self, char * cstr)
         inlen = t - 1 - self->len;
     }
 
-    c_string::memcpy(self->mem + self->len, cstr, inlen);
+    unsafe{mem::copy(cstr, self->mem + self->len, inlen);};
     self->len += inlen;
 
     (self->mem)[self->len] = 0;
@@ -161,7 +160,7 @@ export fn append(String+t mut * self, String+t2 * other)
         inlen = t - 1 - self->len;
     }
 
-    c_string::memcpy(self->mem + self->len, other->mem, inlen);
+    unsafe { mem::copy(other->mem, self->mem + self->len, inlen); } 
     self->len += inlen;
 
     static_attest(nullterm(self->mem))
@@ -181,7 +180,7 @@ export fn append_bytes(String+t mut* self, u8* bytes, usize mut inlen)
         inlen = t - 1 - self->len;
     }
 
-    c_string::memcpy(self->mem + self->len, bytes, inlen);
+    unsafe { mem::copy(bytes, self->mem + self->len, inlen);} 
     self->len += inlen;
 
     static_attest(nullterm(self->mem))
@@ -208,7 +207,7 @@ export fn vformat(String+tail mut * self, char *fmt, va_list mut args) -> int
 
     usize isfree = tail - self->len;
 
-    int r = as<int>(vsnprintf(
+    int r = as<int>(native::xN_vsnprintf(
         self->mem +  self->len,
         isfree,
         fmt,
@@ -234,7 +233,16 @@ export fn vformat(String+tail mut * self, char *fmt, va_list mut args) -> int
 export fn eq_cstr(String+tail* self, char * unsafe b) -> bool
     where nullterm(b)
 {
-    return as<int>(c_string::strcmp(self->mem,b)) == 0;
+    static_attest(self->len < len(self->mem));
+    if b == 0 {
+        return self->len == 0;
+    }
+    static_attest(safe(b));
+    let l2 = strlen(b);
+    if l2 != self->len {
+        return false;
+    }
+    return mem::eq(self->mem, b, l2);
 }
 
 /// test if some c string is equal another c string
@@ -242,38 +250,60 @@ export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
     where a == 0 || nullterm(a)
     where b == 0 || nullterm(b)
 {
-    return as<int>(c_string::strcmp(a,b)) == 0;
+    if a == 0 || b == 0 {
+        return a == b;
+    }
+    static_attest(safe(a));
+    static_attest(safe(b));
+    let l1 = strlen(a);
+    let l2 = strlen(b);
+    if l1 != l2 {
+        return false;
+    }
+    return mem::eq(a, b, l2);
 }
 
 /// test if this string begings with some c string
-export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool {
-    usize alen = as<usize>(c_string::strlen(a));
+export fn starts_with_cstr(String+tail* self, char *unsafe a) -> bool
+    where a == 0 || nullterm(a)
+{
+    static_attest(self->len < len(self->mem));
+    if a == 0 {
+        return self->len == 0;
+    }
+    static_attest(safe(a));
+    usize alen = strlen(a);
     if alen > self->len {
         return false;
     }
-    return as<int>(c_string::strncmp(self->mem,a,alen)) == 0;
+    return mem::eq(self->mem,a,alen);
 }
 
 /// test if self ends with other string
 export fn ends_with_cstr(String+tail *self, char *unsafe a) -> bool
+    where a == 0 || nullterm(a)
 {
     static_attest(self->len < len(self->mem));
 
-    usize alen = as<usize>(c_string::strlen(a));
+    if a == 0 {
+        return self->len == 0;
+    }
+    static_attest(safe(a));
+    usize alen = strlen(a);
     if alen > self->len {
         return false;
     }
 
     usize start = self->len - alen;
-    return as<int>(c_string::strncmp(self->mem + start, a , alen)) == 0;
+    return mem::eq(self->mem + start, a , alen);
 }
 
 /// append to this string by reading from a FILE
-export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
+export fn fgets(String+tail mut* self, native::FILE mut * unsafe stream) -> bool
 {
     static_attest(self->len < tail);
 
-    char *rr = (char*)stdio::fgets(self->mem + self->len, tail - self->len, stream);
+    char *rr = unsafe<char*>(native::xN_fgets(self->mem + self->len, tail - self->len, stream));
     if rr == 0 {
         return false;
     }
@@ -325,9 +355,11 @@ export fn substr(String+tail *self, usize from, usize mut size, String+tail2 mut
     //TODO i'm not sure what ssa is confused about
     static_attest(size + other->len < tail2);
 
-    assert(size != 0);
+    if size == 0 {
+        return;
+    }
 
-    c_string::memcpy(other->mem + other->len, self->mem + from, size);
+    unsafe { mem::copy(self->mem + from, other->mem + other->len, size); } 
     (other->mem)[size + other->len] = 0;
     other->len += size;
 }
@@ -371,11 +403,19 @@ export fn space(String+tail *self) -> usize
 }
 
 /// length of a null terminated c string
-export fn strlen(char *s) -> usize
+export fn strlen(char * mut s) -> usize
     where nullterm(s)
     model return == len(s)
 {
-    usize l = (usize)c_string::strlen(s);
+    if s == 0 {
+        static_attest(len(s) == 0);
+        return 0;
+    }
+    usize mut l = 0;
+    while unsafe<bool>(s[l] != 0) {
+        l++;
+    }
+
     static_attest(l == len(s));
     return l;
 }

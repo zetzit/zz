@@ -104,6 +104,10 @@ pub struct Config {
 }
 
 pub fn init() {
+    let mut dependencies = HashMap::new();
+    dependencies.insert("log".into(), "1".into());
+    dependencies.insert("mem".into(), "1".into());
+
     let mut c  = Config {
         artifacts: None,
         project: Project {
@@ -111,7 +115,7 @@ pub fn init() {
             version: "0.1.0".to_string(),
             ..Default::default()
         },
-        dependencies:   Some(HashMap::new()),
+        dependencies:   Some(dependencies),
         features:       None,
         variants:       HashMap::new(),
         repos:          HashMap::new(),
@@ -129,10 +133,10 @@ pub fn init() {
     if !std::env::current_dir().unwrap().join("src/main.zz").exists() {
         let mut f = File::create("./src/main.zz").unwrap();
         write!(f, "\
-using <stdio.h>::{{printf}};
+using log;
 
 export fn main() -> int {{
-    printf(\"hello {}\\n\");
+    log::info(\"hello %s\\n\", \"{}\");
     return 0;
 }}
 ", c.project.name).unwrap();
