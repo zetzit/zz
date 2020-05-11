@@ -700,8 +700,7 @@ impl Emitter {
         if (ast.vis == ast::Visibility::Export && isimpl) || self.header {
             if self.header {
                 if structtail == &ast::Tail::None || tail_variant.is_some() {
-                    write!(self.f, "const size_t sizeof_{} = sizeof({});\n",
-                        self.to_local_name(&Name::from(&ast.name)),
+                    write!(self.f, "const size_t sizeof_{};\n",
                         self.to_local_name(&Name::from(&ast.name)),
                     ).unwrap();
                 } else if let ast::Tail::Dynamic(_) = structtail {
@@ -829,11 +828,11 @@ impl Emitter {
             }
         };
 
-        match &ast.vis {
-            ast::Visibility::Object => (),
-            ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
-            ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
-        }
+        //match &ast.vis {
+        //    ast::Visibility::Object => (),
+        //    ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
+        //    ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),
+        //}
 
         let mut name = Name::from(&ast.name);
         for (attr, loc) in attr {
@@ -938,6 +937,7 @@ impl Emitter {
             };
         }
 
+        let mut vis = ast.vis.clone();
         let mut name = Name::from(&ast.name);
         for (attr, loc) in attr {
             match attr.as_str() {
@@ -948,6 +948,7 @@ impl Emitter {
                 },
                 "inline" => {
                     write!(self.f, " static inline ").unwrap();
+                    vis = ast::Visibility::Object;
                 },
                 o => {
                     parser::emit_error(
@@ -973,7 +974,7 @@ impl Emitter {
         if ast.name.ends_with("::main") {
             write!(self.f, "main (").unwrap();
         } else  {
-            match &ast.vis {
+            match &vis {
                 ast::Visibility::Object => (),
                 ast::Visibility::Shared => write!(self.f, "__attribute__ ((visibility (\"hidden\"))) ").unwrap(),
                 ast::Visibility::Export => write!(self.f, "__attribute__ ((visibility (\"default\"))) ").unwrap(),

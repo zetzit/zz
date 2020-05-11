@@ -59,6 +59,9 @@ impl Pipeline {
         self.do_macros();
         for artifact in std::mem::replace(&mut self.project.artifacts, None).expect("no artifacts") {
             match (&artifact.typ, &buildset) {
+                (project::ArtifactType::Lib, super::BuildSet::Export(_)) => (),
+                (_, super::BuildSet::Export(_)) => continue,
+
                 (project::ArtifactType::Test, super::BuildSet::Tests)  => (),
                 (project::ArtifactType::Test, _)                => continue,
                 (project::ArtifactType::Exe, _)                 => (),
@@ -243,8 +246,26 @@ impl Pipeline {
         make.build(&emitter::builtin(&self.project.project, &self.stage, &artifact, symbols));
 
 
-        if buildset != &super::BuildSet::Check {
-            make.link();
+        match buildset {
+            super::BuildSet::Check      => return,
+            super::BuildSet::Export(exporttype)  => {
+                match exporttype {
+                    super::ExportType::Cmake => {
+                        super::export_cmake::export(make);
+                    }
+                    super::ExportType::NodeJs => {
+                        super::emitter_js::make_npm_module(&make);
+                    }
+                    super::ExportType::Esp => {
+                        super::export_esp::export(make);
+                    }
+                    super::ExportType::Rust => {
+                        super::emitter_rs::make_module(&make);
+                    }
+                }
+                println!("exported [{:?}] {}", artifact.typ, artifact.name);
+            }
+            _ => make.link(),
         }
     }
 

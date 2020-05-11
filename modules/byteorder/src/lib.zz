@@ -3,8 +3,9 @@ inline using "lib.h"::{BYTE_ORDER};
 // host to big endian
 
 pub inline fn to_be16(u16 x) -> u16 {
-    BYTE_ORDER;
+    int __workaround = unsafe<int>(BYTE_ORDER);
     @{{
+        (void)__workaround;
         #if BYTE_ORDER == LITTLE_ENDIAN
             return bswap_16(x);
         #else
@@ -17,8 +18,9 @@ pub inline fn from_be16(u16 x) -> u16 {
 }
 
 pub inline fn to_be32(u32 x) -> u32{
-    BYTE_ORDER;
+    int __workaround = unsafe<int>(BYTE_ORDER);
     @{{
+        (void)__workaround;
         #if BYTE_ORDER == LITTLE_ENDIAN
             return bswap_32(x);
         #else
@@ -31,8 +33,9 @@ pub inline fn from_be32(u32 x) -> u32 {
 }
 
 pub inline fn to_be64(u64 x) -> u64 {
-    BYTE_ORDER;
+    int __workaround = unsafe<int>(BYTE_ORDER);
     @{{
+        (void)__workaround;
         #if BYTE_ORDER == LITTLE_ENDIAN
             return bswap_64(x);
         #else
@@ -49,8 +52,9 @@ pub inline fn from_be64(u64  x) -> u64 {
 // host to little endian
 
 pub inline fn to_le16(u16 x) -> u16 {
-    BYTE_ORDER;
+    int __workaround = unsafe<int>(BYTE_ORDER);
     @{{
+        (void)__workaround;
         #if BYTE_ORDER == BIG_ENDIAN
             return bswap_16(x);
         #else
@@ -63,7 +67,9 @@ pub inline fn from_le16(u16 x) -> u16 {
 }
 
 pub inline fn to_le32(u32 x) -> u32{
+    int __workaround = unsafe<int>(BYTE_ORDER);
     @{{
+        (void)__workaround;
         #if BYTE_ORDER == BIG_ENDIAN
             return bswap_32(x);
         #else
@@ -76,8 +82,9 @@ pub inline fn from_le32(u32 x) -> u32 {
 }
 
 pub inline fn to_le64(u64 x) -> u64 {
-    BYTE_ORDER;
+    int __workaround = unsafe<int>(BYTE_ORDER);
     @{{
+        (void)__workaround;
         #if BYTE_ORDER == BIG_ENDIAN
             return bswap_64(x);
         #else

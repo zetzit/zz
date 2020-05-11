@@ -31,6 +31,10 @@ fn main() {
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
             .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
             .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
+
+        .subcommand(SubCommand::with_name("export").about("export to other build system")
+            .arg(Arg::with_name("exporttype").takes_value(true).required(true).index(1)))
+
         .subcommand(SubCommand::with_name("build").about("build the current project")
             .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
@@ -215,6 +219,47 @@ fn main() {
                 }
             }
 
+        }
+        ("export", Some(submatches)) => {
+            match submatches.value_of("exporttype").unwrap() {
+                "rust" | "cargo" => {
+                    zz::build(
+                        zz::BuildSet::Export(zz::ExportType::Rust),
+                        submatches.value_of("variant").unwrap_or("default"),
+                        zz::make::Stage::release(),
+                        submatches.is_present("slow")
+                    )
+                }
+                "nodejs" | "npm" => {
+                    zz::build(
+                        zz::BuildSet::Export(zz::ExportType::NodeJs),
+                        submatches.value_of("variant").unwrap_or("default"),
+                        zz::make::Stage::release(),
+                        submatches.is_present("slow")
+                    )
+                }
+                "cmake" => {
+                    zz::build(
+                        zz::BuildSet::Export(zz::ExportType::Cmake),
+                        submatches.value_of("variant").unwrap_or("default"),
+                        zz::make::Stage::release(),
+                        submatches.is_present("slow")
+                    )
+                }
+                "esp" => {
+                    zz::build(
+                        zz::BuildSet::Export(zz::ExportType::Esp),
+                        submatches.value_of("variant").unwrap_or("default"),
+                        zz::make::Stage::release(),
+                        submatches.is_present("slow")
+                    )
+                }
+                o => {
+                    error!("unsupported export type: {}.  must be one of: esp, cmake, nodejs, npm, rust, cargo", o);
+                    std::process::exit(9);
+
+                }
+            }
         }
         ("run", Some(submatches)) => {
             let stage = if submatches.is_present("release") {

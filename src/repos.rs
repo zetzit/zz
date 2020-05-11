@@ -38,10 +38,6 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf>
 
             match url.scheme() {
                 "file" => {
-                    let np = Path::new(url.path()).join("modules");
-                    if !np.exists() {
-                        panic!("unsupported repo in url: {} : no modules subdir", surl);
-                    }
                 },
                 "https" => {
                     panic!(format!("unsupported scheme in repo url: {}, did you mean git:// ?", surl));
@@ -87,9 +83,31 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf>
     };
 
     let mut searchpaths = HashSet::new();
-    for (name, _) in &index.repos {
-        searchpaths.insert(Path::new("target").join("repos").join("___"));
-        searchpaths.insert(Path::new("target").join("repos").join(name).join("modules"));
+    for (name, repo) in &index.repos {
+        let url = match url::Url::parse(&repo.origin) {
+            Ok(v) => v,
+            Err(url::ParseError::RelativeUrlWithoutBase) => {
+                url::Url::parse(&format!("file://{}", repo.origin)).expect(&format!("unable to parse repo url: {}", repo.origin))
+            }
+            Err(e) => {
+                panic!(format!("unable to parse repo url: {}: {}", repo.origin, e));
+            }
+        };
+        match url.scheme() {
+            "file" => {
+                let np = Path::new(url.path()).join("modules");
+                if np.exists() {
+                    searchpaths.insert(np);
+                } else {
+                    searchpaths.insert(url.path().into());
+                }
+            },
+            _ => {
+                searchpaths.insert(Path::new("target").join("repos").join("___"));
+                searchpaths.insert(Path::new("target").join("repos").join(name).join("modules"));
+            }
+        }
+
     }
     return searchpaths;
 }

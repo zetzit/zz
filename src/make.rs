@@ -7,7 +7,6 @@ use std::collections::HashSet;
 use std::process::Command;
 use pbr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use super::emitter_js;
 
 static ABORT:           AtomicBool = AtomicBool::new(false);
 pub static BUILD_RS:    AtomicBool = AtomicBool::new(false);
@@ -225,7 +224,6 @@ impl Make {
         //TODO
         match artifact.typ {
             super::project::ArtifactType::Staticlib |
-            super::project::ArtifactType::NodeModule => (),
             _ => {
                 if stage.lto {
                     cflags.push("-flto".into());
@@ -371,22 +369,6 @@ impl Make {
 
 
     pub fn link(mut self) {
-        match self.artifact.typ {
-            super::project::ArtifactType::NodeModule => {
-                emitter_js::make_npm_module(&self);
-                return;
-            }
-            super::project::ArtifactType::CMake => {
-                super::export_cmake::export(self);
-                return;
-            }
-            super::project::ArtifactType::Rust => {
-                super::emitter_rs::make_module(&self);
-                return;
-            }
-            _ => {}
-        }
-
         use rayon::prelude::*;
         use std::sync::{Arc, Mutex};
 
@@ -495,14 +477,6 @@ impl Make {
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
                 args.push(format!("./target/{}/bin/{}{}", self.stage, self.artifact.name, EXE_EXT));
-            }
-            super::project::ArtifactType::Header  => {
-                panic!("cannot link header yet");
-            }
-            super::project::ArtifactType::CMake |
-            super::project::ArtifactType::Rust |
-            super::project::ArtifactType::NodeModule => {
-                unreachable!();
             }
         }
 

@@ -1,6 +1,4 @@
 using <stdarg.h>::{va_list, va_start, va_end};
-using <stdio.h>::{vfprintf, fprintf, stderr};
-using <stdlib.h>::{getenv};
 using string;
 
 inline using "os.h"::{
@@ -8,6 +6,7 @@ inline using "os.h"::{
     os_zz_log_warn,
     os_zz_log_info,
     os_zz_log_debug,
+    getenv,
 }
 
 

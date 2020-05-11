@@ -26,6 +26,7 @@ pub mod makro;
 pub mod pipeline;
 pub mod repos;
 pub mod export_cmake;
+pub mod export_esp;
 
 use std::path::Path;
 use name::Name;
@@ -49,11 +50,20 @@ impl Error {
 }
 
 #[derive(PartialEq)]
+pub enum ExportType {
+    Esp,
+    Cmake,
+    NodeJs,
+    Rust,
+}
+
+#[derive(PartialEq)]
 pub enum BuildSet {
     Tests,
     Run,
     Check,
     All,
+    Export(ExportType),
 }
 
 
