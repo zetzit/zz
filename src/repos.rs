@@ -95,12 +95,8 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf>
         };
         match url.scheme() {
             "file" => {
-                let np = Path::new(url.path()).join("modules");
-                if np.exists() {
-                    searchpaths.insert(np);
-                } else {
-                    searchpaths.insert(url.path().into());
-                }
+                searchpaths.insert(url.path().into());
+                searchpaths.insert(Path::new(url.path()).join("modules"));
             },
             _ => {
                 searchpaths.insert(Path::new("target").join("repos").join("___"));

@@ -206,48 +206,10 @@ impl Make {
                 lflags.push(flag.to_string());
             }
         }
-        if stage.pic {
-            cflags.push("-fPIC".into());
-        }
         cflags.push("-I".into());
         cflags.push(".".into());
         cflags.push("-I".into());
         cflags.push("-fvisibility=hidden".to_string());
-
-
-        if let Some(opt) = &stage.optimize {
-            cflags.push(format!("-O{}",opt).into());
-            lflags.push("-O3".into());
-        }
-
-
-        //TODO
-        match artifact.typ {
-            super::project::ArtifactType::Staticlib |
-            _ => {
-                if stage.lto {
-                    cflags.push("-flto".into());
-                    lflags.push("-flto".into());
-                }
-            }
-        }
-
-
-        if stage.debug {
-            cflags.push("-g".into());
-            lflags.push("-g".into());
-            cflags.push("-fstack-protector-strong".into());
-        }
-
-        if stage.asan {
-            cflags.push("-fsanitize=address".into());
-            lflags.push("-fsanitize=address".into());
-        }
-
-        if stage.fuzz{
-            cflags.push("-m32".into());
-            lflags.push("-m32".into());
-        }
 
 
         cflags.extend(user_cflags);
@@ -286,6 +248,37 @@ impl Make {
     pub fn cobject(&mut self, inp: &Path) {
 
         let mut args = self.cflags.clone();
+
+        if self.stage.pic {
+            args.push("-fPIC".into());
+        }
+        if let Some(opt) = &self.stage.optimize {
+            args.push(format!("-O{}",opt).into());
+        }
+
+        //TODO
+        match &self.artifact.typ {
+            super::project::ArtifactType::Staticlib |
+            _ => {
+                if self.stage.lto {
+                    args.push("-flto".into());
+                }
+            }
+        }
+
+        if self.stage.debug {
+            args.push("-g".into());
+            args.push("-fstack-protector-strong".into());
+        }
+
+        if self.stage.asan {
+            args.push("-fsanitize=address".into());
+        }
+
+        if self.stage.fuzz{
+            args.push("-m32".into());
+        }
+
         args.push("-c".to_string());
         args.push(inp.to_string_lossy().to_string());
         args.push("-o".to_string());
@@ -410,6 +403,17 @@ impl Make {
 
         let mut cmd     = if has_used_cxx.load(Ordering::Relaxed) { self.cxx.clone() } else { self.cc.clone() };
         let mut args    = Vec::new();
+
+        if self.stage.debug {
+            args.push("-g".into());
+            args.push("-fstack-protector-strong".into());
+        }
+        if self.stage.asan {
+            args.push("-fsanitize=address".into());
+        }
+        if self.stage.fuzz{
+            args.push("-m32".into());
+        }
 
         match self.artifact.typ {
             super::project::ArtifactType::Staticlib => {
