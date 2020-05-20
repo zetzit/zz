@@ -8,6 +8,8 @@ use toml::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ArtifactType {
+    Macro,
+
     #[serde(rename = "lib")]
     Lib,
     #[serde(rename = "staticlib")]
@@ -16,8 +18,15 @@ pub enum ArtifactType {
     Exe,
     #[serde(rename = "test")]
     Test,
-    #[serde(rename = "macro")]
-    Macro,
+
+    #[serde(rename = "rust")]
+    Rust,
+    #[serde(rename = "npm")]
+    NodeModule,
+    #[serde(rename = "cmake")]
+    CMake,
+    #[serde(rename = "esp32")]
+    Esp32,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -27,6 +36,8 @@ pub struct Artifact {
     #[serde(rename = "type")]
     pub typ:        ArtifactType,
     pub indexjs:    Option<String>,
+    #[serde(default)]
+    pub requires:   Vec<String>,
 }
 
 
@@ -37,6 +48,7 @@ impl Default for Artifact {
             main:       String::new(),
             typ:        ArtifactType::Lib,
             indexjs:    None,
+            requires:   Vec::new(),
         }
     }
 }

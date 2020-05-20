@@ -7,6 +7,10 @@ use std::collections::HashSet;
 use std::process::Command;
 use pbr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use crate::emitter_js;
+use crate::export_cmake;
+use crate::emitter_rs;
+use crate::export_esp;
 
 static ABORT:           AtomicBool = AtomicBool::new(false);
 pub static BUILD_RS:    AtomicBool = AtomicBool::new(false);
@@ -257,14 +261,14 @@ impl Make {
         }
 
         //TODO
-        match &self.artifact.typ {
-            super::project::ArtifactType::Staticlib |
-            _ => {
+        //match &self.artifact.typ {
+        //    super::project::ArtifactType::Staticlib |
+        //    _ => {
                 if self.stage.lto {
                     args.push("-flto".into());
                 }
-            }
-        }
+        //    }
+        //}
 
         if self.stage.debug {
             args.push("-g".into());
@@ -361,44 +365,56 @@ impl Make {
     }
 
 
-    pub fn link(mut self) {
+    pub fn link(self) {
         use rayon::prelude::*;
         use std::sync::{Arc, Mutex};
 
+        let needs_objects = match self.artifact.typ {
+            super::project::ArtifactType::Exe |
+            super::project::ArtifactType::Test |
+            super::project::ArtifactType::Macro |
+            super::project::ArtifactType::Lib
+            => true,
+            _ => false,
+        };
 
         let has_used_cxx = AtomicBool::new(false);
-
         let pb = Arc::new(Mutex::new(pbr::ProgressBar::new(self.steps.len() as u64)));
         pb.lock().unwrap().show_speed = false;
-        self.steps.par_iter().for_each(|step|{
-            if ABORT.load(Ordering::Relaxed) {
-                return;
-            };
-            let mut cmd = self.cc.clone();
-            if step.cxx {
-                cmd = self.cxx.clone();
-                has_used_cxx.store(true, Ordering::Relaxed);
-            }
-            pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
-            if step.is_dirty() {
-                debug!("{} {:?}", cmd, step.args);
-                let status = Command::new(&cmd)
-                    .env("AFL_USE_ASAN", "1")
-                    .args(&step.args)
-                    .status()
-                    .expect("failed to execute cc");
-                if !status.success() {
-                    error!("cc: [{}] args: [{}]", cmd, step.args.join(" "));
-                    ABORT.store(true, Ordering::Relaxed);
+        if needs_objects {
+
+            self.steps.par_iter().for_each(|step|{
+                if ABORT.load(Ordering::Relaxed) {
+                    return;
+                };
+                let mut cmd = self.cc.clone();
+                if step.cxx {
+                    cmd = self.cxx.clone();
+                    has_used_cxx.store(true, Ordering::Relaxed);
                 }
-            }
-            pb.lock().unwrap().inc();
-        });
+                pb.lock().unwrap().message(&format!("{} {:?} ", self.cc, step.source));
 
-        if ABORT.load(Ordering::Relaxed) {
-            pb.lock().unwrap().finish_print(&format!("failed [{:?}] {}", self.artifact.typ, self.artifact.name));
-            std::process::exit(11);
+                if step.is_dirty() {
+                    debug!("{} {:?}", cmd, step.args);
+                    let status = Command::new(&cmd)
+                        .env("AFL_USE_ASAN", "1")
+                        .args(&step.args)
+                        .status()
+                        .expect("failed to execute cc");
+                    if !status.success() {
+                        error!("cc: [{}] args: [{}]", cmd, step.args.join(" "));
+                        ABORT.store(true, Ordering::Relaxed);
+                    }
+                }
+                pb.lock().unwrap().inc();
+            });
+
+            if ABORT.load(Ordering::Relaxed) {
+                pb.lock().unwrap().finish_print(&format!("failed [{:?}] {}", self.artifact.typ, self.artifact.name));
+                std::process::exit(11);
+            }
+
         }
 
         let mut cmd     = if has_used_cxx.load(Ordering::Relaxed) { self.cxx.clone() } else { self.cc.clone() };
@@ -414,8 +430,27 @@ impl Make {
         if self.stage.fuzz{
             args.push("-m32".into());
         }
+        if self.stage.lto {
+            args.push("-flto".into());
+        }
 
         match self.artifact.typ {
+            super::project::ArtifactType::NodeModule => {
+                emitter_js::make_npm_module(&self);
+                return;
+            }
+            super::project::ArtifactType::Rust=> {
+                emitter_rs::make_module(&self);
+                return;
+            }
+            super::project::ArtifactType::CMake => {
+                export_cmake::export(self);
+                return;
+            }
+            super::project::ArtifactType::Esp32 => {
+                export_esp::export(self);
+                return;
+            }
             super::project::ArtifactType::Staticlib => {
                 std::fs::create_dir_all(format!("./target/{}/lib/", self.stage)).expect("create target dir");
                 cmd = self.ar.clone();

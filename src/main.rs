@@ -26,27 +26,26 @@ fn main() {
         .version(clap::crate_version!())
         .setting(clap::AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("smt-timeout").takes_value(true).required(false).long("smt-timeout"))
-        .subcommand(SubCommand::with_name("check").about("check the current project"))
+        .subcommand(SubCommand::with_name("check").about("check the current project")
             .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
             .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
             .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
-
-        .subcommand(SubCommand::with_name("export").about("export to other build system")
-            .arg(Arg::with_name("exporttype").takes_value(true).required(true).index(1)))
-
+        )
         .subcommand(SubCommand::with_name("build").about("build the current project")
             .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
             .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
             .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
             .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
+            .arg(Arg::with_name("artifact").takes_value(true).required(false).index(1))
+            .arg(Arg::with_name("export").takes_value(false).required(false).long("export"))
         )
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
         .subcommand(SubCommand::with_name("bench").about("benchmark tests/*.zz")
-                    .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
+            .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
         )
         .subcommand(SubCommand::with_name("test").about("execute tests/*.zz")
-                    .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
+            .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
         )
         .subcommand(SubCommand::with_name("init").about("init zz project in current directory"))
         .subcommand(
@@ -220,47 +219,6 @@ fn main() {
             }
 
         }
-        ("export", Some(submatches)) => {
-            match submatches.value_of("exporttype").unwrap() {
-                "rust" | "cargo" => {
-                    zz::build(
-                        zz::BuildSet::Export(zz::ExportType::Rust),
-                        submatches.value_of("variant").unwrap_or("default"),
-                        zz::make::Stage::release(),
-                        submatches.is_present("slow")
-                    )
-                }
-                "nodejs" | "npm" => {
-                    zz::build(
-                        zz::BuildSet::Export(zz::ExportType::NodeJs),
-                        submatches.value_of("variant").unwrap_or("default"),
-                        zz::make::Stage::release(),
-                        submatches.is_present("slow")
-                    )
-                }
-                "cmake" => {
-                    zz::build(
-                        zz::BuildSet::Export(zz::ExportType::Cmake),
-                        submatches.value_of("variant").unwrap_or("default"),
-                        zz::make::Stage::release(),
-                        submatches.is_present("slow")
-                    )
-                }
-                "esp" => {
-                    zz::build(
-                        zz::BuildSet::Export(zz::ExportType::Esp),
-                        submatches.value_of("variant").unwrap_or("default"),
-                        zz::make::Stage::release(),
-                        submatches.is_present("slow")
-                    )
-                }
-                o => {
-                    error!("unsupported export type: {}.  must be one of: esp, cmake, nodejs, npm, rust, cargo", o);
-                    std::process::exit(9);
-
-                }
-            }
-        }
         ("run", Some(submatches)) => {
             let stage = if submatches.is_present("release") {
                 zz::make::Stage::release()
@@ -396,7 +354,15 @@ fn main() {
                 zz::make::Stage::test()
             };
 
-            zz::build(zz::BuildSet::All, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
+            let set = if submatches.is_present("export") {
+                zz::BuildSet::Export
+            } else if let Some(v) = submatches.value_of("artifact") {
+                zz::BuildSet::Named(v.to_string())
+            } else {
+                zz::BuildSet::All
+            };
+
+            zz::build(set, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
         },
         ("", None) => {
             zz::build(zz::BuildSet::All, "default", zz::make::Stage::test(), false);

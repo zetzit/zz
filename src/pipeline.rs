@@ -56,19 +56,33 @@ impl Pipeline {
     }
 
     pub fn build(mut self, buildset: super::BuildSet) {
+        let mut didone = false;
         self.do_macros();
         for artifact in std::mem::replace(&mut self.project.artifacts, None).expect("no artifacts") {
             match (&artifact.typ, &buildset) {
-                (project::ArtifactType::Lib, super::BuildSet::Export(_)) => (),
-                (_, super::BuildSet::Export(_)) => continue,
 
+                (project::ArtifactType::Rust,        super::BuildSet::Export) => (),
+                (project::ArtifactType::NodeModule,  super::BuildSet::Export) => (),
+                (project::ArtifactType::CMake,       super::BuildSet::Export) => (),
+                (project::ArtifactType::Esp32,       super::BuildSet::Export) => (),
+                (_                           ,       super::BuildSet::Export) => continue,
+
+
+                (_, super::BuildSet::Named(name)) if &artifact.name == name => (),
+                (_, super::BuildSet::Named(_))  => continue,
                 (project::ArtifactType::Test, super::BuildSet::Tests)  => (),
                 (project::ArtifactType::Test, _)                => continue,
                 (project::ArtifactType::Exe, _)                 => (),
                 (_, super::BuildSet::Run)                       => continue,
                 (_,_)                                           => (),
             };
+            didone = true;
             self.do_artifact(artifact, &buildset);
+        }
+        if !didone {
+            if let super::BuildSet::Named(name) = &buildset{
+                panic!("no artifact named {}", name);
+            }
         }
     }
 
@@ -94,7 +108,7 @@ impl Pipeline {
                 name:       macromod.name.0[1..].join("_"),
                 main:       format!("{}", macromod.name),
                 typ:        project::ArtifactType::Macro,
-                indexjs:    None,
+                ..Default::default()
             };
             self.modules.insert(macromod.name.clone(), loader::Module::ZZ(macromod));
             self.do_artifact(artifact, &super::BuildSet::Run);
@@ -245,27 +259,8 @@ impl Pipeline {
 
         make.build(&emitter::builtin(&self.project.project, &self.stage, &artifact, symbols));
 
-
-        match buildset {
-            super::BuildSet::Check      => return,
-            super::BuildSet::Export(exporttype)  => {
-                match exporttype {
-                    super::ExportType::Cmake => {
-                        super::export_cmake::export(make);
-                    }
-                    super::ExportType::NodeJs => {
-                        super::emitter_js::make_npm_module(&make);
-                    }
-                    super::ExportType::Esp => {
-                        super::export_esp::export(make);
-                    }
-                    super::ExportType::Rust => {
-                        super::emitter_rs::make_module(&make);
-                    }
-                }
-                println!("exported [{:?}] {}", artifact.typ, artifact.name);
-            }
-            _ => make.link(),
+        if buildset != &super::BuildSet::Check {
+            make.link();
         }
     }
 

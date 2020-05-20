@@ -50,20 +50,13 @@ impl Error {
 }
 
 #[derive(PartialEq)]
-pub enum ExportType {
-    Esp,
-    Cmake,
-    NodeJs,
-    Rust,
-}
-
-#[derive(PartialEq)]
 pub enum BuildSet {
     Tests,
     Run,
     Check,
     All,
-    Export(ExportType),
+    Export,
+    Named(String),
 }
 
 
