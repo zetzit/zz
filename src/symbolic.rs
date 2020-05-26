@@ -1,55 +1,59 @@
-use crate::flatten;
-use crate::ast;
-use crate::name::Name;
-use std::collections::HashMap;
-use super::parser::{self, emit_warn, emit_debug};
-use ast::Tags;
-use crate::smt::{Solver, self};
+use super::parser::{self, emit_debug, emit_warn};
 use super::Error;
+use crate::ast;
+use crate::flatten;
+use crate::name::Name;
+use crate::smt::{self, Solver};
+use ast::Tags;
+use std::collections::HashMap;
 
 pub type Symbol = usize;
 pub type TemporalSymbol = (Symbol, u64);
 
 #[derive(Clone, Debug)]
-enum Value{
+enum Value {
     Void,
     Uninitialized,
     PostfixOp {
-        lhs:    TemporalSymbol,
-        op:     ast::PostfixOperator,
+        lhs: TemporalSymbol,
+        op: ast::PostfixOperator,
     },
     PrefixOp {
-        rhs:    TemporalSymbol,
-        op:     ast::PrefixOperator,
+        rhs: TemporalSymbol,
+        op: ast::PrefixOperator,
     },
     InfixOp {
-        lhs:    TemporalSymbol,
-        rhs:    TemporalSymbol,
-        op:     ast::InfixOperator,
+        lhs: TemporalSymbol,
+        rhs: TemporalSymbol,
+        op: ast::InfixOperator,
     },
     Theory {
-        args:   Vec<ast::NamedArg>,
-        ret:    ast::Typed,
+        args: Vec<ast::NamedArg>,
+        ret: ast::Typed,
     },
     Function {
-        loc:    ast::Location,
-        args:   Vec<ast::NamedArg>,
+        loc: ast::Location,
+        args: Vec<ast::NamedArg>,
         vararg: bool,
-        ret:    Option<ast::Typed>,
+        ret: Option<ast::Typed>,
         callsite_assert: Vec<ast::Expression>,
         callsite_effect: Vec<ast::Expression>,
     },
-    SelfCall{
+    Closure {
+        fns: Symbol,
+        ctx: Symbol,
+    },
+    SelfCall {
         selfarg: Box<ast::Expression>,
-        name:    ast::Expression,
+        name: ast::Expression,
     },
     Address(Symbol),
     Struct {
-        members:  HashMap<String, Symbol>,
+        members: HashMap<String, Symbol>,
     },
     Array {
-        len:    usize,
-        array:  HashMap<usize, Symbol>,
+        len: usize,
+        array: HashMap<usize, Symbol>,
     },
     Unconstrained(String),
     Integer(u64),
@@ -59,65 +63,68 @@ enum Value{
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Void             => write!(f, "void"),
-            Value::Uninitialized    => write!(f, "uninitialized"),
-            Value::Integer(s)       => write!(f, "integer ({})", s),
-            Value::InfixOp{..}      => write!(f, "op"),
-            Value::PrefixOp{..}     => write!(f, "op"),
-            Value::PostfixOp{..}    => write!(f, "op"),
-            Value::Struct{..}       => write!(f, "struct"),
-            Value::Array{len,..}    => write!(f, "address to {} memory locations", len),
-            Value::Address(_)       => write!(f, "address to memory location"),
+            Value::Void => write!(f, "void"),
+            Value::Uninitialized => write!(f, "uninitialized"),
+            Value::Integer(s) => write!(f, "integer ({})", s),
+            Value::InfixOp { .. } => write!(f, "op"),
+            Value::PrefixOp { .. } => write!(f, "op"),
+            Value::PostfixOp { .. } => write!(f, "op"),
+            Value::Struct { .. } => write!(f, "struct"),
+            Value::Array { len, .. } => write!(f, "address to {} memory locations", len),
+            Value::Address(_) => write!(f, "address to memory location"),
             Value::Unconstrained(s) => write!(f, "unconstrained : {}", s),
-            Value::Theory{..}       => write!(f, "theory"),
-            Value::Function{..}     => write!(f, "function"),
-            Value::SelfCall{..}     => write!(f, "self call"),
-            Value::Macro(name)      => write!(f, "macro {}", name),
+            Value::Theory { .. } => write!(f, "theory"),
+            Value::Function { .. } => write!(f, "function"),
+            Value::Closure { .. } => write!(f, "closure"),
+            Value::SelfCall { .. } => write!(f, "self call"),
+            Value::Macro(name) => write!(f, "macro {}", name),
         }
     }
 }
 
-
 #[derive(Clone)]
 struct Storage {
-    name:           Name,
-    typed:          ast::Typed,
-    t:              crate::smt::Type,
-    declared:       ast::Location,
-    value:          Value,
-    tags:           ast::Tags,
-    temporal:       u64,
-    assignments:    HashMap<u64, ast::Location>,
+    name: Name,
+    typed: ast::Typed,
+    t: crate::smt::Type,
+    declared: ast::Location,
+    value: Value,
+    tags: ast::Tags,
+    temporal: u64,
+    assignments: HashMap<u64, ast::Location>,
 
     //TODO not actually implemented
-    borrows:        Vec<(Symbol, ast::Location)>,
+    borrows: Vec<(Symbol, ast::Location)>,
 }
 
 #[derive(Clone)]
-struct Scope{
-    name:   String,
+struct Scope {
+    name: String,
     locals: HashMap<Name, usize>,
-    trace:  Vec<(TemporalSymbol, ast::Location, bool /*only demonstrace if true*/)>,
+    trace: Vec<(
+        TemporalSymbol,
+        ast::Location,
+        bool, /*only demonstrace if true*/
+    )>,
 }
 
 pub struct Symbolic {
-    stack:      Vec<Scope>,
-    memory:     Vec<Storage>,
-    ssa:        Solver,
-    builtin:    HashMap<String, Symbol>,
-    defs:       HashMap<Name, ast::Def>,
-    current_module_name:    String,
-    current_function_name:  String,
-    current_function_ret:   Option<Symbol>,
+    stack: Vec<Scope>,
+    memory: Vec<Storage>,
+    ssa: Solver,
+    builtin: HashMap<String, Symbol>,
+    defs: HashMap<Name, ast::Def>,
+    current_module_name: String,
+    current_function_name: String,
+    current_function_ret: Option<Symbol>,
     current_function_model: Vec<ast::Expression>,
-    current_call:           Vec<ast::Location>,
-    in_loop:    bool,
-    in_model:   bool,
+    current_call: Vec<ast::Location>,
+    in_loop: bool,
+    in_model: bool,
 
-    macros_available:   bool,
-    incomplete:         bool,
+    macros_available: bool,
+    incomplete: bool,
 }
-
 
 pub enum ScopeReturn {
     NoReturn,
@@ -126,170 +133,204 @@ pub enum ScopeReturn {
 
 impl Symbolic {
     fn execute_module(&mut self, module: &mut flatten::Module, fun: usize) -> Result<(), Error> {
-
         debug!("~~~~~\nexecuting {}", module.name);
 
         self.current_module_name = module.name.human_name();
 
         // built in len theory
-        let sym = self.alloc(Name::from("len"), ast::Typed{
-            t:      ast::Type::Other(Name::from("theory")),
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        },
-        ast::Location::builtin(), Tags::new()
-        )?;
-        self.memory[sym].value = Value::Theory{args: vec![ast::NamedArg{
-            typed: ast::Typed{
-                t:      ast::Type::Other("void".into()),
-                ptr:    vec![ast::Pointer{
-                    tags: ast::Tags::new(),
-                    loc:  ast::Location::builtin(),
-                }],
-                loc:    ast::Location::builtin(),
-                tail:   ast::Tail::None,
+        let sym = self.alloc(
+            Name::from("len"),
+            ast::Typed {
+                t: ast::Type::Other(Name::from("theory")),
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
             },
-            name:   "array".to_string(),
-            tags:   ast::Tags::new(),
-            loc:    ast::Location::builtin(),
-        }], ret: ast::Typed{
-            t:      ast::Type::USize,
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        }};
-        self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "len", smt::Type::Unsigned(64));
+            ast::Location::builtin(),
+            Tags::new(),
+        )?;
+        self.memory[sym].value = Value::Theory {
+            args: vec![ast::NamedArg {
+                typed: ast::Typed {
+                    t: ast::Type::Other("void".into()),
+                    ptr: vec![ast::Pointer {
+                        tags: ast::Tags::new(),
+                        loc: ast::Location::builtin(),
+                    }],
+                    loc: ast::Location::builtin(),
+                    tail: ast::Tail::None,
+                },
+                name: "array".to_string(),
+                tags: ast::Tags::new(),
+                loc: ast::Location::builtin(),
+            }],
+            ret: ast::Typed {
+                t: ast::Type::USize,
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
+            },
+        };
+        self.ssa.theory(
+            sym,
+            vec![smt::Type::Unsigned(64)],
+            "len",
+            smt::Type::Unsigned(64),
+        );
         self.builtin.insert("len".to_string(), sym);
 
         // built in safe theory
-        let sym = self.alloc(Name::from("safe"), ast::Typed{
-            t:      ast::Type::Other(Name::from("theory")),
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        },
-        ast::Location::builtin(), Tags::new()
-        )?;
-        self.memory[sym].value = Value::Theory{args: vec![ast::NamedArg{
-            typed: ast::Typed{
-                t:      ast::Type::Other("void".into()),
-                ptr:    vec![ast::Pointer{
-                    tags: ast::Tags::new(),
-                    loc:  ast::Location::builtin(),
-                }],
-                loc:    ast::Location::builtin(),
-                tail:   ast::Tail::None,
+        let sym = self.alloc(
+            Name::from("safe"),
+            ast::Typed {
+                t: ast::Type::Other(Name::from("theory")),
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
             },
-            name:   "pointer".to_string(),
-            tags:   ast::Tags::new(),
-            loc:    ast::Location::builtin(),
-        }], ret: ast::Typed{
-            t:      ast::Type::Bool,
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        }};
-        self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "safe", smt::Type::Bool);
+            ast::Location::builtin(),
+            Tags::new(),
+        )?;
+        self.memory[sym].value = Value::Theory {
+            args: vec![ast::NamedArg {
+                typed: ast::Typed {
+                    t: ast::Type::Other("void".into()),
+                    ptr: vec![ast::Pointer {
+                        tags: ast::Tags::new(),
+                        loc: ast::Location::builtin(),
+                    }],
+                    loc: ast::Location::builtin(),
+                    tail: ast::Tail::None,
+                },
+                name: "pointer".to_string(),
+                tags: ast::Tags::new(),
+                loc: ast::Location::builtin(),
+            }],
+            ret: ast::Typed {
+                t: ast::Type::Bool,
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
+            },
+        };
+        self.ssa
+            .theory(sym, vec![smt::Type::Unsigned(64)], "safe", smt::Type::Bool);
         self.builtin.insert("safe".to_string(), sym);
 
         // built in nullterm theory
-        let sym = self.alloc(Name::from("nullterm"), ast::Typed{
-            t:      ast::Type::Other(Name::from("theory")),
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        },
-        ast::Location::builtin(), Tags::new()
-        )?;
-        self.memory[sym].value = Value::Theory{args: vec![ast::NamedArg{
-            typed: ast::Typed{
-                t:      ast::Type::Other("::ext::<stddef.h>::char".into()),
-                ptr:    vec![ast::Pointer{
-                    tags: ast::Tags::new(),
-                    loc:  ast::Location::builtin(),
-                }],
-                loc:    ast::Location::builtin(),
-                tail:   ast::Tail::None,
+        let sym = self.alloc(
+            Name::from("nullterm"),
+            ast::Typed {
+                t: ast::Type::Other(Name::from("theory")),
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
             },
-            name:   "cstr".to_string(),
-            tags:   ast::Tags::new(),
-            loc:    ast::Location::builtin(),
-        }], ret: ast::Typed{
-            t:      ast::Type::Bool,
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        }};
-        self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "nullterm", smt::Type::Bool);
+            ast::Location::builtin(),
+            Tags::new(),
+        )?;
+        self.memory[sym].value = Value::Theory {
+            args: vec![ast::NamedArg {
+                typed: ast::Typed {
+                    t: ast::Type::Other("::ext::<stddef.h>::char".into()),
+                    ptr: vec![ast::Pointer {
+                        tags: ast::Tags::new(),
+                        loc: ast::Location::builtin(),
+                    }],
+                    loc: ast::Location::builtin(),
+                    tail: ast::Tail::None,
+                },
+                name: "cstr".to_string(),
+                tags: ast::Tags::new(),
+                loc: ast::Location::builtin(),
+            }],
+            ret: ast::Typed {
+                t: ast::Type::Bool,
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
+            },
+        };
+        self.ssa.theory(
+            sym,
+            vec![smt::Type::Unsigned(64)],
+            "nullterm",
+            smt::Type::Bool,
+        );
         self.builtin.insert("nullterm".to_string(), sym);
 
-
-
         // built in symbol theory
-        let sym = self.alloc(Name::from("symbol"), ast::Typed{
-            t:      ast::Type::Other(Name::from("theory")),
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        },
-        ast::Location::builtin(), Tags::new()
-        )?;
-        self.memory[sym].value = Value::Theory{args: vec![ast::NamedArg{
-            typed: ast::Typed{
-                t:      ast::Type::Other("::ext::<stddef.h>::char".into()),
-                ptr:    vec![ast::Pointer{
-                    tags: ast::Tags::new(),
-                    loc:  ast::Location::builtin(),
-                }],
-                loc:    ast::Location::builtin(),
-                tail:   ast::Tail::None,
+        let sym = self.alloc(
+            Name::from("symbol"),
+            ast::Typed {
+                t: ast::Type::Other(Name::from("theory")),
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
             },
-            name:   "cstr".to_string(),
-            tags:   ast::Tags::new(),
-            loc:    ast::Location::builtin(),
-        }], ret: ast::Typed{
-            t:      ast::Type::Bool,
-            ptr:    Vec::new(),
-            loc:    ast::Location::builtin(),
-            tail:   ast::Tail::None,
-        }};
-        self.ssa.theory(sym, vec![smt::Type::Unsigned(64)], "symbol", smt::Type::Bool);
+            ast::Location::builtin(),
+            Tags::new(),
+        )?;
+        self.memory[sym].value = Value::Theory {
+            args: vec![ast::NamedArg {
+                typed: ast::Typed {
+                    t: ast::Type::Other("::ext::<stddef.h>::char".into()),
+                    ptr: vec![ast::Pointer {
+                        tags: ast::Tags::new(),
+                        loc: ast::Location::builtin(),
+                    }],
+                    loc: ast::Location::builtin(),
+                    tail: ast::Tail::None,
+                },
+                name: "cstr".to_string(),
+                tags: ast::Tags::new(),
+                loc: ast::Location::builtin(),
+            }],
+            ret: ast::Typed {
+                t: ast::Type::Bool,
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
+            },
+        };
+        self.ssa.theory(
+            sym,
+            vec![smt::Type::Unsigned(64)],
+            "symbol",
+            smt::Type::Bool,
+        );
         self.builtin.insert("symbol".to_string(), sym);
 
-
-
-
-
-        for (name,loc) in &module.c_names {
+        for (name, loc) in &module.c_names {
             let sym = self.alloc(
                 name.clone(),
-                ast::Typed{
-                    t:      ast::Type::Other(name.clone()),
-                    ptr:    Vec::new(),
-                    loc:    loc.clone(),
-                    tail:   ast::Tail::None,
+                ast::Typed {
+                    t: ast::Type::Other(name.clone()),
+                    ptr: Vec::new(),
+                    loc: loc.clone(),
+                    tail: ast::Tail::None,
                 },
-                loc.clone(), Tags::new()
+                loc.clone(),
+                Tags::new(),
             )?;
             self.memory[sym].value = Value::Unconstrained(format!("c name {}", name))
         }
 
-
         // declaration run
-        for (d,complete) in &mut module.d {
+        for (d, complete) in &mut module.d {
             self.defs.insert(Name::from(&d.name), d.def.clone());
             match &mut d.def {
-                ast::Def::Theory{args, ret, ..} => {
+                ast::Def::Theory { args, ret, .. } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
-                        ast::Typed{
-                            t:      ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr:    Vec::new(),
-                            loc:    d.loc.clone(),
-                            tail:   ast::Tail::None,
+                        ast::Typed {
+                            t: ast::Type::Other(Name::from(&d.name.clone())),
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
                         },
-                        d.loc.clone(), Tags::new()
+                        d.loc.clone(),
+                        Tags::new(),
                     );
                     let sym = match sym {
                         Err(_) => continue,
@@ -298,35 +339,57 @@ impl Symbolic {
 
                     let ret = if let Some(ret) = ret {
                         if let ast::Type::Other(_) = ret.typed.t {
-                            return Err(self.trace(format!("theory is unprovable"), vec![
-                                (ret.typed.loc.clone(), format!("theory must return builtin sized type"))
-                            ]));
+                            return Err(self.trace(
+                                format!("theory is unprovable"),
+                                vec![(
+                                    ret.typed.loc.clone(),
+                                    format!("theory must return builtin sized type"),
+                                )],
+                            ));
                         } else {
                             ret.typed.clone()
                         }
                     } else {
-                        return Err(self.trace(format!("theory needs a return value"), vec![
-                            (d.loc.clone(), format!("theory must return builtin sized type"))
-                        ]));
+                        return Err(self.trace(
+                            format!("theory needs a return value"),
+                            vec![(
+                                d.loc.clone(),
+                                format!("theory must return builtin sized type"),
+                            )],
+                        ));
                     };
 
-                    self.memory[sym].value = Value::Theory{args: args.clone(), ret: ret.clone()};
+                    self.memory[sym].value = Value::Theory {
+                        args: args.clone(),
+                        ret: ret.clone(),
+                    };
 
-                    let ssa_args = args.iter().map(|t|{
-                        Self::smt_type(&t.typed)
-                    }).collect::<Vec<_>>();
+                    let ssa_args = args
+                        .iter()
+                        .map(|t| Self::smt_type(&t.typed))
+                        .collect::<Vec<_>>();
 
-                    self.ssa.theory(sym, ssa_args, &d.name, Self::smt_type(&ret));
-                },
-                ast::Def::Function{args, vararg, ret, callassert, calleffect, ..} => {
-
-                    let sym = self.alloc(Name::from(&d.name), ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
-                    },
-                    d.loc.clone(), Tags::new()
+                    self.ssa
+                        .theory(sym, ssa_args, &d.name, Self::smt_type(&ret));
+                }
+                ast::Def::Function {
+                    args,
+                    vararg,
+                    ret,
+                    callassert,
+                    calleffect,
+                    ..
+                } => {
+                    let sym = self.alloc(
+                        Name::from(&d.name),
+                        ast::Typed {
+                            t: ast::Type::Other(Name::from(&d.name.clone())),
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
+                        },
+                        d.loc.clone(),
+                        Tags::new(),
                     );
                     let sym = match sym {
                         Err(_) => continue,
@@ -334,25 +397,29 @@ impl Symbolic {
                     };
 
                     self.memory[sym].value = Value::Function {
-                        loc:    d.loc.clone(),
-                        args:   args.clone(),
+                        loc: d.loc.clone(),
+                        args: args.clone(),
                         vararg: *vararg,
-                        ret:    ret.as_ref().map(|r|r.typed.clone()),
+                        ret: ret.as_ref().map(|r| r.typed.clone()),
                         callsite_assert: callassert.clone(),
                         callsite_effect: calleffect.clone(),
                     };
                     self.ssa_mark_safe(sym, &d.loc)?;
-
-                },
-                ast::Def::Static {tags, typed, expr, array, ..} => {
-
+                }
+                ast::Def::Static {
+                    tags,
+                    typed,
+                    expr,
+                    array,
+                    ..
+                } => {
                     let mut typed = typed.clone();
 
                     match array {
                         ast::Array::None => (),
                         _ => {
-                            typed.ptr.push(ast::Pointer{
-                                loc:  d.loc.clone(),
+                            typed.ptr.push(ast::Pointer {
+                                loc: d.loc.clone(),
                                 tags: Tags::new(),
                             });
                         }
@@ -369,11 +436,11 @@ impl Symbolic {
                         ast::Array::None => (),
                         ast::Array::Unsized => {
                             self.memory[sym].value = Value::Array {
-                                len:    0,
-                                array:  HashMap::new(),
+                                len: 0,
+                                array: HashMap::new(),
                             };
                         }
-                        ast::Array::Sized(expr)=> {
+                        ast::Array::Sized(expr) => {
                             let asym = self.execute_expr(expr)?;
                             let val = self.ssa.value((asym, self.memory[asym].temporal), |a,_| match a {
                                 smt::Assertion::Constrained(i) => {
@@ -387,13 +454,12 @@ impl Symbolic {
                             })?;
 
                             self.memory[sym].value = Value::Array {
-                                len:    val as usize,
-                                array:  HashMap::new(),
+                                len: val as usize,
+                                array: HashMap::new(),
                             };
                             self.len_into_ssa(sym, expr.loc(), val as usize)?;
                         }
                     }
-
 
                     // we have no precondition checks for globals,
                     // so they can only be constrained if they're const
@@ -402,88 +468,95 @@ impl Symbolic {
                         self.copy(sym, esym, &d.loc)?;
                         self.tail_into_ssa(sym, &d.loc)?;
                     }
-
-                },
-                ast::Def::Const { typed, expr} => {
+                }
+                ast::Def::Const { typed, expr } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
                         typed.clone(),
-                        d.loc.clone(), Tags::new()
+                        d.loc.clone(),
+                        Tags::new(),
                     )?;
                     let esym = self.execute_expr(expr)?;
                     self.copy(sym, esym, &d.loc)?;
-                },
-                ast::Def::Fntype {..} => {
+                }
+                ast::Def::Closure { .. } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
-                        ast::Typed{
-                            t:      ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr:    Vec::new(),
-                            loc:    d.loc.clone(),
-                            tail:   ast::Tail::None,
+                        ast::Typed {
+                            t: ast::Type::Other(Name::from(&d.name.clone())),
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
                         },
-                        d.loc.clone(), Tags::new()
+                        d.loc.clone(),
+                        Tags::new(),
                     );
                     let sym = match sym {
                         Err(_) => continue,
                         Ok(v) => v,
                     };
-                },
-                ast::Def::Struct {..} => {
+                }
+                ast::Def::Struct { .. } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
-                        ast::Typed{
-                            t:      ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr:    Vec::new(),
-                            loc:    d.loc.clone(),
-                            tail:   ast::Tail::None,
+                        ast::Typed {
+                            t: ast::Type::Other(Name::from(&d.name.clone())),
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
                         },
-                        d.loc.clone(), Tags::new()
+                        d.loc.clone(),
+                        Tags::new(),
                     );
                     let sym = match sym {
                         Err(_) => continue,
                         Ok(v) => v,
                     };
-                },
-                ast::Def::Symbol{} => {
+                }
+                ast::Def::Symbol {} => {
                     let sym = self.alloc(
                         Name::from(&d.name),
-                        ast::Typed{
-                            t:      ast::Type::ULiteral,
-                            ptr:    Vec::new(),
-                            loc:    d.loc.clone(),
-                            tail:   ast::Tail::None,
+                        ast::Typed {
+                            t: ast::Type::ULiteral,
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
                         },
-                        d.loc.clone(), Tags::new()
+                        d.loc.clone(),
+                        Tags::new(),
                     )?;
                     self.memory[sym].value = Value::Unconstrained("symbolic".to_string());
 
                     let tmp = self.temporary(
                         format!("true"),
-                        ast::Typed{
-                            t:      ast::Type::Bool,
-                            ptr:    Vec::new(),
-                            loc:    d.loc.clone(),
-                            tail:   ast::Tail::None,
+                        ast::Typed {
+                            t: ast::Type::Bool,
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
                         },
                         d.loc.clone(),
                         Tags::new(),
                     )?;
-                    let thsym = self.builtin.get("symbol").expect("ICE: symbol theory not built in");
-                    self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp,0));
+                    let thsym = self
+                        .builtin
+                        .get("symbol")
+                        .expect("ICE: symbol theory not built in");
+                    self.ssa
+                        .invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
                     self.ssa.literal(tmp, 1, smt::Type::Bool);
-
                 }
-                ast::Def::Enum{names} => {
+                ast::Def::Enum { names } => {
                     self.alloc(
                         Name::from(&d.name),
-                        ast::Typed{
-                            t:      ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr:    Vec::new(),
-                            loc:    d.loc.clone(),
-                            tail:   ast::Tail::None,
+                        ast::Typed {
+                            t: ast::Type::Other(Name::from(&d.name.clone())),
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
                         },
-                        d.loc.clone(), Tags::new()
+                        d.loc.clone(),
+                        Tags::new(),
                     )?;
                     let mut value = 0;
                     for (name, val) in names {
@@ -495,57 +568,72 @@ impl Symbolic {
                         }
 
                         let t = ast::Typed {
-                            t:      ast::Type::ULiteral,
-                            loc:    d.loc.clone(),
-                            ptr:    Vec::new(),
-                            tail:   ast::Tail::None,
+                            t: ast::Type::ULiteral,
+                            loc: d.loc.clone(),
+                            ptr: Vec::new(),
+                            tail: ast::Tail::None,
                         };
-                        let sym = self.alloc(
-                            localname,
-                            t,
-                            d.loc.clone(),
-                            ast::Tags::new(),
-                        )?;
+                        let sym = self.alloc(localname, t, d.loc.clone(), ast::Tags::new())?;
                         self.memory[sym].value = Value::Integer(value);
 
                         self.ssa.literal(sym, value, self.memory[sym].t.clone());
 
                         value += 1;
                     }
-                },
-                ast::Def::Macro{..} => {
+                }
+                ast::Def::Macro { .. } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
-                        ast::Typed{
-                            t:      ast::Type::Other(Name::from(&d.name)),
-                            ptr:    Vec::new(),
-                            loc:    d.loc.clone(),
-                            tail:   ast::Tail::None,
+                        ast::Typed {
+                            t: ast::Type::Other(Name::from(&d.name)),
+                            ptr: Vec::new(),
+                            loc: d.loc.clone(),
+                            tail: ast::Tail::None,
                         },
-                        d.loc.clone(), Tags::new()
+                        d.loc.clone(),
+                        Tags::new(),
                     )?;
                     self.memory[sym].value = Value::Macro(Name::from(&d.name));
                     self.ssa_mark_safe(sym, &d.loc)?;
-                },
-                ast::Def::Testcase {..} => {},
-                ast::Def::Include {..} => {},
+                }
+                ast::Def::Testcase { .. } => {}
+                ast::Def::Include { .. } => {}
             }
         }
 
-        let (fun,_) = &mut module.d[fun];
+        let (fun, _) = &mut module.d[fun];
 
         match &mut fun.def {
-            ast::Def::Function{args, body, ret, callassert, calleffect, callattests, ..} => {
-                self.execute_function(&fun.name, args, ret.as_ref(), body, callassert, calleffect, callattests)?;
+            ast::Def::Function {
+                args,
+                body,
+                ret,
+                callassert,
+                calleffect,
+                callattests,
+                ..
+            } => {
+                self.execute_function(
+                    &fun.name,
+                    args,
+                    ret.as_ref(),
+                    body,
+                    callassert,
+                    calleffect,
+                    callattests,
+                )?;
                 if !self.ssa.solve() {
-                    return Err(self.trace(format!("function is unprovable"), vec![
-                        (fun.loc.clone(), format!("this function body is impossible to prove"))
-                    ]));
+                    return Err(self.trace(
+                        format!("function is unprovable"),
+                        vec![(
+                            fun.loc.clone(),
+                            format!("this function body is impossible to prove"),
+                        )],
+                    ));
                 }
-            },
+            }
             _ => unreachable!(),
         }
-
 
         Ok(())
     }
@@ -554,75 +642,102 @@ impl Symbolic {
         &mut self,
         name: &String,
         args: &Vec<ast::NamedArg>,
-        ret:  Option<&ast::AnonArg>,
+        ret: Option<&ast::AnonArg>,
         body: &mut ast::Block,
         callassert: &mut Vec<ast::Expression>,
         calleffect: &mut Vec<ast::Expression>,
         callattests: &mut Vec<ast::Expression>,
     ) -> Result<(), Error> {
-
         self.push(format!("function {}", name));
-        self.ssa.push(&format!("\n\n\n\
+        self.ssa.push(&format!(
+            "\n\n\n\
                                 ;----------------------------------------------\n\
                                 ;function {}\n\
                                 ;----------------------------------------------\n\
-                                ", name));
+                                ",
+            name
+        ));
         self.ssa.branch();
-        self.current_function_name  = name.clone();
+        self.current_function_name = name.clone();
         self.current_function_model = calleffect.clone();
 
-        let mut prev : Option<Symbol> =  None;
+        let mut prev: Option<Symbol> = None;
         for i in 0..args.len() {
             let argname = Name::from(&args[i].name);
-            let sym = self.alloc(argname.clone(), args[i].typed.clone(), args[i].loc.clone(), args[i].tags.clone())?;
-            self.memory[sym].value = Value::Unconstrained(format!("passed by value as {}", argname));
+            let sym = self.alloc(
+                argname.clone(),
+                args[i].typed.clone(),
+                args[i].loc.clone(),
+                args[i].tags.clone(),
+            )?;
+            self.memory[sym].value =
+                Value::Unconstrained(format!("passed by value as {}", argname));
 
             if args[i].tags.contains("tail") {
                 let prev = match prev {
                     Some(v) => v,
                     None => {
-                        return Err(self.trace(format!("tail tag without previous arg"), vec![
-                            (args[i].loc.clone(), format!("something went wrong here"))
-                        ]));
+                        return Err(self.trace(
+                            format!("tail tag without previous arg"),
+                            vec![(args[i].loc.clone(), format!("something went wrong here"))],
+                        ));
                     }
                 };
 
                 if self.memory[sym].typed.t != ast::Type::USize {
-                    return Err(self.trace(format!("ICE: tail binding not emitted as usize"), vec![
-                        (args[i].loc.clone(), format!("this is a bug"))
-                    ]));
+                    return Err(self.trace(
+                        format!("ICE: tail binding not emitted as usize"),
+                        vec![(args[i].loc.clone(), format!("this is a bug"))],
+                    ));
                 }
 
                 self.ssa.debug_loc(&args[i].loc);
 
                 let field_name = match &self.memory[prev].typed.t {
                     ast::Type::Other(n) => match self.defs.get(&n) {
-                        Some(ast::Def::Struct{fields, ..}) => {
+                        Some(ast::Def::Struct { fields, .. }) => {
                             if fields.len() < 1 {
-                                return Err(self.trace(format!("tail binding on struct with no members"), vec![
-                                    (self.memory[prev].declared.clone(), format!("this struct must have members"))
-                                ]));
+                                return Err(self.trace(
+                                    format!("tail binding on struct with no members"),
+                                    vec![(
+                                        self.memory[prev].declared.clone(),
+                                        format!("this struct must have members"),
+                                    )],
+                                ));
                             }
                             fields.last().unwrap().name.clone()
-                        },
+                        }
                         o => {
-                            return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
-                                (self.memory[prev].declared.clone(), format!("cannot use tail binding"))
-                            ]));
+                            return Err(self.trace(
+                                format!("tail value on non struct {:?}", o),
+                                vec![(
+                                    self.memory[prev].declared.clone(),
+                                    format!("cannot use tail binding"),
+                                )],
+                            ));
                         }
                     },
                     o => {
-                        return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
-                            (self.memory[prev].declared.clone(), format!("cannot use tail binding"))
-                        ]));
+                        return Err(self.trace(
+                            format!("tail value on non struct {:?}", o),
+                            vec![(
+                                self.memory[prev].declared.clone(),
+                                format!("cannot use tail binding"),
+                            )],
+                        ));
                     }
                 };
 
-
                 if self.memory[prev].typed.ptr.len() != 1 {
-                    return Err(self.trace(format!("tail passed as non pointer"), vec![
-                        (self.memory[prev].declared.clone(), format!("tails can only be passed if the type is passed as pointer depth 1"))
-                    ]));
+                    return Err(self.trace(
+                        format!("tail passed as non pointer"),
+                        vec![(
+                            self.memory[prev].declared.clone(),
+                            format!(
+                                "tails can only be passed if the type is passed as pointer depth 1"
+                            ),
+                        )],
+                    ));
                 }
 
                 let mut nutype = self.memory[prev].typed.clone();
@@ -638,23 +753,29 @@ impl Symbolic {
                 let member_sym = self.member_access(sym2, &field_name, &args[i].loc)?;
                 let tmp = self.temporary(
                     format!("len({})", self.memory[sym2].name),
-                    ast::Typed{
-                        t:      ast::Type::USize,
-                        ptr:    Vec::new(),
-                        loc:    args[i].loc.clone(),
-                        tail:   ast::Tail::None,
+                    ast::Typed {
+                        t: ast::Type::USize,
+                        ptr: Vec::new(),
+                        loc: args[i].loc.clone(),
+                        tail: ast::Tail::None,
                     },
                     args[i].loc.clone(),
                     Tags::new(),
                 )?;
-                let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                self.ssa.invocation(*lensym, vec![(member_sym, self.memory[member_sym].temporal)], (tmp, 0));
+                let lensym = self
+                    .builtin
+                    .get("len")
+                    .expect("ICE: len theory not built in");
+                self.ssa.invocation(
+                    *lensym,
+                    vec![(member_sym, self.memory[member_sym].temporal)],
+                    (tmp, 0),
+                );
                 self.ssa.assign(
                     (tmp, self.memory[tmp].temporal),
                     (sym, self.memory[sym].temporal),
                     self.memory[tmp].t.clone(),
                 );
-
             }
 
             prev = Some(sym);
@@ -663,19 +784,32 @@ impl Symbolic {
         for callassert in callassert.iter_mut().chain(callattests.iter_mut()) {
             let sym = self.execute_expr(callassert)?;
             if self.memory[sym].t != smt::Type::Bool {
-                return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
-                    (callassert.loc().clone(), format!("coercion to boolean is not well defined"))
-                ]));
+                return Err(self.trace(
+                    format!("expected boolean, got {}", self.memory[sym].typed),
+                    vec![(
+                        callassert.loc().clone(),
+                        format!("coercion to boolean is not well defined"),
+                    )],
+                ));
             }
             if !self.ssa.attest((sym, self.memory[sym].temporal), true) {
-                return Err(self.trace(format!("callsite assert broke ssa solution"), vec![
-                    (callassert.loc().clone(), format!("there may be conflicting constraints"))
-                ]));
+                return Err(self.trace(
+                    format!("callsite assert broke ssa solution"),
+                    vec![(
+                        callassert.loc().clone(),
+                        format!("there may be conflicting constraints"),
+                    )],
+                ));
             }
         }
 
         if let Some(ret) = ret {
-            self.current_function_ret = Some(self.alloc(Name::from("return"), ret.typed.clone(), ret.typed.loc.clone(), ast::Tags::new())?);
+            self.current_function_ret = Some(self.alloc(
+                Name::from("return"),
+                ret.typed.clone(),
+                ret.typed.loc.clone(),
+                ast::Tags::new(),
+            )?);
         } else {
             self.current_function_ret = None;
         }
@@ -684,13 +818,11 @@ impl Symbolic {
 
         self.check_function_model(&body.end)?;
 
-
         self.ssa.unbranch(false);
         self.ssa.pop(&format!("end of function {}\n\n", name));
         self.pop();
         Ok(())
     }
-
 
     fn check_function_model(&mut self, end: &ast::Location) -> Result<(), Error> {
         if self.current_function_model.len() < 1 {
@@ -704,33 +836,37 @@ impl Symbolic {
         let mut locs = Vec::new();
 
         for callsite_effect in &mut self.current_function_model.clone() {
-
             self.in_model = true;
             let casym = self.execute_expr(callsite_effect)?;
             self.in_model = false;
 
             if self.memory[casym].t != smt::Type::Bool {
-                return Err(self.trace(format!("expected boolean, got {}", self.memory[casym].typed), vec![
-                    (callsite_effect.loc().clone(), format!("model expression must be boolean"))
-                ]));
+                return Err(self.trace(
+                    format!("expected boolean, got {}", self.memory[casym].typed),
+                    vec![(
+                        callsite_effect.loc().clone(),
+                        format!("model expression must be boolean"),
+                    )],
+                ));
             }
 
             syms.push((casym, self.memory[casym].temporal));
             locs.push(callsite_effect.loc().clone());
         }
 
-
         // try the fast path
-        let ok = self.ssa.assert(syms.clone(), |val,_|val);
-
+        let ok = self.ssa.assert(syms.clone(), |val, _| val);
 
         // one assertion broke, try them individually
         if !ok {
-            for (sym,loc) in syms.into_iter().zip(locs.into_iter()) {
-                self.ssa.assert(vec![sym], |a,model| match a {
-                    false  => {
+            for (sym, loc) in syms.into_iter().zip(locs.into_iter()) {
+                self.ssa.assert(vec![sym], |a, model| match a {
+                    false => {
                         let mut estack = vec![
-                            (loc.clone(), format!("function does not behave like this model")),
+                            (
+                                loc.clone(),
+                                format!("function does not behave like this model"),
+                            ),
                             (end.clone(), format!("when returning here")),
                         ];
                         if let Some(model) = &model {
@@ -738,9 +874,7 @@ impl Symbolic {
                         }
                         Err(self.trace(format!("unproven model"), estack))
                     }
-                    true => {
-                        Ok(())
-                    }
+                    true => Ok(()),
                 })?;
             }
         };
@@ -748,39 +882,192 @@ impl Symbolic {
         self.ssa.pop("end of model check");
         self.pop();
         Ok(())
-
     }
 
+    fn autocast(
+        &mut self,
+        expr: &mut ast::Expression,
+        expected_type: &ast::Typed,
+    ) -> Result<Symbol, Error> {
+        let mut symbol = self.execute_expr(expr)?;
 
-    fn type_coersion(&mut self, a: Symbol, b: Symbol, here: &ast::Location) -> Result<(ast::Typed, Symbol, Symbol), Error>  {
-        if let Value::Theory{..} =  self.memory[a].value {
-            return Err(self.trace(format!("theory '{}' is not a real world object", self.memory[a].name ), vec![
-                (here.clone(), format!("cannot use theory in this instance"))
-            ]));
+        if let ast::Type::Other(o) = &self.memory[symbol].typed.t {
+            if let Some(has_d) = self.defs.get(o) {
+                if let ast::Type::Other(o2) = &expected_type.t {
+                    if let Some(need_d) = self.defs.get(o2) {
+                        match (has_d, need_d) {
+                            (ast::Def::Function {args: fnargs, nameloc: fnnameloc,.. },
+                             ast::Def::Closure {args: closureargs, nameloc: closurenameloc, .. }) => {
+                                if fnargs.len() != closureargs.len() {
+                                    return Err(Error::new(
+                                        "call argument count mismatch".to_string(),
+                                        vec![
+                                        (expr.loc().clone(), format!(
+                                            "cannot use function with {} arguments as closure with {} arguments",
+                                            fnargs.len(), closureargs.len()
+                                        )),
+                                        ( closurenameloc.clone(), format!(
+                                            "closure has {} arguments",
+                                            closureargs.len(),
+                                        )),
+                                        (fnnameloc.clone(), format!(
+                                            "function has {} arguments",
+                                            fnargs.len(),
+                                        )),
+                                        ],
+                                    ));
+                                }
+
+
+                                for i in 0..fnargs.len() {
+                                    if fnargs[i].typed.t != closureargs[i].typed.t ||
+                                    fnargs[i].typed.ptr.len() != closureargs[i].typed.ptr.len() {
+                                        return Err(Error::new(
+                                            "incompatible function pointers".to_string(),
+                                            vec![
+                                            (expr.loc().clone(),format!(
+                                                "argument types need to match exactly when using function as closure"),
+                                            ),
+                                            (fnargs[i].typed.loc.clone(), format!("type {}", fnargs[i].typed)),
+                                            (closureargs[i].typed.loc.clone(), format!("type {}", closureargs[i].typed)),
+                                            ],
+                                        ));
+                                    }
+                                }
+
+                                let ctx_none = ast::Expression::Literal {
+                                    loc: expr.loc().clone(),
+                                    v: "0".to_string(),
+                                };
+
+                                let cast = ast::Expression::Cast {
+                                    loc: expr.loc().clone(),
+                                    expr: Box::new(expr.clone()),
+                                    into: ast::Typed {
+                                        t:      ast::Type::Other(Name::from("void")),
+                                        loc:    expr.loc().clone(),
+                                        ptr:    vec![ast::Pointer{loc:expr.loc().clone(), tags: ast::Tags::new()}],
+                                        tail:   ast::Tail::None,
+                                    },
+                                };
+
+                                let fields = vec![
+                                    ("fn".to_string(), Box::new(cast)),
+                                    ("ctx".to_string(), Box::new(ctx_none.clone())),
+                                ];
+                                *expr = ast::Expression::StructInit {
+                                    loc: expr.loc().clone(),
+                                    typed: expected_type.clone(),
+                                    fields,
+                                };
+                                symbol = self.execute_expr(expr)?;
+                                self.memory[symbol].typed = expected_type.clone();
+                                self.memory[symbol].value = self.make_closure_val(o2.clone())?;
+                                self.memory[symbol].name = Name::from(&format!("{}", o2));
+                                self.ssa_mark_safe(symbol, expr.loc())?;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
         }
-        if let Value::Theory{..} =  self.memory[b].value {
-            return Err(self.trace(format!("theory '{}' is not a real world object", self.memory[b].name ), vec![
-                (here.clone(), format!("cannot use theory in this instance"))
-            ]));
+
+        if &self.memory[symbol].typed != expected_type
+            && (expected_type.ptr.len() == self.memory[symbol].typed.ptr.len())
+            && (expected_type.ptr.len() == 1)
+            {
+
+
+
+            // pointers to structs can be used as pointers to their first field
+            // this is valid C, where you would use cast,
+            // but we use member access to avoid confusing the prover
+            if let ast::Type::Other(n) = &self.memory[symbol].typed.t {
+                if let Some(ast::Def::Struct { fields, .. }) = self.defs.get(&n) {
+
+
+                    if let Some(field) = fields.get(0) {
+                        if field.typed.t == expected_type.t {
+                            *expr = ast::Expression::UnaryPre {
+                                loc: expr.loc().clone(),
+                                op: ast::PrefixOperator::AddressOf,
+                                expr: Box::new(ast::Expression::MemberAccess {
+                                    loc: expr.loc().clone(),
+                                    lhs: Box::new(expr.clone()),
+                                    op: "->".to_string(),
+                                    rhs: field.name.clone(),
+                                }),
+                            };
+                            symbol = self.execute_expr(expr)?;
+                        }
+                    }
+                }
+            }
+
+            // pointers with tail can be used as pointer without tail
+            let mut into_type = self.memory[symbol].typed.clone();
+            match (&expected_type.tail, &self.memory[symbol].typed.tail) {
+                (ast::Tail::None, ast::Tail::Bind(_, _))
+                    | (ast::Tail::None, ast::Tail::Static(_, _)) => {
+                        into_type.tail = ast::Tail::None;
+                    }
+                _ => {}
+            }
+            if into_type != self.memory[symbol].typed {
+                *expr = ast::Expression::Cast {
+                    into: into_type,
+                    expr: Box::new(expr.clone()),
+                    loc: expr.loc().clone(),
+                };
+                symbol = self.execute_expr(expr)?;
+            }
+
+        }
+
+        return Ok(symbol);
+    }
+
+    fn type_coersion(
+        &mut self,
+        a: Symbol,
+        b: Symbol,
+        here: &ast::Location,
+    ) -> Result<(ast::Typed, Symbol, Symbol), Error> {
+        if let Value::Theory { .. } = self.memory[a].value {
+            return Err(self.trace(
+                format!(
+                    "theory '{}' is not a real world object",
+                    self.memory[a].name
+                ),
+                vec![(here.clone(), format!("cannot use theory in this instance"))],
+            ));
+        }
+        if let Value::Theory { .. } = self.memory[b].value {
+            return Err(self.trace(
+                format!(
+                    "theory '{}' is not a real world object",
+                    self.memory[b].name
+                ),
+                vec![(here.clone(), format!("cannot use theory in this instance"))],
+            ));
         }
 
         if self.memory[a].typed == self.memory[b].typed {
-            return Ok((self.memory[a].typed.clone(), a,b));
+            return Ok((self.memory[a].typed.clone(), a, b));
         }
-
 
         // if one is elided, it becomes the other type
         if self.memory[a].typed.t == ast::Type::Elided {
             self.memory[a].typed = self.memory[b].typed.clone();
-            self.memory[a].t     = self.memory[b].t.clone();
-            return Ok((self.memory[a].typed.clone(), a,b));
+            self.memory[a].t = self.memory[b].t.clone();
+            return Ok((self.memory[a].typed.clone(), a, b));
         }
         if self.memory[b].typed.t == ast::Type::Elided {
             self.memory[b].typed = self.memory[a].typed.clone();
-            self.memory[b].t     = self.memory[a].t.clone();
-            return Ok((self.memory[a].typed.clone(), a,b));
+            self.memory[b].t = self.memory[a].t.clone();
+            return Ok((self.memory[a].typed.clone(), a, b));
         }
-
 
         // if one is an unsigned literal, cast it into the other type
         if self.memory[a].typed.t == ast::Type::ULiteral {
@@ -793,8 +1080,8 @@ impl Symbolic {
 
             self.memory[tmp].value = self.memory[a].value.clone();
             self.ssa.assign(
-                (tmp,   self.memory[tmp].temporal),
-                (a,     self.memory[a].temporal),
+                (tmp, self.memory[tmp].temporal),
+                (a, self.memory[a].temporal),
                 Self::smt_type(&self.memory[tmp].typed),
             );
 
@@ -811,14 +1098,13 @@ impl Symbolic {
 
             self.memory[tmp].value = self.memory[b].value.clone();
             self.ssa.assign(
-                (tmp,   self.memory[tmp].temporal),
-                (b,     self.memory[b].temporal),
+                (tmp, self.memory[tmp].temporal),
+                (b, self.memory[b].temporal),
                 Self::smt_type(&self.memory[tmp].typed),
             );
 
             return Ok((self.memory[a].typed.clone(), a, tmp));
         }
-
 
         // TODO if the lhs is a pointer, do an implicit cast
         if self.memory[a].typed.ptr.len() > 0 {
@@ -831,49 +1117,78 @@ impl Symbolic {
 
             self.memory[tmp].value = self.memory[b].value.clone();
             self.ssa.assign(
-                (tmp,   self.memory[tmp].temporal),
-                (b,     self.memory[b].temporal),
+                (tmp, self.memory[tmp].temporal),
+                (b, self.memory[b].temporal),
                 Self::smt_type(&self.memory[tmp].typed),
             );
             return Ok((self.memory[a].typed.clone(), a, tmp));
         }
 
-        if let (ast::Type::Other(at), ast::Type::Other(bt)) = (&self.memory[a].typed.t, &self.memory[b].typed.t) {
-            if let (Some(ast::Def::Fntype{..}), Some(ast::Def::Function{..})) = (self.defs.get(at), self.defs.get(bt)) {
-                return Ok((self.memory[b].typed.clone(), a, b));
-            }
-        }
+        //if let (ast::Type::Other(at), ast::Type::Other(bt)) = (&self.memory[a].typed.t, &self.memory[b].typed.t) {
+        //    if let (Some(ast::Def::Closure{..}), Some(ast::Def::Function{..})) = (self.defs.get(at), self.defs.get(bt)) {
+        //        return Ok((self.memory[b].typed.clone(), a, b));
+        //    }
+        //}
 
         // object copy with rhs having no tail
         // TODO in theory the C compiler should init the tail with zeroes, but copy traits would be better
-        if self.memory[a].typed.t == self.memory[b].typed.t && self.memory[b].typed.tail == ast::Tail::None {
+        if self.memory[a].typed.t == self.memory[b].typed.t
+            && self.memory[b].typed.tail == ast::Tail::None
+        {
             return Ok((self.memory[a].typed.clone(), a, b));
         }
 
-        return Err(self.trace(format!("incompatible types {} and {}", self.memory[a].typed, self.memory[b].typed), vec![
-            (here.clone(), format!("this expression is unprovable over incompatible types")),
-            (self.memory[a].declared.clone(), format!("{} := {} {:?}", self.memory[a].name, self.memory[a].typed, self.memory[a].value)),
-            (self.memory[b].declared.clone(), format!("{} := {} {:?}", self.memory[b].name, self.memory[b].typed, self.memory[a].value))
-        ]));
+        return Err(self.trace(
+            format!(
+                "incompatible types {} and {}",
+                self.memory[a].typed, self.memory[b].typed
+            ),
+            vec![
+                (
+                    here.clone(),
+                    format!("this expression is unprovable over incompatible types"),
+                ),
+                (
+                    self.memory[a].declared.clone(),
+                    format!(
+                        "{} := {} {:?}",
+                        self.memory[a].name, self.memory[a].typed, self.memory[a].value
+                    ),
+                ),
+                (
+                    self.memory[b].declared.clone(),
+                    format!(
+                        "{} := {} {:?}",
+                        self.memory[b].name, self.memory[b].typed, self.memory[a].value
+                    ),
+                ),
+            ],
+        ));
     }
-
 
     fn execute_scope(&mut self, body: &mut Vec<Box<ast::Statement>>) -> Result<ScopeReturn, Error> {
         for i in 0..body.len() {
             let (body, _rest) = body.split_at_mut(i + 1);
 
             match body[i].as_mut() {
-                ast::Statement::Var{loc, typed: ref mut typed_o, tags, name, array, assign} => {
-
+                ast::Statement::Var {
+                    loc,
+                    typed: ref mut typed_o,
+                    tags,
+                    name,
+                    array,
+                    assign,
+                } => {
                     let mut typed = typed_o.clone();
                     if array.is_some() {
-                        typed.ptr.push(ast::Pointer{
+                        typed.ptr.push(ast::Pointer {
                             loc: loc.clone(),
                             tags: Tags::new(),
                         });
                     }
 
-                    let sym = self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone())?;
+                    let sym =
+                        self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone())?;
 
                     if let Some(array) = array {
                         self.ssa_mark_safe(sym, loc)?;
@@ -891,14 +1206,14 @@ impl Symbolic {
                             })?;
 
                             self.memory[sym].value = Value::Array {
-                                len:    val as usize,
-                                array:  HashMap::new(),
+                                len: val as usize,
+                                array: HashMap::new(),
                             };
                             self.len_into_ssa(sym, expr.loc(), val as usize)?;
                         } else {
                             self.memory[sym].value = Value::Array {
-                                len:    0,
-                                array:  HashMap::new(),
+                                len: 0,
+                                array: HashMap::new(),
                             };
                         }
                     }
@@ -908,20 +1223,19 @@ impl Symbolic {
                     if let Some(assign) = assign {
                         let sym2 = self.execute_expr(assign)?;
                         self.copy(sym, sym2, loc)?;
-
                     };
                     if typed_o.t == ast::Type::Elided {
                         if self.memory[sym].typed.t == ast::Type::Elided {
-                            return Err(self.trace("type cannot be elided".to_string(), vec![
-                                (loc.clone(), format!("unable to find type of this local"))
-                            ]))
+                            return Err(self.trace(
+                                "type cannot be elided".to_string(),
+                                vec![(loc.clone(), format!("unable to find type of this local"))],
+                            ));
                         } else {
                             *typed_o = self.memory[sym].typed.clone();
                         }
                     }
-
-                },
-                ast::Statement::If{branches} => {
+                }
+                ast::Statement::If { branches } => {
                     /*
                     // create branch expansions
                     let freeze = self.memory.clone();
@@ -946,34 +1260,41 @@ impl Symbolic {
                     self.memory = freeze;
                     */
 
-
-                    let mut previous_ifs : Vec<(TemporalSymbol, ast::Location)> = Vec::new();
+                    let mut previous_ifs: Vec<(TemporalSymbol, ast::Location)> = Vec::new();
 
                     for (branch_loc, ref mut branch_expr, branch_body) in branches {
-
                         let positive_sym = if let Some(branch_expr) = branch_expr {
                             let sym = self.execute_expr(branch_expr)?;
 
                             if self.memory[sym].typed.t != ast::Type::Bool {
-                                return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
-                                    (branch_expr.loc().clone(), format!("coercion to boolean is difficult to prove"))
-                                ]));
+                                return Err(self.trace(
+                                    format!("expected boolean, got {}", self.memory[sym].typed),
+                                    vec![(
+                                        branch_expr.loc().clone(),
+                                        format!("coercion to boolean is difficult to prove"),
+                                    )],
+                                ));
                             }
                             let sym = (sym, self.memory[sym].temporal);
 
-
-                            self.ssa.bool_value(sym, |a,_model| match a {
+                            self.ssa.bool_value(sym, |a, _model| match a {
                                 smt::Assertion::Constrained(val) => {
                                     if !self.in_loop {
-                                        emit_warn("unnecessary branch condition", &[
-                                            (branch_expr.loc().clone(), format!("expression is always {}", val))
-                                        ]);
+                                        emit_warn(
+                                            "unnecessary branch condition",
+                                            &[(
+                                                branch_expr.loc().clone(),
+                                                format!("expression is always {}", val),
+                                            )],
+                                        );
                                     }
                                 }
                                 _ => {}
                             });
 
-                            self.cur().trace.push((sym, branch_expr.loc().clone(), false));
+                            self.cur()
+                                .trace
+                                .push((sym, branch_expr.loc().clone(), false));
 
                             self.ssa.debug_loc(&branch_expr.loc());
                             Some((sym, branch_expr.loc().clone()))
@@ -985,7 +1306,7 @@ impl Symbolic {
                         self.ssa.debug_loc(&branch_loc);
                         self.ssa.branch();
 
-                        if let Some((sym, _)) = &positive_sym{
+                        if let Some((sym, _)) = &positive_sym {
                             self.ssa.constrain_branch(*sym, true);
                         }
 
@@ -995,7 +1316,7 @@ impl Symbolic {
                             self.cur().trace.push((*sym, loc.clone(), false));
                         }
 
-                        if let Some((sym, loc)) = &positive_sym{
+                        if let Some((sym, loc)) = &positive_sym {
                             previous_ifs.push((sym.clone(), loc.clone()));
                         }
 
@@ -1012,13 +1333,13 @@ impl Symbolic {
 
                     // continue execution as if no condition was met
                 }
-                ast::Statement::Expr{expr, ..} => {
+                ast::Statement::Expr { expr, .. } => {
                     self.execute_expr(expr)?;
                 }
-                ast::Statement::Return{loc, expr} => {
-                    if let Some(expr) = expr  {
+                ast::Statement::Return { loc, expr } => {
+                    if let Some(expr) = expr {
                         let e = self.execute_expr(expr)?;
-                        if let Some(retsym) =  self.current_function_ret {
+                        if let Some(retsym) = self.current_function_ret {
                             self.copy(retsym, e, expr.loc())?;
                         }
                     }
@@ -1026,40 +1347,41 @@ impl Symbolic {
                     // stop. do not execute anything behind return
                     return Ok(ScopeReturn::Return(loc.clone()));
                 }
-                ast::Statement::Label{..} => {
-                },
-                ast::Statement::Mark{..} => {
-                },
-                ast::Statement::Switch{expr, cases, default, ..} => {
-
-
+                ast::Statement::Label { .. } => {}
+                ast::Statement::Mark { .. } => {}
+                ast::Statement::Switch {
+                    expr,
+                    cases,
+                    default,
+                    ..
+                } => {
                     let switchsym = self.execute_expr(expr)?;
 
                     for (conds, body) in cases {
                         for expr2 in conds {
-
                             let compsym = self.execute_expr(expr2)?;
 
-                            let (_, switchsym, compsym) = self.type_coersion(switchsym, compsym, expr2.loc())?;
+                            let (_, switchsym, compsym) =
+                                self.type_coersion(switchsym, compsym, expr2.loc())?;
 
                             let switchmatch = self.temporary(
-                                format!("switch branch ({}=={})",
-                                self.memory[switchsym].name,
-                                self.memory[compsym].name),
-                                ast::Typed{
-                                    t:      ast::Type::Bool,
-                                    ptr:    Vec::new(),
-                                    loc:    expr2.loc().clone(),
-                                    tail:   ast::Tail::None,
+                                format!(
+                                    "switch branch ({}=={})",
+                                    self.memory[switchsym].name, self.memory[compsym].name
+                                ),
+                                ast::Typed {
+                                    t: ast::Type::Bool,
+                                    ptr: Vec::new(),
+                                    loc: expr2.loc().clone(),
+                                    tail: ast::Tail::None,
                                 },
                                 expr2.loc().clone(),
                                 ast::Tags::new(),
                             )?;
 
-
                             self.ssa.infix_op(
                                 switchmatch,
-                                (switchsym , self.memory[switchsym].temporal),
+                                (switchsym, self.memory[switchsym].temporal),
                                 (compsym, self.memory[compsym].temporal),
                                 ast::InfixOperator::Equals,
                                 self.memory[switchmatch].t.clone(),
@@ -1080,7 +1402,9 @@ impl Symbolic {
                             }
 
                             self.pop();
-                            self.cur().trace.push((switchmatch, expr2.loc().clone(), true));
+                            self.cur()
+                                .trace
+                                .push((switchmatch, expr2.loc().clone(), true));
                         }
                     }
 
@@ -1098,9 +1422,9 @@ impl Symbolic {
                         self.pop();
                     }
                 }
-                ast::Statement::Assign{loc, lhs, op, rhs} => {
+                ast::Statement::Assign { loc, lhs, op, rhs } => {
                     let lhs = self.execute_expr(lhs)?;
-                    let rhs = self.execute_expr(rhs)?;
+                    let rhs = self.autocast(rhs, &self.memory[lhs].typed.clone())?;
 
                     let (newtype, lhs, rhs) = self.type_coersion(lhs, rhs, loc)?;
 
@@ -1112,32 +1436,33 @@ impl Symbolic {
                             self.copy(lhs, rhs, loc)?;
                         }
                     } else {
-                        let tmp = self.temporary("assign inter".to_string(),
+                        let tmp = self.temporary(
+                            "assign inter".to_string(),
                             newtype.clone(),
                             loc.clone(),
                             self.memory[lhs].tags.clone(),
                         )?;
 
                         if newtype.ptr.len() > 0 {
-                            return Err(self.trace(format!("assign arithmetic is not yet implemented"), vec![
-                                (loc.clone(), format!("use a=a+n instead of a+=n"))
-                            ]));
+                            return Err(self.trace(
+                                format!("assign arithmetic is not yet implemented"),
+                                vec![(loc.clone(), format!("use a=a+n instead of a+=n"))],
+                            ));
                         }
 
-
                         let infix = match op {
-                            ast::AssignOperator::Bitor  => ast::InfixOperator::Bitor,
+                            ast::AssignOperator::Bitor => ast::InfixOperator::Bitor,
                             ast::AssignOperator::Bitand => ast::InfixOperator::Bitand,
-                            ast::AssignOperator::Add    => ast::InfixOperator::Add,
-                            ast::AssignOperator::Sub    => ast::InfixOperator::Subtract,
-                            ast::AssignOperator::Eq     => {
+                            ast::AssignOperator::Add => ast::InfixOperator::Add,
+                            ast::AssignOperator::Sub => ast::InfixOperator::Subtract,
+                            ast::AssignOperator::Eq => {
                                 unreachable!();
                             }
                         };
                         let value = Value::InfixOp {
-                            lhs:    (lhs, self.memory[lhs].temporal),
-                            rhs:    (rhs, self.memory[rhs].temporal),
-                            op:     infix.clone(),
+                            lhs: (lhs, self.memory[lhs].temporal),
+                            rhs: (rhs, self.memory[rhs].temporal),
+                            op: infix.clone(),
                         };
                         self.memory[tmp].value = value;
 
@@ -1148,7 +1473,7 @@ impl Symbolic {
                             infix,
                             self.memory[tmp].t.clone(),
                             newtype.t.signed(),
-                         );
+                        );
 
                         if self.in_loop {
                             self.memory[lhs].temporal += 1;
@@ -1157,10 +1482,10 @@ impl Symbolic {
                         }
                     }
                 }
-                ast::Statement::Continue{loc} => {
+                ast::Statement::Continue { loc } => {
                     return Ok(ScopeReturn::Return(loc.clone()));
                 }
-                ast::Statement::Break{loc} => {
+                ast::Statement::Break { loc } => {
                     return Ok(ScopeReturn::Return(loc.clone()));
                 }
                 ast::Statement::Block(block) => {
@@ -1168,7 +1493,7 @@ impl Symbolic {
                     self.execute_scope(&mut block.statements)?;
                     self.pop();
                 }
-                ast::Statement::For{e1,e2,e3,body} => {
+                ast::Statement::For { e1, e2, e3, body } => {
                     self.push("for loop".to_string());
                     //self.ssa.push("for loop");
 
@@ -1182,19 +1507,25 @@ impl Symbolic {
                     if let Some(expr) = e2 {
                         let sym = self.execute_expr(expr)?;
                         if self.memory[sym].t != smt::Type::Bool {
-                            return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
-                                                  (expr.loc().clone(), format!("must be boolean"))
-                            ]));
+                            return Err(self.trace(
+                                format!("expected boolean, got {}", self.memory[sym].typed),
+                                vec![(expr.loc().clone(), format!("must be boolean"))],
+                            ));
                         }
                         let sym = (sym, self.memory[sym].temporal);
-                        self.cur().trace.push((sym.clone(), expr.loc().clone(),false));
+                        self.cur()
+                            .trace
+                            .push((sym.clone(), expr.loc().clone(), false));
                         if !self.ssa.attest(sym, true) {
-                            return Err(self.trace(format!("condition breaks ssa"), vec![
-                                                  (expr.loc().clone(), format!("there may be conflicting constraints"))
-                            ]));
+                            return Err(self.trace(
+                                format!("condition breaks ssa"),
+                                vec![(
+                                    expr.loc().clone(),
+                                    format!("there may be conflicting constraints"),
+                                )],
+                            ));
                         }
                     }
-
 
                     // this would fix loop variants, but it's just too damn slow
                     //self.push("loop pass 0 ".to_string());
@@ -1206,23 +1537,30 @@ impl Symbolic {
                     //self.ssa.pop("end of for loop");
                     self.pop();
                 }
-                ast::Statement::While{expr, body} => {
+                ast::Statement::While { expr, body } => {
                     self.push("while loop".to_string());
                     //self.ssa.push("while loop");
 
                     let sym = self.execute_expr(expr)?;
                     if self.memory[sym].t != smt::Type::Bool {
-                        return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
-                            (expr.loc().clone(), format!("must be boolean"))
-                        ]));
+                        return Err(self.trace(
+                            format!("expected boolean, got {}", self.memory[sym].typed),
+                            vec![(expr.loc().clone(), format!("must be boolean"))],
+                        ));
                     }
                     let sym = (sym, self.memory[sym].temporal);
-                    self.cur().trace.push((sym.clone(), expr.loc().clone(),false));
+                    self.cur()
+                        .trace
+                        .push((sym.clone(), expr.loc().clone(), false));
 
                     if !self.ssa.attest(sym, true) {
-                        return Err(self.trace(format!("condition breaks ssa"), vec![
-                            (expr.loc().clone(), format!("there may be conflicting constraints"))
-                        ]));
+                        return Err(self.trace(
+                            format!("condition breaks ssa"),
+                            vec![(
+                                expr.loc().clone(),
+                                format!("there may be conflicting constraints"),
+                            )],
+                        ));
                     }
 
                     let prev_loop = self.in_loop;
@@ -1234,11 +1572,9 @@ impl Symbolic {
                     //self.ssa.pop("end of while loop");
                     self.pop();
                 }
-                ast::Statement::Unsafe{..} => {
-                }
-                ast::Statement::CBlock{..} => {
-                }
-                ast::Statement::MacroCall{..} => {
+                ast::Statement::Unsafe { .. } => {}
+                ast::Statement::CBlock { .. } => {}
+                ast::Statement::MacroCall { .. } => {
                     self.incomplete = true;
                 }
             }
@@ -1248,58 +1584,50 @@ impl Symbolic {
 
     fn expand_callargs(
         &mut self,
-        defined:        &Vec<ast::NamedArg>,
-        called:         &mut Vec<Box<ast::Expression>>,
-        callloc:        &ast::Location,
-        for_a_theory:   bool,
-    ) -> Result<(), Error>
-    {
-
+        defined: &Vec<ast::NamedArg>,
+        called: &mut Vec<Box<ast::Expression>>,
+        callloc: &ast::Location,
+        for_a_theory: bool,
+    ) -> Result<(), Error> {
         let mut callargs = std::mem::replace(called, Vec::new());
         // generated arguments
         for i in 0..defined.len() {
             if let Some(cs) = defined[i].tags.get("callsite_source") {
                 let (v, loc) = cs.iter().next().unwrap();
                 let lit = match v.as_str() {
-                    "file" => {
-                        ast::Expression::LiteralString {
-                            loc: loc.clone(),
-                            v: callloc.file.clone(),
-                        }
+                    "file" => ast::Expression::LiteralString {
+                        loc: loc.clone(),
+                        v: callloc.file.clone(),
                     },
-                    "line" => {
-                        ast::Expression::Literal{
-                            loc: loc.clone(),
-                            v:   format!("{}", callloc.line)
-                        }
+                    "line" => ast::Expression::Literal {
+                        loc: loc.clone(),
+                        v: format!("{}", callloc.line),
                     },
-                    "module" => {
-                        ast::Expression::LiteralString {
-                            loc: loc.clone(),
-                            v: self.current_module_name.clone(),
-                        }
-                    }
-                    "function" => {
-                        ast::Expression::LiteralString {
-                            loc: loc.clone(),
-                            v: self.current_function_name.clone(),
-                        }
-                    }
+                    "module" => ast::Expression::LiteralString {
+                        loc: loc.clone(),
+                        v: self.current_module_name.clone(),
+                    },
+                    "function" => ast::Expression::LiteralString {
+                        loc: loc.clone(),
+                        v: self.current_function_name.clone(),
+                    },
                     _ => {
-                        return Err(self.trace(format!("invalid callsite_source"), vec![
-                            (loc.clone(), format!("")),
-                        ]));
+                        return Err(self.trace(
+                            format!("invalid callsite_source"),
+                            vec![(loc.clone(), format!(""))],
+                        ));
                     }
                 };
                 let genarg = Box::new(lit);
                 called.push(genarg);
             } else if let Some(_) = defined[i].tags.get("tail") {
-                let mut prev = match called.get_mut(i-1) {
+                let mut prev = match called.get_mut(i - 1) {
                     Some(v) => v,
                     None => {
-                        return Err(self.trace(format!("tail tag without previous arg"), vec![
-                            (callloc.clone(), format!("something went wrong here"))
-                        ]));
+                        return Err(self.trace(
+                            format!("tail tag without previous arg"),
+                            vec![(callloc.clone(), format!("something went wrong here"))],
+                        ));
                     }
                 };
 
@@ -1315,12 +1643,12 @@ impl Symbolic {
                 *prev = Box::new(ast::Expression::Cast {
                     into: into_type,
                     expr: prev.clone(),
-                    loc:  prev.loc().clone(),
+                    loc: prev.loc().clone(),
                 });
 
                 match &self.memory[callptr].typed.tail.clone() {
-                    ast::Tail::Bind(name,loc) => {
-                        let genarg = Box::new(ast::Expression::Name(ast::Typed{
+                    ast::Tail::Bind(name, loc) => {
+                        let genarg = Box::new(ast::Expression::Name(ast::Typed {
                             t: ast::Type::Other(Name::from(name)),
                             ptr: Vec::new(),
                             loc: loc.clone(),
@@ -1328,115 +1656,75 @@ impl Symbolic {
                         }));
                         called.push(genarg);
                     }
-                    ast::Tail::Dynamic(_) | ast::Tail::None  => {
-                        return Err(self.trace(format!("tail size of {} not bound", self.memory[callptr].name), vec![
-                            (prev_loc.clone(), format!("tail len required here")),
-                            (defined[i].loc.clone(), format!("required by this tail binding")),
-                        ]));
-                    },
-                    ast::Tail::Static(v,loc) => {
-                        let genarg = Box::new(ast::Expression::Literal{
+                    ast::Tail::Dynamic(_) | ast::Tail::None => {
+                        return Err(self.trace(
+                            format!("tail size of {} not bound", self.memory[callptr].name),
+                            vec![
+                                (prev_loc.clone(), format!("tail len required here")),
+                                (
+                                    defined[i].loc.clone(),
+                                    format!("required by this tail binding"),
+                                ),
+                            ],
+                        ));
+                    }
+                    ast::Tail::Static(v, loc) => {
+                        let genarg = Box::new(ast::Expression::Literal {
                             loc: loc.clone(),
-                            v:   format!("{}", v),
+                            v: format!("{}", v),
                         });
                         called.push(genarg);
                     }
                 }
             } else {
-
                 if callargs.len() > 0 {
                     let mut calledarg = callargs.remove(0);
-                    let mut callptr = self.execute_expr(&mut calledarg)?;
 
-
-                    if self.memory[callptr].typed !=  defined[i].typed {
-
-
-                        // pointers to structs can be used as pointers to their first field
-                        // this is valid C, where you would use cast,
-                        // but we use member access to avoid confusing the prover
-                        if let ast::Type::Other(n) = &self.memory[callptr].typed.t {
-                            if let Some(ast::Def::Struct {fields, ..}) = self.defs.get(&n) {
-                                if let Some(field) = fields.get(0) {
-                                    if field.typed.t == defined[i].typed.t {
-                                        *calledarg =  ast::Expression::UnaryPre{
-                                            loc:    calledarg.loc().clone(),
-                                            op:     ast::PrefixOperator::AddressOf,
-                                            expr: Box::new( ast::Expression::MemberAccess {
-                                                loc:    calledarg.loc().clone(),
-                                                lhs:    Box::new(*calledarg),
-                                                op:     "->".to_string(),
-                                                rhs:    field.name.clone(),
-                                            }),
-                                        };
-                                        callptr = self.execute_expr(&mut calledarg)?;
-                                    }
-                                }
-                            }
-                        }
-
-                        let mut into_type = self.memory[callptr].typed.clone();
-
-                        // pointers with tail can be used as pointer without tail
-                        match (&defined[i].typed.tail, &self.memory[callptr].typed.tail) {
-                            (ast::Tail::None, ast::Tail::Bind(_,_)) |
-                            (ast::Tail::None, ast::Tail::Static(_,_)) => {
-                                into_type.tail = ast::Tail::None;
-                            }
-                            _ => {
-                            }
-                        }
-
-                        if into_type != self.memory[callptr].typed {
-                            *calledarg = ast::Expression::Cast {
-                                into: into_type,
-                                expr: calledarg.clone(),
-                                loc:  calledarg.loc().clone(),
-                            };
-                        }
-                    }
-                    let callptr = self.execute_expr(&mut calledarg)?;
+                    let mut callptr = self.autocast(&mut calledarg, &defined[i].typed)?;
 
                     if self.memory[callptr].typed.ptr.len() > 0 {
                         // if there's a borrow impl, call it
                         // unless the arg is uninitialized
                         // or we're calling a theory
 
-
                         let stags = match defined[i].typed.ptr.first() {
                             Some(v) => v.tags.clone(),
                             None => {
-                                return Err(self.trace( format!("pointer depth mismatch"), vec![
-                                    (calledarg.loc().clone(), format!("expected type {} got {}",
-                                                                      defined[i].typed,
-                                                                      self.memory[callptr].typed))
-                                ]));
+                                return Err(self.trace(
+                                    format!("pointer depth mismatch"),
+                                    vec![(
+                                        calledarg.loc().clone(),
+                                        format!(
+                                            "expected type {} got {}",
+                                            defined[i].typed, self.memory[callptr].typed
+                                        ),
+                                    )],
+                                ));
                             }
                         };
 
                         if !for_a_theory
                             && stags.get("uninitialized").is_none()
                             && stags.get("new").is_none()
-                            && defined[i].tags.get("no-borrow-expand").is_none()  {
-
+                            && defined[i].tags.get("no-borrow-expand").is_none()
+                        {
                             if let ast::Type::Other(name) = &self.memory[callptr].typed.t {
-                                if let Some(ast::Def::Struct{impls,..}) = self.defs.get(name) {
-                                    if let Some((fnname,_)) = impls.get("borrow") {
-
+                                if let Some(ast::Def::Struct { impls, .. }) = self.defs.get(name) {
+                                    if let Some((fnname, _)) = impls.get("borrow") {
                                         *calledarg = ast::Expression::Cast {
                                             into: self.memory[callptr].typed.clone(),
-                                            loc:  calledarg.loc().clone(),
+                                            loc: calledarg.loc().clone(),
                                             expr: Box::new(ast::Expression::Call {
-                                                loc:        calledarg.loc().clone(),
-                                                name:       Box::new(ast::Expression::Name(ast::Typed{
-                                                    t:      ast::Type::Other(fnname.clone()),
-                                                    loc:    calledarg.loc().clone(),
-                                                    ptr:    Vec::new(),
-                                                    tail:   ast::Tail::None,
+                                                loc: calledarg.loc().clone(),
+                                                name: Box::new(ast::Expression::Name(ast::Typed {
+                                                    t: ast::Type::Other(fnname.clone()),
+                                                    loc: calledarg.loc().clone(),
+                                                    ptr: Vec::new(),
+                                                    tail: ast::Tail::None,
                                                 })),
-                                                args:       vec![calledarg.clone()],
-                                                expanded:   false,
-                                                emit:       ast::EmitBehaviour::Default,
+                                                args: vec![calledarg.clone()],
+                                                expanded: false,
+                                                emit: ast::EmitBehaviour::Default,
                                             }),
                                         };
                                     }
@@ -1455,33 +1743,133 @@ impl Symbolic {
 
 
 
-    fn member_access(&mut self, lhs_sym: Symbol, rhs: &str, loc: &ast::Location) -> Result<Symbol, Error> {
+
+    fn make_closure_val(&mut self, typename: Name) -> Result<Value, Error>
+    {
+        let (ret,mut args,nameloc) = match self.defs.get(&typename).cloned() {
+            Some(ast::Def::Closure{ret,args,nameloc, ..}) => (ret,args,nameloc),
+            _ => unreachable!(),
+        };
+
+
+        let mut tags = ast::Tags::new();
+        tags.insert("unsafe".to_string(), String::new(), nameloc.clone());
+        args.push(ast::NamedArg{
+            loc:    nameloc.clone(),
+            name:   "_ctx".to_string(),
+            tags,
+            typed:  ast::Typed {
+                t:      ast::Type::Other(Name::from("void")),
+                loc:    nameloc.clone(),
+                ptr:    vec![ast::Pointer{loc:nameloc.clone(), tags: ast::Tags::new()}],
+                tail:   ast::Tail::None,
+            },
+        });
+
+        let fns = self.temporary(
+            format!( "closure.fn {}", typename),
+            ast::Typed {
+                t:      ast::Type::Other(Name::from("void")),
+                loc:    nameloc.clone(),
+                ptr:    vec![ast::Pointer{loc:nameloc.clone(), tags: ast::Tags::new()}],
+                tail:   ast::Tail::None,
+            },
+            nameloc.clone(),
+            Tags::new(),
+        )?;
+        self.memory[fns].value = Value::Function {
+            loc:    nameloc.clone(),
+            args,
+            vararg: false,
+            ret: ret.map(|t|t.typed),
+            callsite_assert: Vec::new(),
+            callsite_effect: Vec::new(),
+        };
+        let ctx = self.temporary(
+            format!( "closure.ctx {}", typename),
+            ast::Typed {
+                t:      ast::Type::Other(Name::from("void")),
+                loc:    nameloc.clone(),
+                ptr:    vec![ast::Pointer{loc:nameloc.clone(), tags: ast::Tags::new()}],
+                tail:   ast::Tail::None,
+            },
+            nameloc.clone(),
+            Tags::new(),
+        )?;
+
+        return Ok(Value::Closure {
+            fns,
+            ctx,
+        });
+    }
+
+    fn member_access(
+        &mut self,
+        lhs_sym: Symbol,
+        rhs: &str,
+        loc: &ast::Location,
+    ) -> Result<Symbol, Error> {
+
+
+        if let ast::Type::Other(n) = &self.memory[lhs_sym].typed.t {
+            if let Some(ast::Def::Closure{ret,args,nameloc,..}) = self.defs.get(&n).cloned() {
+                if let Value::Closure{..} = self.memory[lhs_sym].value {
+                } else {
+                    self.memory[lhs_sym].value = self.make_closure_val(n.clone())?;
+                }
+            }
+        }
+
+        if let Value::Closure {fns, ctx} = self.memory[lhs_sym].value {
+            if rhs == "fn" {
+                return Ok(fns);
+            } else if rhs == "ctx" {
+                return Ok(ctx);
+            } else {
+                return Err(self.trace(
+                    format!("closure does not a have a field named {}", rhs),
+                    vec![(loc.clone(), format!("cannot access closure as struct here"))],
+                ));
+            }
+        }
+
+
+
+
+
 
         let mut struct_def = None;
         if let ast::Type::Other(n) = &self.memory[lhs_sym].typed.t {
-            if let Some(ast::Def::Struct {fields, tail, ..}) = self.defs.get(&n) {
+            if let Some(ast::Def::Struct { fields, tail, .. }) = self.defs.get(&n) {
                 struct_def = Some((fields.clone(), tail));
             }
         };
 
         let struct_def = match struct_def {
             Some(v) => v,
-            None => {
-                match &self.memory[lhs_sym].typed.t {
-                    ast::Type::Other(t) if t.0[1] == "ext"  => {
-                        return Err(self.trace(
-                            format!("{} is not safe to access. it is an untracked C type {}", self.memory[lhs_sym].name, self.memory[lhs_sym].typed), vec![
-                            (loc.clone(), format!("unsafe C expression outside of unsafe block"))
-                        ]));
-                    }
-                    _ => {
-                        return Err(self.trace(
-                            format!("{} is not accessible as struct. it is {}", self.memory[lhs_sym].name, self.memory[lhs_sym].typed), vec![
-                            (loc.clone(), format!("cannot use as struct here"))
-                        ]));
-                    }
+            None => match &self.memory[lhs_sym].typed.t {
+                ast::Type::Other(t) if t.0[1] == "ext" => {
+                    return Err(self.trace(
+                        format!(
+                            "{} is not safe to access. it is an untracked C type {}",
+                            self.memory[lhs_sym].name, self.memory[lhs_sym].typed
+                        ),
+                        vec![(
+                            loc.clone(),
+                            format!("unsafe C expression outside of unsafe block"),
+                        )],
+                    ));
                 }
-            }
+                _ => {
+                    return Err(self.trace(
+                        format!(
+                            "{} is not accessible as struct. it is {}",
+                            self.memory[lhs_sym].name, self.memory[lhs_sym].typed
+                        ),
+                        vec![(loc.clone(), format!("cannot use as struct here"))],
+                    ));
+                }
+            },
         };
 
         let mut field = None;
@@ -1491,39 +1879,43 @@ impl Symbolic {
             }
         }
 
-        let field = match field  {
+        let field = match field {
             Some(f) => f,
             None => {
-                return Err(self.trace(format!("{} of type {} does not a have a field named {}",
-                    self.memory[lhs_sym].name, self.memory[lhs_sym].typed, rhs), vec![
-                    (loc.clone(), format!("cannot access struct here")),
-                ]));
+                return Err(self.trace(
+                    format!(
+                        "{} of type {} does not a have a field named {}",
+                        self.memory[lhs_sym].name, self.memory[lhs_sym].typed, rhs
+                    ),
+                    vec![(loc.clone(), format!("cannot access struct here"))],
+                ));
             }
         };
 
         match &self.memory[lhs_sym].value {
-            Value::Struct{members,..} => {
+            Value::Struct { members, .. } => {
                 if let Some(sym) = members.get(&field.0) {
                     return Ok(*sym);
                 }
-            },
+            }
             Value::Uninitialized | Value::Unconstrained(_) => {
-                self.memory[lhs_sym].value = Value::Struct{
-                    members:  HashMap::new(),
+                self.memory[lhs_sym].value = Value::Struct {
+                    members: HashMap::new(),
                 };
-            },
+            }
             o => {
                 return Err(self.trace(
-                    format!("{} is not accessible as struct. it is {}", self.memory[lhs_sym].name, o), vec![
-                    (loc.clone(), format!("cannot use as struct here"))
-                ]));
+                    format!(
+                        "{} is not accessible as struct. it is {}",
+                        self.memory[lhs_sym].name, o
+                    ),
+                    vec![(loc.clone(), format!("cannot use as struct here"))],
+                ));
             }
         }
 
-
         let mut fieldvalue = Value::Uninitialized;
         let mut fieldtyped = field.1.typed.clone();
-
 
         match &field.1.array {
             ast::Array::Sized(expr) => {
@@ -1540,34 +1932,32 @@ impl Symbolic {
                     }
                 })?;
                 fieldvalue = Value::Array {
-                    len:    val as usize,
-                    array:  HashMap::new(),
+                    len: val as usize,
+                    array: HashMap::new(),
                 };
 
-                fieldtyped.ptr.push(ast::Pointer{
-                    loc:  field.1.loc.clone(),
+                fieldtyped.ptr.push(ast::Pointer {
+                    loc: field.1.loc.clone(),
                     tags: Tags::new(),
                 });
             }
 
             // unsized array, but container has a tail
             ast::Array::Unsized => {
-                if let ast::Tail::Static(val,_loc) = &self.memory[lhs_sym].typed.tail {
+                if let ast::Tail::Static(val, _loc) = &self.memory[lhs_sym].typed.tail {
                     fieldvalue = Value::Array {
-                        len:    *val as usize,
-                        array:  HashMap::new(),
+                        len: *val as usize,
+                        array: HashMap::new(),
                     };
                 }
 
-                fieldtyped.ptr.push(ast::Pointer{
-                    loc:  field.1.loc.clone(),
+                fieldtyped.ptr.push(ast::Pointer {
+                    loc: field.1.loc.clone(),
                     tags: Tags::new(),
                 });
             }
             ast::Array::None => (),
         };
-
-
 
         //nested tail
         match fieldtyped.tail {
@@ -1578,7 +1968,7 @@ impl Symbolic {
                 //    (loc.clone(), format!("here"))
                 //]));
             }
-            _ => {},
+            _ => {}
         }
 
         let tmp = self.temporary(
@@ -1588,25 +1978,21 @@ impl Symbolic {
             field.1.tags.clone(),
         )?;
 
-
         match (&fieldvalue, &field.1.array) {
-            (Value::Array{len,..}, _) if *len > 0 => {
+            (Value::Array { len, .. }, _) if *len > 0 => {
                 self.len_into_ssa(tmp, loc, *len)?;
                 self.ssa_mark_safe(tmp, loc)?;
-            },
+            }
             (_, ast::Array::Sized(_)) | (_, ast::Array::Unsized) => {
                 // access to an array member as pointer is always safe, because its part of the struct mem
                 self.ssa_mark_safe(tmp, loc)?;
-            },
+            }
             _ => (),
         }
         self.memory[tmp].value = fieldvalue;
 
-
-
-
         match &mut self.memory[lhs_sym].value {
-            Value::Struct{members, ..} => {
+            Value::Struct { members, .. } => {
                 members.insert(field.0, tmp);
             }
             _ => unreachable!(),
@@ -1618,8 +2004,12 @@ impl Symbolic {
         let exprloc = expr.loc().clone();
         self.ssa.debug_loc(expr.loc());
         match expr {
-            ast::Expression::Unsafe{into, loc, ..} => {
-                let r = self.temporary("unsafe expression".to_string(),
+            ast::Expression::Call {..} => {
+                return self.execute_call(expr);
+            }
+            ast::Expression::Unsafe { into, loc, .. } => {
+                let r = self.temporary(
+                    "unsafe expression".to_string(),
                     into.clone(),
                     loc.clone(),
                     Tags::new(),
@@ -1627,27 +2017,32 @@ impl Symbolic {
                 self.memory[r].value = Value::Unconstrained("unsafe expression".to_string());
                 Ok(r)
             }
-            ast::Expression::MacroCall{loc, name, args} => {
+            ast::Expression::MacroCall { loc, name, args } => {
                 self.incomplete = true;
-                let r = self.literal(loc, Value::Unconstrained("unavailable macro".to_string()), ast::Typed {
-                    t:      ast::Type::ULiteral,
-                    loc:    loc.clone(),
-                    ptr:    Vec::new(),
-                    tail:   ast::Tail::None,
-                })?;
+                let r = self.literal(
+                    loc,
+                    Value::Unconstrained("unavailable macro".to_string()),
+                    ast::Typed {
+                        t: ast::Type::ULiteral,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
+                    },
+                )?;
                 Ok(r)
             }
-            ast::Expression::Name(name) => {
-                match &name.t {
-                    ast::Type::Other(n) => self.name(&n, &name.loc),
-                    _ => {
-                        return Err(self.trace(format!("builtin type '{}' is  not an object", name), vec![
-                            (name.loc.clone(), format!("cannot use builtin here"))
-                        ]));
-                    }
+            ast::Expression::Name(name) => match &name.t {
+                ast::Type::Other(n) => self.name(&n, &name.loc),
+                _ => {
+                    return Err(self.trace(
+                        format!("builtin type '{}' is  not an object", name),
+                        vec![(name.loc.clone(), format!("cannot use builtin here"))],
+                    ));
                 }
             },
-            ast::Expression::MemberAccess {loc, lhs, rhs, op, ..} => {
+            ast::Expression::MemberAccess {
+                loc, lhs, rhs, op, ..
+            } => {
                 let mut lhs_sym = self.execute_expr(lhs)?;
                 if op == "->" {
                     lhs_sym = self.deref(lhs_sym, loc)?;
@@ -1661,37 +2056,37 @@ impl Symbolic {
                             name.pop();
                             name.push(rhs.to_string());
                             if let Ok(sym) = self.name(&name, loc) {
-                                if let Value::Function{..} = &self.memory[sym].value {
-                                    let tmp = self.temporary(format!("desugar of self call {}", name),
-                                        ast::Typed{
-                                            t:      ast::Type::USize,
-                                            ptr:    Vec::new(),
-                                            loc:    loc.clone(),
-                                            tail:   ast::Tail::None,
+                                if let Value::Function { .. } = &self.memory[sym].value {
+                                    let tmp = self.temporary(
+                                        format!("desugar of self call {}", name),
+                                        ast::Typed {
+                                            t: ast::Type::USize,
+                                            ptr: Vec::new(),
+                                            loc: loc.clone(),
+                                            tail: ast::Tail::None,
                                         },
                                         loc.clone(),
                                         Tags::new(),
                                     )?;
 
-
-                                    let op  = op.clone();
+                                    let op = op.clone();
 
                                     let mut selfarg = lhs.clone();
 
                                     if op == "." {
-                                        selfarg = Box::new(ast::Expression::UnaryPre{
-                                            loc:    exprloc.clone(),
-                                            op:     ast::PrefixOperator::AddressOf,
-                                            expr:   selfarg,
+                                        selfarg = Box::new(ast::Expression::UnaryPre {
+                                            loc: exprloc.clone(),
+                                            op: ast::PrefixOperator::AddressOf,
+                                            expr: selfarg,
                                         });
                                     }
 
                                     self.memory[tmp].value = Value::SelfCall {
-                                        name: ast::Expression::Name(ast::Typed{
-                                            t:      ast::Type::Other(name),
-                                            loc:    exprloc.clone(),
-                                            ptr:    Vec::new(),
-                                            tail:   ast::Tail::None,
+                                        name: ast::Expression::Name(ast::Typed {
+                                            t: ast::Type::Other(name),
+                                            loc: exprloc.clone(),
+                                            ptr: Vec::new(),
+                                            tail: ast::Tail::None,
                                         }),
                                         selfarg,
                                     };
@@ -1699,78 +2094,106 @@ impl Symbolic {
                                 }
                             }
                         }
-                        return Err(e)
+                        return Err(e);
                     }
                 }
-
-            },
-            ast::Expression::ArrayAccess {lhs, rhs, loc} => {
+            }
+            ast::Expression::ArrayAccess { lhs, rhs, loc } => {
                 let lhs_sym = self.execute_expr(lhs)?;
                 let rhs_sym = self.execute_expr(rhs)?;
 
                 if self.memory[rhs_sym].typed.t.signed() {
-                    return Err(self.trace(format!("array access with signed index is not well defined"), vec![
-                        (rhs.loc().clone(), format!("array index must be of type usize"))
-                    ]))
+                    return Err(self.trace(
+                        format!("array access with signed index is not well defined"),
+                        vec![(
+                            rhs.loc().clone(),
+                            format!("array index must be of type usize"),
+                        )],
+                    ));
                 }
 
-                if self.memory[rhs_sym].typed.t != ast::Type::USize && self.memory[rhs_sym].typed.t != ast::Type::ULiteral {
-                    return Err(self.trace(format!("array access with something not a usize"), vec![
-                        (rhs.loc().clone(), format!("array index must be of type usize"))
-                    ]))
+                if self.memory[rhs_sym].typed.t != ast::Type::USize
+                    && self.memory[rhs_sym].typed.t != ast::Type::ULiteral
+                {
+                    return Err(self.trace(
+                        format!("array access with something not a usize"),
+                        vec![(
+                            rhs.loc().clone(),
+                            format!("array index must be of type usize"),
+                        )],
+                    ));
                 }
 
-                let static_index = if let smt::Assertion::Constrained(i)  = self.ssa.value((rhs_sym, self.memory[rhs_sym].temporal), |a,_|a) {
+                let static_index = if let smt::Assertion::Constrained(i) = self
+                    .ssa
+                    .value((rhs_sym, self.memory[rhs_sym].temporal), |a, _| a)
+                {
                     Some(i as usize)
                 } else {
                     None
                 };
                 match &self.memory[lhs_sym].value {
-                    Value::Array{array, ..} => {
+                    Value::Array { array, .. } => {
                         if let Some(i) = &static_index {
                             if let Some(sym) = array.get(i) {
                                 return Ok(*sym);
                             }
                         }
-                    },
-                    _ => ()
+                    }
+                    _ => (),
                 }
 
                 if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
-                    return Err(self.trace(format!("cannot prove memory access due to unexpected type"), vec![
-                        (lhs.loc().clone(), format!("lhs of array expression appears to be not a pointer or array"))
-                    ]))
+                    return Err(self.trace(
+                        format!("cannot prove memory access due to unexpected type"),
+                        vec![(
+                            lhs.loc().clone(),
+                            format!("lhs of array expression appears to be not a pointer or array"),
+                        )],
+                    ));
                 }
 
                 self.ssa.debug("begin array bounds");
-                let tmp1 = self.temporary(format!("len({})", self.memory[lhs_sym].name),
-                ast::Typed{
-                    t:      ast::Type::USize,
-                    ptr:    Vec::new(),
-                    loc:    loc.clone(),
-                    tail:   ast::Tail::None,
-                },
-                loc.clone(),
-                Tags::new(),
+                let tmp1 = self.temporary(
+                    format!("len({})", self.memory[lhs_sym].name),
+                    ast::Typed {
+                        t: ast::Type::USize,
+                        ptr: Vec::new(),
+                        loc: loc.clone(),
+                        tail: ast::Tail::None,
+                    },
+                    loc.clone(),
+                    Tags::new(),
                 )?;
-                let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (tmp1, 0));
+                let lensym = self
+                    .builtin
+                    .get("len")
+                    .expect("ICE: len theory not built in");
+                self.ssa.invocation(
+                    *lensym,
+                    vec![(lhs_sym, self.memory[lhs_sym].temporal)],
+                    (tmp1, 0),
+                );
 
-                let tmp2 = self.temporary(format!("{} < len({})", self.memory[rhs_sym].name, self.memory[lhs_sym].name),
-                ast::Typed{
-                    t:      ast::Type::Bool,
-                    ptr:    Vec::new(),
-                    loc:    loc.clone(),
-                    tail:   ast::Tail::None,
-                },
-                loc.clone(),
-                Tags::new(),
+                let tmp2 = self.temporary(
+                    format!(
+                        "{} < len({})",
+                        self.memory[rhs_sym].name, self.memory[lhs_sym].name
+                    ),
+                    ast::Typed {
+                        t: ast::Type::Bool,
+                        ptr: Vec::new(),
+                        loc: loc.clone(),
+                        tail: ast::Tail::None,
+                    },
+                    loc.clone(),
+                    Tags::new(),
                 )?;
 
                 self.memory[tmp2].value = Value::InfixOp {
-                    lhs:    (rhs_sym, self.memory[rhs_sym].temporal),
-                    rhs:    (tmp1, 0),
-                    op:     ast::InfixOperator::Lessthan,
+                    lhs: (rhs_sym, self.memory[rhs_sym].temporal),
+                    rhs: (tmp1, 0),
+                    op: ast::InfixOperator::Lessthan,
                 };
                 self.ssa.infix_op(
                     tmp2,
@@ -1779,27 +2202,33 @@ impl Symbolic {
                     ast::InfixOperator::Lessthan,
                     smt::Type::Bool,
                     false,
-                    );
+                );
 
                 self.ssa.debug("assert that length less than index is true");
-                self.ssa.assert(vec![(tmp2, self.memory[tmp2].temporal)], |a,model| match a {
-                    false => {
-                        let mut estack = Vec::new();
-                        estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp2, self.memory[tmp2].temporal), 0));
-                        Err(self.trace(format!("possible out of bounds array access"), estack))
-                    }
-                    true => {
-                        Ok(())
-                    }
-                })?;
-
-
+                self.ssa.assert(
+                    vec![(tmp2, self.memory[tmp2].temporal)],
+                    |a, model| match a {
+                        false => {
+                            let mut estack = Vec::new();
+                            estack.extend(self.demonstrate(
+                                model.as_ref().unwrap(),
+                                (tmp2, self.memory[tmp2].temporal),
+                                0,
+                            ));
+                            Err(self.trace(format!("possible out of bounds array access"), estack))
+                        }
+                        true => Ok(()),
+                    },
+                )?;
 
                 let mut newtype = self.memory[lhs_sym].typed.clone();
                 newtype.ptr.pop();
 
                 let tmp = self.temporary(
-                    format!("array member {}[{}]", self.memory[lhs_sym].name, self.memory[rhs_sym].name),
+                    format!(
+                        "array member {}[{}]",
+                        self.memory[lhs_sym].name, self.memory[rhs_sym].name
+                    ),
                     newtype,
                     loc.clone(),
                     self.memory[lhs_sym].tags.clone(),
@@ -1807,47 +2236,47 @@ impl Symbolic {
                 self.memory[tmp].value = Value::Unconstrained("array content".to_string());
 
                 match &mut self.memory[lhs_sym].value {
-                    Value::Array{array, ..} => {
+                    Value::Array { array, .. } => {
                         if let Some(i) = &static_index {
                             array.insert(*i, tmp);
                         }
-                    },
-                    _ => ()
+                    }
+                    _ => (),
                 }
 
                 Ok(tmp)
-            },
-            ast::Expression::LiteralString{ loc, v } => {
+            }
+            ast::Expression::LiteralString { loc, v } => {
                 let tmp = self.temporary(
                     format!("literal string \"{}\"", v),
                     ast::Typed {
                         t: ast::Type::U8,
-                        loc:    loc.clone(),
-                        ptr:    vec![ast::Pointer{
+                        loc: loc.clone(),
+                        ptr: vec![ast::Pointer {
                             tags: ast::Tags::new(),
-                            loc:    loc.clone(),
+                            loc: loc.clone(),
                         }],
-                        tail:   ast::Tail::None,
+                        tail: ast::Tail::None,
                     },
                     loc.clone(),
                     Tags::new(),
                 )?;
-                self.memory[tmp].value = Value::Array{
-                    array:  HashMap::new(),
-                    len:    v.len(),
+                self.memory[tmp].value = Value::Array {
+                    array: HashMap::new(),
+                    len: v.len(),
                 };
                 self.ssa_mark_safe(tmp, loc)?;
                 self.ssa_mark_nullterm(tmp, loc)?;
                 Ok(tmp)
             }
-            ast::Expression::LiteralChar{ loc, v } => {
+            ast::Expression::LiteralChar { loc, v } => {
                 let tmp = self.temporary(
                     format!("literal char '{}'", *v as char),
                     ast::Typed {
                         t: ast::Type::Other("::ext::<stddef.h>::char".into()),
-                        loc:    loc.clone(),
-                        ptr:    Vec::new(),
-                        tail:   ast::Tail::None,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
                     },
                     loc.clone(),
                     Tags::new(),
@@ -1860,534 +2289,55 @@ impl Symbolic {
                 self.ssa.debug("literal expr");
                 if v == "true" {
                     let t = ast::Typed {
-                        t:      ast::Type::Bool,
-                        loc:    loc.clone(),
-                        ptr:    Vec::new(),
-                        tail:   ast::Tail::None,
+                        t: ast::Type::Bool,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
                     };
                     self.literal(loc, Value::Integer(0xffffffff), t)
                 } else if v == "false" {
                     let t = ast::Typed {
-                        t:      ast::Type::Bool,
-                        loc:    loc.clone(),
-                        ptr:    Vec::new(),
-                        tail:   ast::Tail::None,
+                        t: ast::Type::Bool,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
                     };
                     self.literal(loc, Value::Integer(0), t)
                 } else if let Some(v) = parser::parse_u64(&v) {
                     let t = ast::Typed {
-                        t:      ast::Type::ULiteral,
-                        loc:    loc.clone(),
-                        ptr:    Vec::new(),
-                        tail:   ast::Tail::None,
+                        t: ast::Type::ULiteral,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
                     };
                     self.literal(loc, Value::Integer(v), t)
                 } else {
                     let t = ast::Typed {
-                        t:      ast::Type::ULiteral,
-                        loc:    loc.clone(),
-                        ptr:    Vec::new(),
-                        tail:   ast::Tail::None,
+                        t: ast::Type::ULiteral,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
                     };
                     self.literal(loc, Value::Unconstrained(format!("literal {}", v)), t)
                 }
             }
-            ast::Expression::Call { name, ref mut args, loc, ref mut expanded, ref mut emit, .. } => {
-                self.current_call.push(loc.clone());
 
-                let mut static_name = None;
-                if let ast::Expression::Name(ref t) =  name.as_ref() {
-                    if let ast::Type::Other(name) = &t.t {
-                        static_name = Some(format!("{}", name));
-                    }
-                }
-
-                if let Some(static_name) = &static_name {
-                    self.ssa.debug(&format!("call of {}", static_name));
-                } else {
-                    self.ssa.debug(&format!("call"));
-                }
-
-                match static_name.as_ref().map(|s|s.as_str()) {
-                    Some("typeid") => {
-                        if args.len() != 1 {
-                            return Err(self.trace("call argument count mismatch".to_string(), vec![
-                                (name.loc().clone(), format!("builtin needs 1 argument, but you passed {}", args.len()))
-                            ]));
-                        }
-                        let sym = self.execute_expr(&mut args[0])?;
-
-
-
-                        let r = self.literal(loc, Value::Integer(1), ast::Typed {
-                            t:      ast::Type::ULiteral,
-                            loc:    loc.clone(),
-                            ptr:    Vec::new(),
-                            tail:   ast::Tail::None,
-                        });
-
-                        *expr = ast::Expression::Literal{
-                            loc: loc.clone(),
-                            v:  format!("\"{}\"", self.memory[sym].typed),
-                        };
-                        self.current_call.pop();
-                        return r;
-                    },
-                    Some("len") => {
-                        if args.len() != 1 {
-                            return Err(self.trace("call argument count mismatch".to_string(), vec![
-                                (name.loc().clone(), format!("builtin needs 1 argument, but you passed {}", args.len()))
-                            ]));
-                        }
-                        // shortcut, as calls to z3 are expensive and can pile up to unsolveable mess
-                        let sym = self.execute_expr(&mut args[0])?;
-                        if let Value::Array{len,.. } = self.memory[sym].value {
-                            if len > 0 {
-                                let r = self.literal(loc, Value::Integer(len as u64), ast::Typed {
-                                    t:      ast::Type::ULiteral,
-                                    loc:    loc.clone(),
-                                    ptr:    Vec::new(),
-                                    tail:   ast::Tail::None,
-                                });
-                                self.current_call.pop();
-                                return r;
-                            }
-                        }
-                        // no shortcut found, continue
-                    }
-                    Some("static_attest") => {
-                        *emit = ast::EmitBehaviour::Skip;
-                        self.ssa.debug_loc(loc);
-                        self.ssa.debug("static_attest");
-                        if args.len() != 1 {
-                            return Err(self.trace("call argument count mismatch".to_string(), vec![
-                                (name.loc().clone(), format!("builtin needs 1 argument, but you passed {}", args.len()))
-                            ]));
-                        }
-                        let sym = self.execute_expr(&mut args[0])?;
-                        if self.memory[sym].t != smt::Type::Bool {
-                            return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
-                                (args[0].loc().clone(), format!("argument must be boolean"))
-                            ]));
-                        }
-                        if !self.ssa.attest((sym, self.memory[sym].temporal), true) {
-                            return Err(self.trace(format!("function is unprovable"), vec![
-                                (expr.loc().clone(), format!("static_attest leads to conflicting constraints"))
-                            ]));
-                        }
-
-                        let r = self.literal(loc, Value::Integer(1), ast::Typed {
-                            t:      ast::Type::ULiteral,
-                            loc:    loc.clone(),
-                            ptr:    Vec::new(),
-                            tail:   ast::Tail::None,
-                        });
-                        self.current_call.pop();
-                        return r;
-                    },
-                    Some("static_assert") => {
-                        *emit = ast::EmitBehaviour::Skip;
-                        self.ssa.debug_loc(loc);
-                        self.ssa.debug("static_assert");
-                        if args.len() != 1 {
-                            return Err(self.trace("call argument count mismatch".to_string(), vec![
-                                (name.loc().clone(), format!("builtin needs 1 argument, but you passed {}", args.len()))
-                            ]));
-                        }
-                        let sym = self.execute_expr(&mut args[0])?;
-                        if self.memory[sym].t != smt::Type::Bool {
-                            return Err(self.trace(format!("expected boolean, got {}", self.memory[sym].typed), vec![
-                                (args[0].loc().clone(), format!("coercion to boolean is difficult to prove"))
-                            ]));
-                        }
-                        self.ssa.assert(vec![(sym, self.memory[sym].temporal)], |a,model|match a{
-                            false => {
-                                let mut estack = vec![(loc.clone(),
-                                    format!("you may need an if condition or callsite_assert to increase confidence"))];
-                                if let Some(model) = &model {
-                                    estack.extend(self.demonstrate(model, (sym, self.memory[sym].temporal), 0));
-                                }
-                                Err(self.trace(format!("theory is unproven"), estack))
-                            }
-                            true => {
-                                Ok(())
-                            }
-                        })?;
-
-                        let r = self.literal(loc, Value::Integer(1), ast::Typed {
-                            t:      ast::Type::ULiteral,
-                            loc:    loc.clone(),
-                            ptr:    Vec::new(),
-                            tail:   ast::Tail::None,
-                        });
-                        *expr = ast::Expression::Literal{
-                            loc: loc.clone(),
-                            v:  "".to_string(),
-                        };
-                        self.current_call.pop();
-                        return r;
-                    },
-                    Some("static") => {
-                        if args.len() != 1 {
-                            return Err(self.trace("call argument count mismatch".to_string(), vec![
-                                (name.loc().clone(), format!("builtin needs 1 argument, but you passed {}", args.len()))
-                            ]));
-                        }
-                        let sym = self.execute_expr(&mut args[0])?;
-                        let val = self.ssa.value((sym, self.memory[sym].temporal), |a,model|match a{
-                            smt::Assertion::Unsolveable => {
-                                Err(self.trace(format!("static is not solveable"), vec![
-                                    (loc.clone(), format!("there may be conflicting constraints"))
-                                ]))
-                            }
-                            smt::Assertion::Unconstrained(_) => {
-                                let mut estack = vec![(loc.clone(),
-                                format!("you may need an if condition or callsite_assert to increase confidence"))];
-                                estack.extend(self.demonstrate(model.as_ref().unwrap(), (sym, self.memory[sym].temporal), 0));
-                                Err(self.trace(format!("static is unconstrained"), estack))
-                            }
-                            smt::Assertion::Constrained(val) => {
-                                Ok(val)
-                            }
-                        })?;
-
-                        let r = self.literal(loc, Value::Integer(val), ast::Typed {
-                            t:      ast::Type::ULiteral,
-                            loc:    loc.clone(),
-                            ptr:    Vec::new(),
-                            tail:   ast::Tail::None,
-                        });
-                        *expr = ast::Expression::Literal{
-                            loc: loc.clone(),
-                            v:  format!("{}",val),
-                        };
-                        self.current_call.pop();
-                        return r;
-
-
-
-                    }
-                    _ => (),
-                }
-
-                let name_sym = self.execute_expr(name)?;
-
-
-                match &self.memory[name_sym].value.clone() {
-                    Value::Unconstrained(_) | Value::Uninitialized => {
-                        if let ast::Type::Other(n) = &self.memory[name_sym].typed.t {
-                            if let Some(ast::Def::Fntype {ret,args,vararg,nameloc,..}) = self.defs.get(&n).cloned() {
-                                self.deref(name_sym, loc)?;
-                                self.memory[name_sym].value = Value::Function {
-                                    loc: nameloc,
-                                    args,
-                                    vararg: vararg,
-                                    ret:    ret.as_ref().map(|r|r.typed.clone()),
-                                    callsite_assert: Vec::new(),
-                                    callsite_effect: Vec::new(),
-                                };
-
-                            }
-                        }
-                    }
-                    _ => ()
-                }
-
-                match &self.memory[name_sym].value {
-                    Value::Macro(name) => {
-                        return Err(self.trace(format!("macro expansion requires @ident syntax"), vec![
-                            (loc.clone(), format!("use @macro() instead of macro()"))
-                        ]));
-                    }
-                    Value::Theory{args: fargs, ret} => {
-                        *emit = ast::EmitBehaviour::Error {
-                            loc:        loc.clone(),
-                            message:    format!("assertion of theory {} outside static()", self.memory[name_sym].name),
-                        };
-                        let fargs = fargs.clone();
-                        let ret = ret.clone();
-                        if !*expanded {
-                            *expanded = true;
-                            self.expand_callargs(&fargs, args, loc, true, )?;
-                        }
-                        if args.len() != fargs.len() {
-                            return Err(self.trace("call argument count mismatch".to_string(), vec![
-                                (name.loc().clone(), format!("theory '{}' is defined over {} arguments, but you passed {}",
-                                    &self.memory[name_sym].name, fargs.len(), args.len()))
-                            ]));
-                        }
-                        let mut syms = Vec::new();
-                        let mut debug_arg_names = Vec::new();
-                        for (i, arg) in args.into_iter().enumerate() {
-                            let s = self.execute_expr(arg)?;
-                            syms.push((s, self.memory[s].temporal));
-
-                            debug_arg_names.push(format!("{}", self.memory[s].name));
-                            if Self::smt_type(&fargs[i].typed) != self.memory[s].t
-                            {
-                                return Err(self.trace(format!("incompatible arguments to theory {}", self.memory[name_sym].name), vec![
-                                    (arg.loc().clone(), format!("expected {} got {}", fargs[i].typed , self.memory[s].typed))
-                                    ]));
-                            }
-                        }
-
-                        let tmp = self.temporary(
-                            format!("interpretation of theory {} over {}", self.memory[name_sym].name, debug_arg_names.join(" , ")),
-                            ret.clone(),
-                            loc.clone(),
-                            Tags::new(),
-                        )?;
-                        let value = Value::Unconstrained("interpretation of theory".to_string());
-                        self.memory[tmp].value = value;
-
-                        self.ssa.invocation(name_sym, syms, (tmp,0));
-
-                        self.current_call.pop();
-                        Ok(tmp)
-                    },
-
-                    Value::SelfCall{selfarg, name} => {
-
-                        let mut args = args.clone();
-                        args.insert(0, selfarg.clone());
-
-                        *expr = ast::Expression::Call {
-                            loc: loc.clone(),
-                            name: Box::new(name.clone()),
-                            args,
-                            expanded: *expanded,
-                            emit:       emit.clone(),
-                        };
-
-                        let r = self.execute_expr(expr);
-                        self.current_call.pop();
-                        return r;
-                    }
-                    Value::Function{args: fargs, ret, vararg, callsite_assert, callsite_effect, loc: functionlloc} => {
-
-                        // borrochecker stupidity
-                        let mut callsite_effect = callsite_effect.clone();
-                        let vararg = *vararg;
-                        let functionlloc = functionlloc.clone();
-
-                        let ret = ret.clone();
-                        let fargs = fargs.clone();
-                        let mut callsite_assert = callsite_assert.clone();
-
-                        if !*expanded {
-                            *expanded = true;
-                            self.expand_callargs(&fargs, args, loc, false)?;
-                        }
-
-                        if (args.len() > fargs.len() && !vararg) || args.len() < fargs.len() {
-                            return Err(self.trace("call argument count mismatch".to_string(), vec![
-                                (name.loc().clone(), format!("function '{}' is defined over {} arguments, but you passed {}",
-                                    &self.memory[name_sym].name, fargs.len(), args.len()))
-                            ]));
-                        }
-                        let mut syms = Vec::new();
-                        for (i, arg) in args.iter_mut().enumerate() {
-                            let s = self.execute_expr(arg)?;
-                            /*
-                            // TODO doesnt respect casting yet
-
-                            if let Some(farg) = fargs.get(i) {
-                                if self.memory[s].typed != farg.typed {
-                                    return Err(self.trace("call argument type mismatch".to_string(), vec![
-                                        (arg.loc().clone(), format!("type {} cannot be used as argument of type {}",
-                                            &self.memory[name_sym].typed, farg.typed))
-                                    ]));
-                                }
-                            }
-                            */
-                            syms.push((s,self.memory[s].temporal));
-                        }
-
-
-
-                        //dont expose any symbols during callsite assert
-                        let global_only = vec![self.stack[0].clone()];
-                        let stack_original = std::mem::replace(&mut self.stack, global_only);
-
-                        if callsite_assert.len() > 0 {
-                            let mut ca_syms = Vec::new();
-                            let mut ca_locs = Vec::new();
-
-
-                            self.push("callsite_assert".to_string());
-                            self.ssa.push("callsite_assert");
-
-                            // callsite assert evaluated in the callsite
-                            // so we expose the symbol as a different name
-
-                            for (i, farg) in fargs.iter().enumerate() {
-                                self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
-                            }
-
-                            for callsite_assert in &mut callsite_assert {
-                                let casym = self.execute_expr(callsite_assert)?;
-                                ca_syms.push((casym, self.memory[casym].temporal));
-                                ca_locs.push(callsite_assert.loc().clone());
-                            }
-
-                            // try the fast path
-                            let ok = self.ssa.assert(ca_syms.clone(), |val,_|val);
-
-
-                            // one assertion broke, try them individually
-                            if !ok {
-                                for (sym,loc2) in ca_syms.into_iter().zip(ca_locs.into_iter()) {
-                                    self.ssa.assert(vec![sym], |a,model| match a {
-                                        false => {
-                                            let mut estack = vec![
-                                                (loc.clone(),format!("in this callsite")),
-                                                (loc2.clone(), format!("function call requires these conditions")),
-                                                (functionlloc.clone(), format!("for this function")),
-                                            ];
-                                            if let Some(model) = &model {
-                                                estack.extend(self.demonstrate(model, sym, 0));
-                                            }
-                                            Err(self.trace(format!("unproven callsite assert for {}", self.memory[sym.0].name), estack))
-                                        }
-                                        true => {
-                                            Ok(())
-                                        }
-                                    })?;
-                                }
-
-                            }
-                            self.ssa.pop("end of callsite_assert");
-                            self.pop();
-                        }
-
-                        self.stack = stack_original;
-
-                        // TODO for now mark all pointer call args as untrackable in the callsite
-                        // this should become a full borrow/aliasing checker
-                        self.ssa.debug("borrows after call");
-                        for (i,(s,_)) in syms.iter().enumerate() {
-                            let mut borrow = false;
-                            if let Some(farg) = fargs.get(i) {
-                                if farg.tags.contains("mut") || farg.tags.contains("alias"){
-                                    borrow = true;
-                                }
-                                for ptr in &farg.typed.ptr {
-                                    if ptr.tags.contains("mut") || ptr.tags.contains("alias"){
-                                        borrow = true;
-                                    }
-                                }
-                            } else {
-                                borrow = true;
-                            }
-                            if borrow {
-                                self.borrow_away(*s);
-                            }
-                        }
-                        self.ssa.debug("end of borrows after call");
-
-                        let return_sym = self.temporary(
-                            format!("return value of {}", self.memory[name_sym].name),
-                            ret.clone().unwrap_or(ast::Typed{
-                                t:      ast::Type::Other(Name::from("void")),
-                                loc:    loc.clone(),
-                                ptr:    Vec::new(),
-                                tail:   ast::Tail::None,
-                            }),
-                            loc.clone(),
-                            Tags::new(),
-                        )?;
-                        let value = Value::Unconstrained("return value".to_string());
-                        self.memory[return_sym].value = value;
-
-
-
-
-                        //dont expose any symbols during callsite effect
-                        let global_only = vec![self.stack[0].clone()];
-                        let stack_original = std::mem::replace(&mut self.stack, global_only);
-
-                        self.ssa.debug("callsite effects");
-                        for callsite_effect in &mut callsite_effect {
-                            self.push("callsite_effect".to_string());
-
-                            let return_sym_inner = self.alloc(
-                                Name::from("return"),
-                                ret.clone().unwrap_or(ast::Typed{
-                                    t:      ast::Type::Other(Name::from("void")),
-                                    loc:    loc.clone(),
-                                    ptr:    Vec::new(),
-                                    tail:   ast::Tail::None,
-                                }),
-                                loc.clone(),
-                                Tags::new(),
-                            )?;
-                            self.copy(return_sym_inner, return_sym, loc)?;
-
-                            // callsite effects happen in the callsite, but the names are from
-                            // the function declaration, so we expose the symbol as a different name
-                            for (i, farg) in fargs.iter().enumerate() {
-                                self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
-                            }
-
-                            let casym = self.execute_expr(callsite_effect)?;
-
-                            if !self.ssa.attest((casym, self.memory[casym].temporal), true) {
-                                return Err(self.trace(format!("callsite effect would break SSA"), vec![
-                                    (expr.loc().clone(), format!("there might be conflicting constraints"))
-                                ]));
-                            }
-
-
-                            self.copy(return_sym, return_sym_inner, loc)?;
-
-                            self.pop();
-                        }
-                        self.ssa.debug("end of callsite effects");
-
-                        self.stack = stack_original;
-
-
-                        self.current_call.pop();
-                        Ok(return_sym)
-                    },
-                    Value::Unconstrained(s) => {
-                        emit_debug(format!("call expression on {} is unprovable", s), &[
-                            (loc.clone(), format!("consider using an unsafe block"))
-                        ]);
-                        for arg in args {
-                            self.execute_expr(arg)?;
-                        }
-                        let tmp = self.temporary(
-                            format!("return value of {}", self.memory[name_sym].name),
-                            self.memory[name_sym].typed.clone(),
-                            loc.clone(),
-                            Tags::new(),
-                            )?;
-                        self.current_call.pop();
-                        Ok(tmp)
-
-                    }
-                    o => {
-                        return Err(self.trace(format!("call expression on {} not safe", o), vec![
-                            (loc.clone(), format!("call requires a function"))
-                        ]));
-                    }
-                }
-            }
-            ast::Expression::Infix { lhs, rhs, loc, op} => {
+            ast::Expression::Infix { lhs, rhs, loc, op } => {
                 let lhs_sym = self.execute_expr(lhs)?;
                 let rhs_sym = self.execute_expr(rhs)?;
 
                 let (mut newtype, lhs_sym, rhs_sym) = self.type_coersion(lhs_sym, rhs_sym, loc)?;
 
-                if !op.takes_boolean() && newtype.t == ast::Type::Bool{
-                    return Err(self.trace(format!("invalid types for integer operator"), vec![
-                        (loc.clone(), format!("not defined for type {}", newtype))
-                    ]))
-                } else if !op.takes_integer() && newtype.t != ast::Type::Bool{
-                    return Err(self.trace(format!("invalid types for boolean operator"), vec![
-                        (loc.clone(), format!("not defined for type {}", newtype))
-                    ]))
+                if !op.takes_boolean() && newtype.t == ast::Type::Bool {
+                    return Err(self.trace(
+                        format!("invalid types for integer operator"),
+                        vec![(loc.clone(), format!("not defined for type {}", newtype))],
+                    ));
+                } else if !op.takes_integer() && newtype.t != ast::Type::Bool {
+                    return Err(self.trace(
+                        format!("invalid types for boolean operator"),
+                        vec![(loc.clone(), format!("not defined for type {}", newtype))],
+                    ));
                 }
 
                 /* TODO too noisy
@@ -2402,62 +2352,71 @@ impl Symbolic {
                     }
                 }
                 */
-                let signed  = newtype.t.signed();
+                let signed = newtype.t.signed();
                 if op.returns_boolean() {
-                    newtype = ast::Typed{
-                        t:      ast::Type::Bool,
-                        ptr:    Vec::new(),
-                        loc:    loc.clone(),
-                        tail:   ast::Tail::None,
+                    newtype = ast::Typed {
+                        t: ast::Type::Bool,
+                        ptr: Vec::new(),
+                        loc: loc.clone(),
+                        tail: ast::Tail::None,
                     };
                 };
-
 
                 if newtype.t.signed() && *op == crate::ast::InfixOperator::Shiftright {
                     return Err(self.trace(format!("shift right of signed value is unprovable"), vec![
                         (loc.clone(), format!("compiler specific behaviour is not allowed because it is not provable"))
-                    ]))
+                    ]));
                 }
 
-                let tmp = self.temporary(format!("infix expression"),
+                let tmp = self.temporary(
+                    format!("infix expression"),
                     newtype.clone(),
                     loc.clone(),
                     Tags::new(),
                 )?;
 
-
                 // pointer arithmetic
                 if newtype.ptr.len() > 0 {
                     self.ssa.debug("begin pointer arithmetic");
-                    let len_of_lhs = self.temporary(format!("len({})", self.memory[lhs_sym].name),
-                        ast::Typed{
-                            t:      ast::Type::USize,
-                            ptr:    Vec::new(),
-                            loc:    loc.clone(),
-                            tail:   ast::Tail::None,
+                    let len_of_lhs = self.temporary(
+                        format!("len({})", self.memory[lhs_sym].name),
+                        ast::Typed {
+                            t: ast::Type::USize,
+                            ptr: Vec::new(),
+                            loc: loc.clone(),
+                            tail: ast::Tail::None,
                         },
                         loc.clone(),
                         Tags::new(),
                     )?;
-                    let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                    self.ssa.invocation(*lensym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (len_of_lhs, 0));
+                    let lensym = self
+                        .builtin
+                        .get("len")
+                        .expect("ICE: len theory not built in");
+                    self.ssa.invocation(
+                        *lensym,
+                        vec![(lhs_sym, self.memory[lhs_sym].temporal)],
+                        (len_of_lhs, 0),
+                    );
 
-
-
-                    let len_assert = self.temporary(format!("{} < len({})", self.memory[rhs_sym].name, self.memory[lhs_sym].name),
-                        ast::Typed{
-                            t:      ast::Type::Bool,
-                            ptr:    Vec::new(),
-                            loc:    loc.clone(),
-                            tail:   ast::Tail::None,
+                    let len_assert = self.temporary(
+                        format!(
+                            "{} < len({})",
+                            self.memory[rhs_sym].name, self.memory[lhs_sym].name
+                        ),
+                        ast::Typed {
+                            t: ast::Type::Bool,
+                            ptr: Vec::new(),
+                            loc: loc.clone(),
+                            tail: ast::Tail::None,
                         },
                         loc.clone(),
                         Tags::new(),
                     )?;
                     self.memory[len_assert].value = Value::InfixOp {
-                        lhs:    (rhs_sym, self.memory[rhs_sym].temporal),
-                        rhs:    (len_of_lhs, self.memory[len_of_lhs].temporal),
-                        op:     ast::InfixOperator::Lessthan,
+                        lhs: (rhs_sym, self.memory[rhs_sym].temporal),
+                        rhs: (len_of_lhs, self.memory[len_of_lhs].temporal),
+                        op: ast::InfixOperator::Lessthan,
                     };
                     self.ssa.infix_op(
                         len_assert,
@@ -2468,41 +2427,57 @@ impl Symbolic {
                         false,
                     );
                     self.ssa.debug("assert that length less than index is true");
-                    self.ssa.assert(vec![(len_assert, self.memory[len_assert].temporal)], |a, model| match a {
-                        false => {
-                            let mut estack = Vec::new();
-                            estack.extend(self.demonstrate(model.as_ref().unwrap(), (len_assert, self.memory[len_assert].temporal), 0));
-                            Err(self.trace(format!("possible out of bounds pointer arithmetic"), estack))
-                        }
-                        true => {
-                            Ok(())
-                        }
-                    })?;
+                    self.ssa.assert(
+                        vec![(len_assert, self.memory[len_assert].temporal)],
+                        |a, model| match a {
+                            false => {
+                                let mut estack = Vec::new();
+                                estack.extend(self.demonstrate(
+                                    model.as_ref().unwrap(),
+                                    (len_assert, self.memory[len_assert].temporal),
+                                    0,
+                                ));
+                                Err(self.trace(
+                                    format!("possible out of bounds pointer arithmetic"),
+                                    estack,
+                                ))
+                            }
+                            true => Ok(()),
+                        },
+                    )?;
                     self.ssa_mark_safe(tmp, loc)?;
 
-                    let len_of_opresult = self.temporary(format!("len({})", self.memory[lhs_sym].name),
-                        ast::Typed{
-                            t:      ast::Type::USize,
-                            ptr:    Vec::new(),
-                            loc:    loc.clone(),
-                            tail:   ast::Tail::None,
+                    let len_of_opresult = self.temporary(
+                        format!("len({})", self.memory[lhs_sym].name),
+                        ast::Typed {
+                            t: ast::Type::USize,
+                            ptr: Vec::new(),
+                            loc: loc.clone(),
+                            tail: ast::Tail::None,
                         },
                         loc.clone(),
                         Tags::new(),
                     )?;
-                    let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-                    self.ssa.invocation(*lensym, vec![(tmp, self.memory[tmp].temporal)], (len_of_opresult, 0));
+                    let lensym = self
+                        .builtin
+                        .get("len")
+                        .expect("ICE: len theory not built in");
+                    self.ssa.invocation(
+                        *lensym,
+                        vec![(tmp, self.memory[tmp].temporal)],
+                        (len_of_opresult, 0),
+                    );
 
-
-                    let opposite_op =  match op {
-                        ast::InfixOperator::Add      => ast::InfixOperator::Subtract,
+                    let opposite_op = match op {
+                        ast::InfixOperator::Add => ast::InfixOperator::Subtract,
 
                         //TODO need to check for wrap
                         //ast::InfixOperator::Subtract => ast::InfixOperator::Add,
                         _ => {
-                            return Err(self.trace(format!("unprovable pointer arithmetic"), vec![
-                                (expr.loc().clone(), format!("only + is possible"))
-                            ]));
+                            return Err(self.trace(
+                                format!("unprovable pointer arithmetic"),
+                                vec![(expr.loc().clone(), format!("only + is possible"))],
+                            ));
                         }
                     };
 
@@ -2515,16 +2490,21 @@ impl Symbolic {
                         signed,
                     );
 
-
                     let mut value = Value::Unconstrained("pointer arithmetic".into());
-                    if let Value::Array{..} = &self.memory[lhs_sym].value {
-                        if let Some(nuval) = self.ssa.value((len_of_opresult, self.memory[len_of_opresult].temporal), |a,_|match a{
-                            smt::Assertion::Constrained(val) => {
-                                let nuarray = HashMap::new();
-                                Some(Value::Array{len: val as usize, array: nuarray})
-                            }
-                            _ => None,
-                        }) {
+                    if let Value::Array { .. } = &self.memory[lhs_sym].value {
+                        if let Some(nuval) = self.ssa.value(
+                            (len_of_opresult, self.memory[len_of_opresult].temporal),
+                            |a, _| match a {
+                                smt::Assertion::Constrained(val) => {
+                                    let nuarray = HashMap::new();
+                                    Some(Value::Array {
+                                        len: val as usize,
+                                        array: nuarray,
+                                    })
+                                }
+                                _ => None,
+                            },
+                        ) {
                             value = nuval;
                         }
                     };
@@ -2533,15 +2513,12 @@ impl Symbolic {
                     return Ok(tmp);
                 }
 
-
-
                 let value = Value::InfixOp {
-                    lhs:    (lhs_sym, self.memory[lhs_sym].temporal),
-                    rhs:    (rhs_sym, self.memory[rhs_sym].temporal),
-                    op:     op.clone(),
+                    lhs: (lhs_sym, self.memory[lhs_sym].temporal),
+                    rhs: (rhs_sym, self.memory[rhs_sym].temporal),
+                    op: op.clone(),
                 };
                 self.memory[tmp].value = value;
-
 
                 self.ssa.infix_op(
                     tmp,
@@ -2555,7 +2532,8 @@ impl Symbolic {
             }
             ast::Expression::Cast { expr, into, loc } => {
                 let rhs = self.execute_expr(expr)?;
-                let tmp = self.temporary(format!("cast of {}", self.memory[rhs].name),
+                let tmp = self.temporary(
+                    format!("cast of {}", self.memory[rhs].name),
                     into.clone(),
                     loc.clone(),
                     Tags::new(),
@@ -2569,13 +2547,14 @@ impl Symbolic {
                 );
                 Ok(tmp)
             }
-            ast::Expression::UnaryPost {expr, op, loc} => {
+            ast::Expression::UnaryPost { expr, op, loc } => {
                 let lhs_sym = self.execute_expr(expr)?;
 
-                let tmp = self.temporary(format!("previous value of {}", self.memory[lhs_sym].name),
-                self.memory[lhs_sym].typed.clone(),
-                loc.clone(),
-                self.memory[lhs_sym].tags.clone(),
+                let tmp = self.temporary(
+                    format!("previous value of {}", self.memory[lhs_sym].name),
+                    self.memory[lhs_sym].typed.clone(),
+                    loc.clone(),
+                    self.memory[lhs_sym].tags.clone(),
                 )?;
 
                 if self.in_loop {
@@ -2585,16 +2564,16 @@ impl Symbolic {
                 }
 
                 let value = Value::PostfixOp {
-                    lhs:    (tmp, self.memory[tmp].temporal),
-                    op:     op.clone(),
+                    lhs: (tmp, self.memory[tmp].temporal),
+                    op: op.clone(),
                 };
                 self.memory[lhs_sym].value = value;
 
                 self.memory[lhs_sym].temporal += 1;
                 let tt = self.memory[lhs_sym].temporal;
-                self.memory[lhs_sym].assignments.insert(tt, expr.loc().clone());
-
-
+                self.memory[lhs_sym]
+                    .assignments
+                    .insert(tt, expr.loc().clone());
 
                 self.ssa.postfix_op(
                     (lhs_sym, self.memory[lhs_sym].temporal),
@@ -2603,10 +2582,9 @@ impl Symbolic {
                     self.memory[lhs_sym].t.clone(),
                 );
 
-
                 Ok(tmp)
             }
-            ast::Expression::UnaryPre {expr, op, loc }=> {
+            ast::Expression::UnaryPre { expr, op, loc } => {
                 match op {
                     ast::PrefixOperator::Deref => {
                         let lhs_sym = self.execute_expr(expr)?;
@@ -2614,10 +2592,10 @@ impl Symbolic {
                     }
                     ast::PrefixOperator::AddressOf => {
                         let lhs_sym = self.execute_expr(expr)?;
-                        let mut typed =  self.memory[lhs_sym].typed.clone();
-                        typed.ptr.push(ast::Pointer{
-                            tags:   self.memory[lhs_sym].tags.clone(),
-                            loc:    loc.clone(),
+                        let mut typed = self.memory[lhs_sym].typed.clone();
+                        typed.ptr.push(ast::Pointer {
+                            tags: self.memory[lhs_sym].tags.clone(),
+                            loc: loc.clone(),
                         });
                         let tmp = self.temporary(
                             format!("addressof({})", self.memory[lhs_sym].name),
@@ -2632,7 +2610,8 @@ impl Symbolic {
                         // it must be coming from a virtual stack
                         // because if we want to prove pointer arithmetic
                         // this value is meaningless
-                        self.ssa.literal(tmp, lhs_sym as u64, smt::Type::Unsigned(64));
+                        self.ssa
+                            .literal(tmp, lhs_sym as u64, smt::Type::Unsigned(64));
 
                         self.ssa_mark_safe(tmp, loc)?;
                         Ok(tmp)
@@ -2640,18 +2619,28 @@ impl Symbolic {
                     crate::ast::PrefixOperator::Boolnot | crate::ast::PrefixOperator::Bitnot => {
                         let rhs_sym = self.execute_expr(expr)?;
 
-
                         if *op == crate::ast::PrefixOperator::Boolnot {
                             if self.memory[rhs_sym].t != smt::Type::Bool {
-                                return Err(self.trace(format!("expected boolean, got {}", self.memory[rhs_sym].typed), vec![
-                                    (expr.loc().clone(), format!("coercion to boolean is difficult to prove"))
-                                ]));
+                                return Err(self.trace(
+                                    format!("expected boolean, got {}", self.memory[rhs_sym].typed),
+                                    vec![(
+                                        expr.loc().clone(),
+                                        format!("coercion to boolean is difficult to prove"),
+                                    )],
+                                ));
                             }
                         } else if *op == crate::ast::PrefixOperator::Bitnot {
                             if self.memory[rhs_sym].t == smt::Type::Bool {
-                                return Err(self.trace(format!("expected integer , got {}", self.memory[rhs_sym].typed), vec![
-                                    (expr.loc().clone(), format!("invalid operand on boolean"))
-                                ]));
+                                return Err(self.trace(
+                                    format!(
+                                        "expected integer , got {}",
+                                        self.memory[rhs_sym].typed
+                                    ),
+                                    vec![(
+                                        expr.loc().clone(),
+                                        format!("invalid operand on boolean"),
+                                    )],
+                                ));
                             }
                         }
                         let tmp = self.temporary(
@@ -2659,10 +2648,10 @@ impl Symbolic {
                             self.memory[rhs_sym].typed.clone(),
                             loc.clone(),
                             self.memory[rhs_sym].tags.clone(),
-                            )?;
+                        )?;
                         let value = Value::PrefixOp {
-                            rhs:    (rhs_sym, self.memory[rhs_sym].temporal),
-                            op:     op.clone(),
+                            rhs: (rhs_sym, self.memory[rhs_sym].temporal),
+                            op: op.clone(),
                         };
                         self.memory[tmp].value = value;
 
@@ -2675,12 +2664,14 @@ impl Symbolic {
 
                         Ok(tmp)
                     }
-                    crate::ast::PrefixOperator::Increment | crate::ast::PrefixOperator::Decrement => {
+                    crate::ast::PrefixOperator::Increment
+                    | crate::ast::PrefixOperator::Decrement => {
                         let rhs_sym = self.execute_expr(expr)?;
                         if self.memory[rhs_sym].t == smt::Type::Bool {
-                            return Err(self.trace(format!("expected integer, got {}", self.memory[rhs_sym].typed), vec![
-                                (expr.loc().clone(), format!("invalid operand on boolean"))
-                            ]));
+                            return Err(self.trace(
+                                format!("expected integer, got {}", self.memory[rhs_sym].typed),
+                                vec![(expr.loc().clone(), format!("invalid operand on boolean"))],
+                            ));
                         }
                         let tmp = self.temporary(
                             format!("copy of {} before unary", self.memory[rhs_sym].name),
@@ -2690,10 +2681,9 @@ impl Symbolic {
                         )?;
                         self.copy(tmp, rhs_sym, loc)?;
 
-
                         let value = Value::PrefixOp {
-                            rhs:    (rhs_sym, self.memory[rhs_sym].temporal),
-                            op:     op.clone(),
+                            rhs: (rhs_sym, self.memory[rhs_sym].temporal),
+                            op: op.clone(),
                         };
                         self.memory[rhs_sym].value = value;
                         self.ssa.prefix_op(
@@ -2704,33 +2694,66 @@ impl Symbolic {
                         );
 
                         Ok(tmp)
-
                     }
                 }
             }
-            ast::Expression::StructInit {loc, typed, fields} => {
-                let aptr = self.alloc(Name::from(&format!("literal struct {}", self.memory.len())),
+            ast::Expression::StructInit {
+                loc,
+                typed,
+                fields: ref mut initfields,
+            } => {
+                let aptr = self.alloc(
+                    Name::from(&format!("literal struct {}", self.memory.len())),
                     typed.clone(),
                     loc.clone(),
-                    Tags::new()
+                    Tags::new(),
                 )?;
                 let mut members = HashMap::new();
-                for (name, expr) in fields.iter_mut() {
-                    let to = self.execute_expr(expr)?;
-                    members.insert(name.clone(), to);
+
+                if let ast::Type::Other(o) = &typed.t {
+                    if let Some(def) = self.defs.get(o).cloned() {
+                        if let ast::Def::Struct { fields, .. } = &def {
+                            for (name, expr) in initfields.iter_mut() {
+                                let mut found = false;
+                                for field in fields {
+                                    if &field.name == name {
+                                        let to = self.autocast(expr, &field.typed)?;
+                                        members.insert(name.clone(), to);
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if !found {
+                                    return Err(self.trace(
+                                        format!("{} has no member {}", o, name),
+                                        vec![(expr.loc().clone(), format!("here"))],
+                                    ));
+                                }
+                            }
+                        } else if let ast::Def::Closure {  .. } = &def {
+                            self.memory[aptr].name  = Name::from(&format!("closure struct {}", self.memory.len()));
+                            self.memory[aptr].value = self.make_closure_val(o.clone())?;
+                            self.ssa_mark_safe(aptr, expr.loc())?;
+                            return Ok(aptr)
+                        } else {
+                            return Err(self.trace(
+                                format!("cannot initialize non-struct with a struct literal"), vec![
+                                (loc.clone(), format!("this expression is a struct literal")),
+                                (typed.loc.clone(), format!("but this is not a struct")),
+                                ]));
+                        }
+                    }
                 }
 
-                self.memory[aptr].value = Value::Struct{
-                    members,
-                };
-
+                self.memory[aptr].value = Value::Struct { members };
                 Ok(aptr)
             }
-            ast::Expression::ArrayInit {fields, loc} => {
+            ast::Expression::ArrayInit { fields, loc } => {
                 if fields.len() < 1 {
-                    return Err(self.trace(format!("empty literal array not possible"), vec![
-                        (loc.clone(), format!("here"))
-                    ]));
+                    return Err(self.trace(
+                        format!("empty literal array not possible"),
+                        vec![(loc.clone(), format!("here"))],
+                    ));
                 }
 
                 let mut array = HashMap::new();
@@ -2740,19 +2763,19 @@ impl Symbolic {
                 }
 
                 let mut typed = self.memory[array[&0]].typed.clone();
-                typed.ptr.push(ast::Pointer{
-                    loc:  loc.clone(),
+                typed.ptr.push(ast::Pointer {
+                    loc: loc.clone(),
                     tags: ast::Tags::new(),
                 });
                 let aptr = self.alloc(
                     Name::from(&format!("literal array {}", self.memory.len())),
                     typed,
                     loc.clone(),
-                    Tags::new()
+                    Tags::new(),
                 )?;
 
-                self.memory[aptr].value = Value::Array{
-                    len:    array.len(),
+                self.memory[aptr].value = Value::Array {
+                    len: array.len(),
                     array,
                 };
                 self.ssa_mark_safe(aptr, loc)?;
@@ -2762,18 +2785,592 @@ impl Symbolic {
         }
     }
 
+    fn execute_call(&mut self, expr: &mut ast::Expression) -> Result<Symbol, Error> {
+        let (name, args, loc, expanded, emit) = match expr {
+            ast::Expression::Call { name, ref mut args, loc, ref mut expanded, ref mut emit, .. } => (name, args, loc, expanded, emit),
+            _ => unreachable!(),
+        };
+        self.current_call.push(loc.clone());
 
+        let mut static_name = None;
+        if let ast::Expression::Name(ref t) = name.as_ref() {
+            if let ast::Type::Other(name) = &t.t {
+                static_name = Some(format!("{}", name));
+            }
+        }
+
+        if let Some(static_name) = &static_name {
+            self.ssa.debug(&format!("call of {}", static_name));
+        } else {
+            self.ssa.debug(&format!("call"));
+        }
+
+        match static_name.as_ref().map(|s| s.as_str()) {
+            Some("typeid") => {
+                if args.len() != 1 {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!("builtin needs 1 argument, but you passed {}", args.len()),
+                        )],
+                    ));
+                }
+                let sym = self.execute_expr(&mut args[0])?;
+
+                let r = self.literal(
+                    loc,
+                    Value::Integer(1),
+                    ast::Typed {
+                        t: ast::Type::ULiteral,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
+                    },
+                );
+
+                *expr = ast::Expression::Literal {
+                    loc: loc.clone(),
+                    v: format!("\"{}\"", self.memory[sym].typed),
+                };
+                self.current_call.pop();
+                return r;
+            }
+            Some("len") => {
+                if args.len() != 1 {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!("builtin needs 1 argument, but you passed {}", args.len()),
+                        )],
+                    ));
+                }
+                // shortcut, as calls to z3 are expensive and can pile up to unsolveable mess
+                let sym = self.execute_expr(&mut args[0])?;
+                if let Value::Array { len, .. } = self.memory[sym].value {
+                    if len > 0 {
+                        let r = self.literal(
+                            loc,
+                            Value::Integer(len as u64),
+                            ast::Typed {
+                                t: ast::Type::ULiteral,
+                                loc: loc.clone(),
+                                ptr: Vec::new(),
+                                tail: ast::Tail::None,
+                            },
+                        );
+                        self.current_call.pop();
+                        return r;
+                    }
+                }
+                // no shortcut found, continue
+            }
+            Some("static_attest") => {
+                *emit = ast::EmitBehaviour::Skip;
+                self.ssa.debug_loc(loc);
+                self.ssa.debug("static_attest");
+                if args.len() != 1 {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!("builtin needs 1 argument, but you passed {}", args.len()),
+                        )],
+                    ));
+                }
+                let sym = self.execute_expr(&mut args[0])?;
+                if self.memory[sym].t != smt::Type::Bool {
+                    return Err(self.trace(
+                        format!("expected boolean, got {}", self.memory[sym].typed),
+                        vec![(args[0].loc().clone(), format!("argument must be boolean"))],
+                    ));
+                }
+                if !self.ssa.attest((sym, self.memory[sym].temporal), true) {
+                    return Err(self.trace(
+                        format!("function is unprovable"),
+                        vec![(
+                            expr.loc().clone(),
+                            format!("static_attest leads to conflicting constraints"),
+                        )],
+                    ));
+                }
+
+                let r = self.literal(
+                    loc,
+                    Value::Integer(1),
+                    ast::Typed {
+                        t: ast::Type::ULiteral,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
+                    },
+                );
+                self.current_call.pop();
+                return r;
+            }
+            Some("static_assert") => {
+                *emit = ast::EmitBehaviour::Skip;
+                self.ssa.debug_loc(loc);
+                self.ssa.debug("static_assert");
+                if args.len() != 1 {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!("builtin needs 1 argument, but you passed {}", args.len()),
+                        )],
+                    ));
+                }
+                let sym = self.execute_expr(&mut args[0])?;
+                if self.memory[sym].t != smt::Type::Bool {
+                    return Err(self.trace(
+                        format!("expected boolean, got {}", self.memory[sym].typed),
+                        vec![(
+                            args[0].loc().clone(),
+                            format!("coercion to boolean is difficult to prove"),
+                        )],
+                    ));
+                }
+                self.ssa.assert(vec![(sym, self.memory[sym].temporal)], |a,model|match a{
+                   false => {
+                       let mut estack = vec![(loc.clone(),
+                           format!("you may need an if condition or callsite_assert to increase confidence"))];
+                       if let Some(model) = &model {
+                           estack.extend(self.demonstrate(model, (sym, self.memory[sym].temporal), 0));
+                       }
+                       Err(self.trace(format!("theory is unproven"), estack))
+                   }
+                   true => {
+                       Ok(())
+                   }
+               })?;
+
+                let r = self.literal(
+                    loc,
+                    Value::Integer(1),
+                    ast::Typed {
+                        t: ast::Type::ULiteral,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
+                    },
+                );
+                *expr = ast::Expression::Literal {
+                    loc: loc.clone(),
+                    v: "".to_string(),
+                };
+                self.current_call.pop();
+                return r;
+            }
+            Some("static") => {
+                if args.len() != 1 {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!("builtin needs 1 argument, but you passed {}", args.len()),
+                        )],
+                    ));
+                }
+                let sym = self.execute_expr(&mut args[0])?;
+                let val = self.ssa.value((sym, self.memory[sym].temporal), |a,model|match a{
+                   smt::Assertion::Unsolveable => {
+                       Err(self.trace(format!("static is not solveable"), vec![
+                           (loc.clone(), format!("there may be conflicting constraints"))
+                       ]))
+                   }
+                   smt::Assertion::Unconstrained(_) => {
+                       let mut estack = vec![(loc.clone(),
+                       format!("you may need an if condition or callsite_assert to increase confidence"))];
+                       estack.extend(self.demonstrate(model.as_ref().unwrap(), (sym, self.memory[sym].temporal), 0));
+                       Err(self.trace(format!("static is unconstrained"), estack))
+                   }
+                   smt::Assertion::Constrained(val) => {
+                       Ok(val)
+                   }
+               })?;
+
+                let r = self.literal(
+                    loc,
+                    Value::Integer(val),
+                    ast::Typed {
+                        t: ast::Type::ULiteral,
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
+                    },
+                );
+                *expr = ast::Expression::Literal {
+                    loc: loc.clone(),
+                    v: format!("{}", val),
+                };
+                self.current_call.pop();
+                return r;
+            }
+            _ => (),
+        }
+
+        let name_sym = self.execute_expr(name)?;
+
+        match &self.memory[name_sym].value.clone() {
+            Value::Unconstrained(_) | Value::Uninitialized => {
+                if let ast::Type::Other(n) = &self.memory[name_sym].typed.t {
+                    if let Some(ast::Def::Closure{..}) = self.defs.get(&n) {
+                        self.memory[name_sym].value = self.make_closure_val(n.clone())?;
+                    }
+                }
+            }
+            _ => ()
+        }
+
+        match &self.memory[name_sym].value {
+            Value::Macro(name) => {
+                return Err(self.trace(
+                    format!("macro expansion requires @ident syntax"),
+                    vec![(loc.clone(), format!("use @macro() instead of macro()"))],
+                ));
+            }
+            Value::Theory { args: fargs, ret } => {
+                *emit = ast::EmitBehaviour::Error {
+                    loc: loc.clone(),
+                    message: format!(
+                        "assertion of theory {} outside static()",
+                        self.memory[name_sym].name
+                    ),
+                };
+                let fargs = fargs.clone();
+                let ret = ret.clone();
+                if !*expanded {
+                    *expanded = true;
+                    self.expand_callargs(&fargs, args, loc, true)?;
+                }
+                if args.len() != fargs.len() {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!(
+                                "theory '{}' is defined over {} arguments, but you passed {}",
+                                &self.memory[name_sym].name,
+                                fargs.len(),
+                                args.len()
+                            ),
+                        )],
+                    ));
+                }
+                let mut syms = Vec::new();
+                let mut debug_arg_names = Vec::new();
+                for (i, arg) in args.into_iter().enumerate() {
+                    let s = self.execute_expr(arg)?;
+                    syms.push((s, self.memory[s].temporal));
+
+                    debug_arg_names.push(format!("{}", self.memory[s].name));
+                    if Self::smt_type(&fargs[i].typed) != self.memory[s].t {
+                        return Err(self.trace(
+                            format!(
+                                "incompatible arguments to theory {}",
+                                self.memory[name_sym].name
+                            ),
+                            vec![(
+                                arg.loc().clone(),
+                                format!("expected {} got {}", fargs[i].typed, self.memory[s].typed),
+                            )],
+                        ));
+                    }
+                }
+
+                let tmp = self.temporary(
+                    format!(
+                        "interpretation of theory {} over {}",
+                        self.memory[name_sym].name,
+                        debug_arg_names.join(" , ")
+                    ),
+                    ret.clone(),
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                let value = Value::Unconstrained("interpretation of theory".to_string());
+                self.memory[tmp].value = value;
+
+                self.ssa.invocation(name_sym, syms, (tmp, 0));
+
+                self.current_call.pop();
+                Ok(tmp)
+            }
+
+            Value::SelfCall { selfarg, name } => {
+                let mut args = args.clone();
+                args.insert(0, selfarg.clone());
+
+                *expr = ast::Expression::Call {
+                    loc: loc.clone(),
+                    name: Box::new(name.clone()),
+                    args,
+                    expanded: *expanded,
+                    emit: emit.clone(),
+                };
+
+                let r = self.execute_expr(expr);
+                self.current_call.pop();
+                return r;
+            }
+            Value::Function {
+                args: fargs,
+                ret,
+                vararg,
+                callsite_assert,
+                callsite_effect,
+                loc: functionlloc,
+            } => {
+                // borrochecker stupidity
+                let mut callsite_effect = callsite_effect.clone();
+                let vararg = *vararg;
+                let functionlloc = functionlloc.clone();
+
+                let ret = ret.clone();
+                let fargs = fargs.clone();
+                let mut callsite_assert = callsite_assert.clone();
+
+                if !*expanded {
+                    *expanded = true;
+                    self.expand_callargs(&fargs, args, loc, false)?;
+                }
+
+                if (args.len() > fargs.len() && !vararg) || args.len() < fargs.len() {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!(
+                                "function '{}' is defined over {} arguments, but you passed {}",
+                                &self.memory[name_sym].name,
+                                fargs.len(),
+                                args.len()
+                            ),
+                        )],
+                    ));
+                }
+                let mut syms = Vec::new();
+                for (i, arg) in args.iter_mut().enumerate() {
+                    let s = self.execute_expr(arg)?;
+                    /*
+                    // TODO doesnt respect casting yet
+
+                    if let Some(farg) = fargs.get(i) {
+                        if self.memory[s].typed != farg.typed {
+                            return Err(self.trace("call argument type mismatch".to_string(), vec![
+                                (arg.loc().clone(), format!("type {} cannot be used as argument of type {}",
+                                    &self.memory[name_sym].typed, farg.typed))
+                            ]));
+                        }
+                    }
+                    */
+                    syms.push((s, self.memory[s].temporal));
+                }
+
+                //dont expose any symbols during callsite assert
+                let global_only = vec![self.stack[0].clone()];
+                let stack_original = std::mem::replace(&mut self.stack, global_only);
+
+                if callsite_assert.len() > 0 {
+                    let mut ca_syms = Vec::new();
+                    let mut ca_locs = Vec::new();
+
+                    self.push("callsite_assert".to_string());
+                    self.ssa.push("callsite_assert");
+
+                    // callsite assert evaluated in the callsite
+                    // so we expose the symbol as a different name
+
+                    for (i, farg) in fargs.iter().enumerate() {
+                        self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
+                    }
+
+                    for callsite_assert in &mut callsite_assert {
+                        let casym = self.execute_expr(callsite_assert)?;
+                        ca_syms.push((casym, self.memory[casym].temporal));
+                        ca_locs.push(callsite_assert.loc().clone());
+                    }
+
+                    // try the fast path
+                    let ok = self.ssa.assert(ca_syms.clone(), |val, _| val);
+
+                    // one assertion broke, try them individually
+                    if !ok {
+                        for (sym, loc2) in ca_syms.into_iter().zip(ca_locs.into_iter()) {
+                            self.ssa.assert(vec![sym], |a, model| match a {
+                                false => {
+                                    let mut estack = vec![
+                                        (loc.clone(), format!("in this callsite")),
+                                        (
+                                            loc2.clone(),
+                                            format!("function call requires these conditions"),
+                                        ),
+                                        (functionlloc.clone(), format!("for this function")),
+                                    ];
+                                    if let Some(model) = &model {
+                                        estack.extend(self.demonstrate(model, sym, 0));
+                                    }
+                                    Err(self.trace(
+                                        format!(
+                                            "unproven callsite assert for {}",
+                                            self.memory[sym.0].name
+                                        ),
+                                        estack,
+                                    ))
+                                }
+                                true => Ok(()),
+                            })?;
+                        }
+                    }
+                    self.ssa.pop("end of callsite_assert");
+                    self.pop();
+                }
+
+                self.stack = stack_original;
+
+                // TODO for now mark all pointer call args as untrackable in the callsite
+                // this should become a full borrow/aliasing checker
+                self.ssa.debug("borrows after call");
+                for (i, (s, _)) in syms.iter().enumerate() {
+                    let mut borrow = false;
+                    if let Some(farg) = fargs.get(i) {
+                        if farg.tags.contains("mut") || farg.tags.contains("alias") {
+                            borrow = true;
+                        }
+                        for ptr in &farg.typed.ptr {
+                            if ptr.tags.contains("mut") || ptr.tags.contains("alias") {
+                                borrow = true;
+                            }
+                        }
+                    } else {
+                        borrow = true;
+                    }
+                    if borrow {
+                        self.borrow_away(*s);
+                    }
+                }
+                self.ssa.debug("end of borrows after call");
+
+                let return_sym = self.temporary(
+                    format!("return value of {}", self.memory[name_sym].name),
+                    ret.clone().unwrap_or(ast::Typed {
+                        t: ast::Type::Other(Name::from("void")),
+                        loc: loc.clone(),
+                        ptr: Vec::new(),
+                        tail: ast::Tail::None,
+                    }),
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                let value = Value::Unconstrained("return value".to_string());
+                self.memory[return_sym].value = value;
+
+                //dont expose any symbols during callsite effect
+                let global_only = vec![self.stack[0].clone()];
+                let stack_original = std::mem::replace(&mut self.stack, global_only);
+
+                self.ssa.debug("callsite effects");
+                for callsite_effect in &mut callsite_effect {
+                    self.push("callsite_effect".to_string());
+
+                    let return_sym_inner = self.alloc(
+                        Name::from("return"),
+                        ret.clone().unwrap_or(ast::Typed {
+                            t: ast::Type::Other(Name::from("void")),
+                            loc: loc.clone(),
+                            ptr: Vec::new(),
+                            tail: ast::Tail::None,
+                        }),
+                        loc.clone(),
+                        Tags::new(),
+                    )?;
+                    self.copy(return_sym_inner, return_sym, loc)?;
+
+                    // callsite effects happen in the callsite, but the names are from
+                    // the function declaration, so we expose the symbol as a different name
+                    for (i, farg) in fargs.iter().enumerate() {
+                        self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
+                    }
+
+                    let casym = self.execute_expr(callsite_effect)?;
+
+                    if !self.ssa.attest((casym, self.memory[casym].temporal), true) {
+                        return Err(self.trace(
+                            format!("callsite effect would break SSA"),
+                            vec![(
+                                expr.loc().clone(),
+                                format!("there might be conflicting constraints"),
+                            )],
+                        ));
+                    }
+
+                    self.copy(return_sym, return_sym_inner, loc)?;
+
+                    self.pop();
+                }
+                self.ssa.debug("end of callsite effects");
+
+                self.stack = stack_original;
+
+                self.current_call.pop();
+                Ok(return_sym)
+            }
+            Value::Closure{..} => {
+                self.assert_safe(name_sym, loc)?;
+
+                args.push(Box::new(ast::Expression::MemberAccess{
+                    loc: loc.clone(),
+                    lhs: name.clone(),
+                    op:  ".".to_string(),
+                    rhs: "ctx".to_string(),
+                }));
+                *name = Box::new(ast::Expression::MemberAccess{
+                    loc: loc.clone(),
+                    lhs: name.clone(),
+                    op:  ".".to_string(),
+                    rhs: "fn".to_string(),
+                });
+                return self.execute_expr(expr);
+            }
+            Value::Unconstrained(s) => {
+                emit_debug(
+                    format!("call expression on {} is unprovable", s),
+                    &[(loc.clone(), format!("consider using an unsafe block"))],
+                );
+                for arg in args {
+                    self.execute_expr(arg)?;
+                }
+                let tmp = self.temporary(
+                    format!("return value of {}", self.memory[name_sym].name),
+                    self.memory[name_sym].typed.clone(),
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                self.current_call.pop();
+                Ok(tmp)
+            }
+            o => {
+                return Err(self.trace(
+                    format!("call expression on {} not safe", o),
+                    vec![(loc.clone(), format!("call requires a function"))],
+                ));
+            }
+        }
+    }
 
     // a pointer value has been borrowed, so everything it points to might have been tampered with
     fn borrow_away(&mut self, sym: Symbol) {
         match &self.memory[sym].value.clone() {
-            Value::Array{array,..} => {
-                for (_,s2) in array.clone() {
+            Value::Array { array, .. } => {
+                for (_, s2) in array.clone() {
                     self.borrow_away(s2);
                 }
             }
             Value::Address(to) => {
-                self.ssa.debug(&format!("{} to temporal +1 because of function borrow", to));
+                self.ssa
+                    .debug(&format!("{} to temporal +1 because of function borrow", to));
                 self.memory[*to].temporal += 1;
                 //self.memory[*to].value     = Value::Unconstrained("borrowed in function call".to_string());
 
@@ -2781,18 +3378,58 @@ impl Symbolic {
                 self.ssa.assign_branch(
                     (*to, self.memory[*to].temporal),
                     (*to, self.memory[*to].temporal),
-                    (*to, self.memory[*to].temporal -1),
+                    (*to, self.memory[*to].temporal - 1),
                     self.memory[*to].t.clone(),
                 );
-
             }
-            _ => ()
+            _ => (),
         }
     }
 
+    fn assert_safe(&mut self, lhs_sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
+        self.ssa.debug("begin safe ptr check");
+        let tmp1 = self.temporary(
+            format!("safe({})", self.memory[lhs_sym].name),
+            ast::Typed {
+                t: ast::Type::Bool,
+                ptr: Vec::new(),
+                loc: loc.clone(),
+                tail: ast::Tail::None,
+            },
+            loc.clone(),
+            Tags::new(),
+        )?;
+        let theosym = self
+            .builtin
+            .get("safe")
+            .expect("ICE: safe theory not built in");
+        self.ssa.invocation(
+            *theosym,
+            vec![(lhs_sym, self.memory[lhs_sym].temporal)],
+            (tmp1, 0),
+        );
+
+        self.ssa.assert(
+            vec![(tmp1, self.memory[tmp1].temporal)],
+            |a, model| match a {
+                false => {
+                    let mut estack =
+                        vec![(loc.clone(),
+                format!("you may need an if condition or callsite_assert to prove it is safe"))];
+                    estack.extend(self.demonstrate(
+                        model.as_ref().unwrap(),
+                        (tmp1, self.memory[tmp1].temporal),
+                        0,
+                    ));
+                    Err(self.trace(format!("deref of unsafe pointer"), estack))
+                }
+                true => Ok(()),
+            },
+        )?;
+        return Ok(());
+    }
 
     fn deref(&mut self, lhs_sym: Symbol, loc: &ast::Location) -> Result<Symbol, Error> {
-
         if let Value::Address(to) = self.memory[lhs_sym].value.clone() {
             return Ok(to);
         }
@@ -2813,13 +3450,15 @@ impl Symbolic {
             popped_tags,
         )?;
 
-
         if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
-            return Err(self.trace(format!("cannot prove memory access due to unexpected type"), vec![
-                (loc.clone(), format!("deref expression appears to be not a pointer or array"))
-            ]))
+            return Err(self.trace(
+                format!("cannot prove memory access due to unexpected type"),
+                vec![(
+                    loc.clone(),
+                    format!("deref expression appears to be not a pointer or array"),
+                )],
+            ));
         }
-
 
         // this is because the optimization cheat in check check_function_model doesn't apply
         // anything in between model calls
@@ -2827,149 +3466,140 @@ impl Symbolic {
             return Ok(member);
         }
 
-        self.ssa.debug("begin safe ptr check");
-        let tmp1 = self.temporary(
-            format!("safe({})", self.memory[lhs_sym].name),
-            ast::Typed{
-                t:      ast::Type::Bool,
-                ptr:    Vec::new(),
-                loc:    loc.clone(),
-                tail:   ast::Tail::None,
-            },
-            loc.clone(),
-            Tags::new(),
-        )?;
-        let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-        self.ssa.invocation(*theosym, vec![(lhs_sym, self.memory[lhs_sym].temporal)], (tmp1, 0));
-
-        self.ssa.assert(vec![(tmp1, self.memory[tmp1].temporal)], |a,model| match a {
-            false  => {
-                let mut estack = vec![(loc.clone(),
-                format!("you may need an if condition or callsite_assert to prove it is safe"))];
-                estack.extend(self.demonstrate(model.as_ref().unwrap(), (tmp1, self.memory[tmp1].temporal), 0));
-                Err(self.trace(format!("deref of unsafe pointer"), estack))
-            }
-            true => {
-                Ok(())
-            }
-        })?;
-
+        self.assert_safe(lhs_sym, loc)?;
 
 
         match &self.memory[lhs_sym].value {
             // we're assuming this is ok because odf the above satefy checks
             Value::Uninitialized | Value::Unconstrained(_) => {
                 self.memory[lhs_sym].value = Value::Address(member);
-            },
+            }
             o => {
-                return Err(self.trace(format!("deref of {} is not possible", o), vec![
-                    (loc.clone(), format!("this must be a pointer"))
-                ]))
+                return Err(self.trace(
+                    format!("deref of {} is not possible", o),
+                    vec![(loc.clone(), format!("this must be a pointer"))],
+                ))
             }
         }
 
         Ok(member)
-
     }
 
-
-    fn smt_type(t: &ast::Typed) ->  crate::smt::Type {
+    fn smt_type(t: &ast::Typed) -> crate::smt::Type {
         if t.ptr.len() > 0 {
             return crate::smt::Type::Unsigned(64);
         }
         match t.t {
-            ast::Type::Bool     => crate::smt::Type::Bool,
+            ast::Type::Bool => crate::smt::Type::Bool,
             ast::Type::Other(_) => crate::smt::Type::Unsigned(64),
-            ast::Type::U8       => crate::smt::Type::Unsigned(8),
-            ast::Type::U16      => crate::smt::Type::Unsigned(16),
-            ast::Type::U32      => crate::smt::Type::Unsigned(32),
-            ast::Type::U64      => crate::smt::Type::Unsigned(64),
-            ast::Type::U128     => crate::smt::Type::Unsigned(128),
-            ast::Type::I8       => crate::smt::Type::Signed(8),
-            ast::Type::I16      => crate::smt::Type::Signed(16),
-            ast::Type::I32      => crate::smt::Type::Signed(32),
-            ast::Type::I64      => crate::smt::Type::Signed(64),
-            ast::Type::I128     => crate::smt::Type::Signed(128),
+            ast::Type::U8 => crate::smt::Type::Unsigned(8),
+            ast::Type::U16 => crate::smt::Type::Unsigned(16),
+            ast::Type::U32 => crate::smt::Type::Unsigned(32),
+            ast::Type::U64 => crate::smt::Type::Unsigned(64),
+            ast::Type::U128 => crate::smt::Type::Unsigned(128),
+            ast::Type::I8 => crate::smt::Type::Signed(8),
+            ast::Type::I16 => crate::smt::Type::Signed(16),
+            ast::Type::I32 => crate::smt::Type::Signed(32),
+            ast::Type::I64 => crate::smt::Type::Signed(64),
+            ast::Type::I128 => crate::smt::Type::Signed(128),
 
-            ast::Type::UInt     => crate::smt::Type::Unsigned(64),
-            ast::Type::Int      => crate::smt::Type::Signed(64),
+            ast::Type::UInt => crate::smt::Type::Unsigned(64),
+            ast::Type::Int => crate::smt::Type::Signed(64),
 
-            ast::Type::USize    => crate::smt::Type::Unsigned(64),
-            ast::Type::ISize    => crate::smt::Type::Signed(64),
+            ast::Type::USize => crate::smt::Type::Unsigned(64),
+            ast::Type::ISize => crate::smt::Type::Signed(64),
 
-            ast::Type::F64      => crate::smt::Type::Unsigned(64),
-            ast::Type::F32      => crate::smt::Type::Unsigned(64),
-
+            ast::Type::F64 => crate::smt::Type::Unsigned(64),
+            ast::Type::F32 => crate::smt::Type::Unsigned(64),
 
             // these are actually just pollution in smt. they're casted before use
-            ast::Type::New      => crate::smt::Type::Unsigned(64),
-            ast::Type::Elided   => crate::smt::Type::Unsigned(64),
+            ast::Type::New => crate::smt::Type::Unsigned(64),
+            ast::Type::Elided => crate::smt::Type::Unsigned(64),
             ast::Type::ULiteral => crate::smt::Type::Unsigned(64),
             ast::Type::ILiteral => crate::smt::Type::Signed(64),
         }
     }
 
     // new stack variable
-    fn alloc(&mut self, name: Name, typed: ast::Typed, loc: ast::Location, tags: ast::Tags) -> Result<Symbol, Error> {
+    fn alloc(
+        &mut self,
+        name: Name,
+        typed: ast::Typed,
+        loc: ast::Location,
+        tags: ast::Tags,
+    ) -> Result<Symbol, Error> {
         self.ssa.debug_loc(&loc);
 
         if let Some(prev) = self.cur().locals.get(&name).cloned() {
-            return Err(self.trace(format!("ICE in {}: redeclation of local name '{}' should have failed in expand", self.current_module_name, name), vec![
-                (loc.clone(), "this declaration would shadow a previous name".to_string()),
-                (self.memory[prev].declared.clone(), "previous declaration".to_string())
-            ]));
+            return Err(self.trace(
+                format!(
+                    "ICE in {}: redeclation of local name '{}' should have failed in expand",
+                    self.current_module_name, name
+                ),
+                vec![
+                    (
+                        loc.clone(),
+                        "this declaration would shadow a previous name".to_string(),
+                    ),
+                    (
+                        self.memory[prev].declared.clone(),
+                        "previous declaration".to_string(),
+                    ),
+                ],
+            ));
         }
 
         let t = Self::smt_type(&typed);
         let symbol = self.memory.len();
-        self.memory.push(Storage{
-            typed:      typed.clone(),
-            t:          t.clone(),
-            name:       name.clone(),
-            declared:   loc.clone(),
-            value:      Value::Uninitialized,
+        self.memory.push(Storage {
+            typed: typed.clone(),
+            t: t.clone(),
+            name: name.clone(),
+            declared: loc.clone(),
+            value: Value::Uninitialized,
             tags,
-            temporal:   0,
+            temporal: 0,
             assignments: HashMap::new(),
-            borrows:    Vec::new(),
+            borrows: Vec::new(),
         });
         debug!("{} := {}", name, symbol);
         self.cur().locals.insert(name.clone(), symbol);
         self.ssa.declare(symbol, &format!("{}", name), t);
 
-
         if let ast::Type::Other(name) = &typed.t {
             if let Some(def) = self.defs.get(name) {
-                if let ast::Def::Struct{..} = def {
-                }
+                if let ast::Def::Struct { .. } = def {}
             }
         }
 
-
-
         Ok(symbol)
     }
-
 
     fn tail_into_ssa(&mut self, sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
         self.ssa.debug_loc(loc);
 
         let tailsym = match self.memory[sym].typed.tail.clone() {
-            ast::Tail::None     => return Ok(()),
-            ast::Tail::Dynamic(_)  => {
-                return Err(self.trace(format!("tail size must be known for stack variables"), vec![
-                    (self.memory[sym].typed.loc.clone(), format!("cannot use dynamic tail size here"))
-                ]));
-            },
-            ast::Tail::Static(val,_)   => {
-                self.literal(loc, Value::Integer(val), ast::Typed {
-                    t:      ast::Type::ULiteral,
-                    loc:    loc.clone(),
-                    ptr:    Vec::new(),
-                    tail:   ast::Tail::None,
-                })?
-            },
-            ast::Tail::Bind(name, loc)   => {
+            ast::Tail::None => return Ok(()),
+            ast::Tail::Dynamic(_) => {
+                return Err(self.trace(
+                    format!("tail size must be known for stack variables"),
+                    vec![(
+                        self.memory[sym].typed.loc.clone(),
+                        format!("cannot use dynamic tail size here"),
+                    )],
+                ));
+            }
+            ast::Tail::Static(val, _) => self.literal(
+                loc,
+                Value::Integer(val),
+                ast::Typed {
+                    t: ast::Type::ULiteral,
+                    loc: loc.clone(),
+                    ptr: Vec::new(),
+                    tail: ast::Tail::None,
+                },
+            )?,
+            ast::Tail::Bind(name, loc) => {
                 self.ssa.debug_loc(&loc);
                 self.ssa.debug("tail_into_ssa");
                 self.name(&Name::from(&name), &loc)?
@@ -2980,104 +3610,146 @@ impl Symbolic {
 
         let field_name = match &self.memory[sym].typed.t {
             ast::Type::Other(n) => match self.defs.get(n) {
-                Some(ast::Def::Struct{fields, ..}) => {
+                Some(ast::Def::Struct { fields, .. }) => {
                     if fields.len() < 1 {
-                        return Err(self.trace(format!("tail binding on struct with no members"), vec![
-                            (loc.clone(), format!("this struct must have members"))
-                        ]));
+                        return Err(self.trace(
+                            format!("tail binding on struct with no members"),
+                            vec![(loc.clone(), format!("this struct must have members"))],
+                        ));
                     }
                     fields.last().unwrap().name.clone()
-                },
+                }
                 o => {
-                    return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
-                        (loc.clone(), format!("cannot use tail binding"))
-                    ]));
+                    return Err(self.trace(
+                        format!("tail value on non struct {:?}", o),
+                        vec![(loc.clone(), format!("cannot use tail binding"))],
+                    ));
                 }
             },
             o => {
-                return Err(self.trace(format!("tail value on non struct {:?}", o), vec![
-                    (loc.clone(), format!("cannot use tail binding"))
-                ]));
+                return Err(self.trace(
+                    format!("tail value on non struct {:?}", o),
+                    vec![(loc.clone(), format!("cannot use tail binding"))],
+                ));
             }
         };
 
         let member_sym = self.member_access(sym, &field_name, loc)?;
 
-        let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-        self.ssa.invocation(*lensym, vec![(member_sym, self.memory[member_sym].temporal)], (tailsym, self.memory[tailsym].temporal));
+        let lensym = self
+            .builtin
+            .get("len")
+            .expect("ICE: len theory not built in");
+        self.ssa.invocation(
+            *lensym,
+            vec![(member_sym, self.memory[member_sym].temporal)],
+            (tailsym, self.memory[tailsym].temporal),
+        );
         Ok(())
     }
 
-
-    fn temporary(&mut self, name: String, typed: ast::Typed, loc: ast::Location, tags: ast::Tags) -> Result<Symbol, Error> {
+    fn temporary(
+        &mut self,
+        name: String,
+        typed: ast::Typed,
+        loc: ast::Location,
+        tags: ast::Tags,
+    ) -> Result<Symbol, Error> {
         self.ssa.debug_loc(&loc);
         let t = Self::smt_type(&typed);
         let symbol = self.memory.len();
-        self.memory.push(Storage{
-            t:          t.clone(),
-            typed:      typed.clone(),
-            name:       Name::from(&name),
-            declared:   loc.clone(),
-            value:      Value::Uninitialized,
+        self.memory.push(Storage {
+            t: t.clone(),
+            typed: typed.clone(),
+            name: Name::from(&name),
+            declared: loc.clone(),
+            value: Value::Uninitialized,
             tags,
-            temporal:   0,
+            temporal: 0,
             assignments: HashMap::new(),
-            borrows:    Vec::new(),
+            borrows: Vec::new(),
         });
         debug!("{} {} := {}", name, typed, symbol);
         self.ssa.declare(symbol, &format!("{}", name), t);
         Ok(symbol)
     }
 
-
     //                  cpy here   from here
     fn copy(&mut self, lhs: Symbol, rhs: Symbol, used_here: &ast::Location) -> Result<(), Error> {
-
         // transfer theories of pointers
         // TODO: nah thats shitty. they should automatically transfer in smt
-        if self.memory[rhs].t == smt::Type::Unsigned(64) && self.memory[lhs].t == smt::Type::Unsigned(64) {
+        if self.memory[rhs].t == smt::Type::Unsigned(64)
+            && self.memory[lhs].t == smt::Type::Unsigned(64)
+        {
             let tmp_safe_transfer = self.temporary(
-                format!("safe({}) == safe({})", self.memory[rhs].name, self.memory[lhs].name),
-                ast::Typed{
-                    t:      ast::Type::Bool,
-                    ptr:    Vec::new(),
-                    loc:    used_here.clone(),
-                    tail:   ast::Tail::None,
+                format!(
+                    "safe({}) == safe({})",
+                    self.memory[rhs].name, self.memory[lhs].name
+                ),
+                ast::Typed {
+                    t: ast::Type::Bool,
+                    ptr: Vec::new(),
+                    loc: used_here.clone(),
+                    tail: ast::Tail::None,
                 },
                 used_here.clone(),
                 Tags::new(),
-                )?;
-            let theosym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], (tmp_safe_transfer, 0));
-            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], (tmp_safe_transfer, 0));
+            )?;
+            let theosym = self
+                .builtin
+                .get("safe")
+                .expect("ICE: safe theory not built in");
+            self.ssa.invocation(
+                *theosym,
+                vec![(rhs, self.memory[rhs].temporal)],
+                (tmp_safe_transfer, 0),
+            );
+            self.ssa.invocation(
+                *theosym,
+                vec![(lhs, self.memory[lhs].temporal + 1)],
+                (tmp_safe_transfer, 0),
+            );
 
             let tmp_nullterm_transfer = self.temporary(
-                format!("nullterm({}) == nullterm({})", self.memory[rhs].name, self.memory[lhs].name),
-                ast::Typed{
-                    t:      ast::Type::Bool,
-                    ptr:    Vec::new(),
-                    loc:    used_here.clone(),
-                    tail:   ast::Tail::None,
+                format!(
+                    "nullterm({}) == nullterm({})",
+                    self.memory[rhs].name, self.memory[lhs].name
+                ),
+                ast::Typed {
+                    t: ast::Type::Bool,
+                    ptr: Vec::new(),
+                    loc: used_here.clone(),
+                    tail: ast::Tail::None,
                 },
                 used_here.clone(),
                 Tags::new(),
-                )?;
-            let theosym = self.builtin.get("nullterm").expect("ICE: nullterm theory not built in");
-            self.ssa.invocation(*theosym, vec![(rhs, self.memory[rhs].temporal)], (tmp_nullterm_transfer, 0));
-            self.ssa.invocation(*theosym, vec![(lhs, self.memory[lhs].temporal + 1)], (tmp_nullterm_transfer, 0));
+            )?;
+            let theosym = self
+                .builtin
+                .get("nullterm")
+                .expect("ICE: nullterm theory not built in");
+            self.ssa.invocation(
+                *theosym,
+                vec![(rhs, self.memory[rhs].temporal)],
+                (tmp_nullterm_transfer, 0),
+            );
+            self.ssa.invocation(
+                *theosym,
+                vec![(lhs, self.memory[lhs].temporal + 1)],
+                (tmp_nullterm_transfer, 0),
+            );
         }
 
         self.memory[lhs].temporal += 1;
         let tt = self.memory[lhs].temporal;
         self.memory[lhs].assignments.insert(tt, used_here.clone());
 
-
-
         match self.memory[rhs].value.clone() {
             Value::Void => {
-                return Err(self.trace(format!("void is not a value: '{}'",  self.memory[rhs].name), vec![
-                    (used_here.clone(), "used here".to_string())
-                ]));
+                return Err(self.trace(
+                    format!("void is not a value: '{}'", self.memory[rhs].name),
+                    vec![(used_here.clone(), "used here".to_string())],
+                ));
             }
             Value::Uninitialized => {
                 // FIXME for now this is too noisy.
@@ -3085,94 +3757,126 @@ impl Symbolic {
                 //    (used_here.clone(), "used here".to_string())
                 //]));
             }
-            Value::Theory{..} => {
-                return Err(self.trace(format!("taking the value of a theory is not a thing"), vec![
-                    (used_here.clone(), "used here".to_string())
-                ]));
-            },
-            Value::Array{array, len, ..} => {
-               let mut value = self.memory[lhs].value.clone();
-               match &mut value {
-                   Value::Array{array: ref mut prev, len: ref mut prev_len, ..} => {
-                       if *prev_len == 0 {
-                           *prev_len = len;
-                       } else if len > *prev_len {
-                           return Err(self.trace(format!("assigning arrays of different len"), vec![
-                                (used_here.clone(), format!("lhs is len {} but rhs is len {}", prev.len(), array.len()))
-                           ]));
-                       }
+            Value::Theory { .. } => {
+                return Err(self.trace(
+                    format!("taking the value of a theory is not a thing"),
+                    vec![(used_here.clone(), "used here".to_string())],
+                ));
+            }
+            Value::Array { array, len, .. } => {
+                let mut value = self.memory[lhs].value.clone();
+                match &mut value {
+                    Value::Array {
+                        array: ref mut prev,
+                        len: ref mut prev_len,
+                        ..
+                    } => {
+                        if *prev_len == 0 {
+                            *prev_len = len;
+                        } else if len > *prev_len {
+                            return Err(self.trace(
+                                format!("assigning arrays of different len"),
+                                vec![(
+                                    used_here.clone(),
+                                    format!(
+                                        "lhs is len {} but rhs is len {}",
+                                        prev.len(),
+                                        array.len()
+                                    ),
+                                )],
+                            ));
+                        }
 
+                        //initialization is defined to be complete in C
+                        for i in 0..*prev_len {
+                            if !prev.contains_key(&i) {
+                                let mut typed = self.memory[lhs].typed.clone();
+                                typed.ptr.pop();
+                                let tmp = self.temporary(
+                                    format!("array member {}[{}]", self.memory[lhs].name, i),
+                                    typed,
+                                    self.memory[lhs].declared.clone(),
+                                    self.memory[lhs].tags.clone(),
+                                )?;
+                                self.memory[tmp].value = Value::Integer(0);
+                                prev.insert(i, tmp);
+                            }
+                        }
 
-                       //initialization is defined to be complete in C
-                       for i in 0..*prev_len {
-                           if !prev.contains_key(&i) {
-                               let mut typed = self.memory[lhs].typed.clone();
-                               typed.ptr.pop();
-                               let tmp = self.temporary(
-                                   format!("array member {}[{}]", self.memory[lhs].name, i),
-                                   typed,
-                                   self.memory[lhs].declared.clone(),
-                                   self.memory[lhs].tags.clone(),
-                                   )?;
-                               self.memory[tmp].value = Value::Integer(0);
-                               prev.insert(i, tmp);
-                           }
-                       }
+                        for i in 0..array.len() {
+                            self.memory[prev[&i]].value = self.memory[array[&i]].value.clone();
+                        }
 
-                       for i in 0..array.len() {
-                           self.memory[prev[&i]].value = self.memory[array[&i]].value.clone();
-                       }
-
-                       self.len_into_ssa(lhs, used_here, prev.len())?;
-                   }
-                   _ => {
-                       self.len_into_ssa(lhs, used_here, len)?;
-                   }
-               }
-               self.memory[lhs].value = value;
-               return Ok(());
-            },
-            _ => {
-            },
+                        self.len_into_ssa(lhs, used_here, prev.len())?;
+                    }
+                    _ => {
+                        self.len_into_ssa(lhs, used_here, len)?;
+                    }
+                }
+                self.memory[lhs].value = value;
+                return Ok(());
+            }
+            _ => {}
         };
 
         if self.memory[lhs].typed != self.memory[rhs].typed {
-            emit_debug("assignment of incompatible types", &[
-                (used_here.clone(), format!("lhs is {} but rhs is {}", self.memory[lhs].typed, self.memory[rhs].typed))
-            ]);
+            emit_debug(
+                "assignment of incompatible types",
+                &[(
+                    used_here.clone(),
+                    format!(
+                        "lhs is {} but rhs is {}",
+                        self.memory[lhs].typed, self.memory[rhs].typed
+                    ),
+                )],
+            );
         }
 
         let (newtype, lhs, rhs) = self.type_coersion(lhs, rhs, used_here)?;
 
         if self.memory[lhs].typed.ptr.len() != self.memory[rhs].typed.ptr.len() {
-           match self.memory[rhs].value {
-               Value::Unconstrained(_) => (),
-               Value::Integer(f) if f == 0 => (),
-               _ => return Err(self.trace("assignment of incompatible pointer depth".to_string(), vec![
-                  (used_here.clone(), format!("lhs is {} but rhs is {}", self.memory[lhs].typed, self.memory[rhs].typed))
-                ])),
+            match self.memory[rhs].value {
+                Value::Unconstrained(_) => (),
+                Value::Integer(f) if f == 0 => (),
+                _ => {
+                    return Err(self.trace(
+                        "assignment of incompatible pointer depth".to_string(),
+                        vec![(
+                            used_here.clone(),
+                            format!(
+                                "lhs is {} but rhs is {}",
+                                self.memory[lhs].typed, self.memory[rhs].typed
+                            ),
+                        )],
+                    ))
+                }
             }
         }
 
         if self.memory[lhs].t != self.memory[rhs].t {
-            return Err(self.trace("assignment of incompatible types (2)".into(), vec![
-                (used_here.clone(), format!("lhs is {} but rhs is {}", self.memory[lhs].typed, self.memory[rhs].typed))
-            ]));
+            return Err(self.trace(
+                "assignment of incompatible types (2)".into(),
+                vec![(
+                    used_here.clone(),
+                    format!(
+                        "lhs is {} but rhs is {}",
+                        self.memory[lhs].typed, self.memory[rhs].typed
+                    ),
+                )],
+            ));
         }
 
         self.memory[lhs].value = self.memory[rhs].value.clone();
 
-
         self.ssa.assign_branch(
             (lhs, self.memory[lhs].temporal),
             (rhs, self.memory[rhs].temporal),
-            (lhs, self.memory[lhs].temporal-1),
+            (lhs, self.memory[lhs].temporal - 1),
             Self::smt_type(&newtype),
         );
 
         Ok(())
     }
-
 
     fn ssa_mark_valid(&mut self, _sym: Symbol, _loc: &ast::Location) -> Result<(), Error> {
         //TODO
@@ -3185,17 +3889,21 @@ impl Symbolic {
         }
         let tmp = self.temporary(
             format!("true"),
-            ast::Typed{
-                t:      ast::Type::Bool,
-                ptr:    Vec::new(),
-                loc:    loc.clone(),
-                tail:   ast::Tail::None,
+            ast::Typed {
+                t: ast::Type::Bool,
+                ptr: Vec::new(),
+                loc: loc.clone(),
+                tail: ast::Tail::None,
             },
             loc.clone(),
             Tags::new(),
         )?;
-        let thsym = self.builtin.get("safe").expect("ICE: safe theory not built in");
-        self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
+        let thsym = self
+            .builtin
+            .get("safe")
+            .expect("ICE: safe theory not built in");
+        self.ssa
+            .invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
         self.ssa.literal(tmp, 1, smt::Type::Bool);
         Ok(())
     }
@@ -3206,17 +3914,21 @@ impl Symbolic {
         }
         let tmp = self.temporary(
             format!("true"),
-            ast::Typed{
-                t:      ast::Type::Bool,
-                ptr:    Vec::new(),
-                loc:    loc.clone(),
-                tail:   ast::Tail::None,
+            ast::Typed {
+                t: ast::Type::Bool,
+                ptr: Vec::new(),
+                loc: loc.clone(),
+                tail: ast::Tail::None,
             },
             loc.clone(),
             Tags::new(),
         )?;
-        let thsym = self.builtin.get("nullterm").expect("ICE: nullterm theory not built in");
-        self.ssa.invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp,0));
+        let thsym = self
+            .builtin
+            .get("nullterm")
+            .expect("ICE: nullterm theory not built in");
+        self.ssa
+            .invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
         self.ssa.literal(tmp, 1, smt::Type::Bool);
         Ok(())
     }
@@ -3224,17 +3936,21 @@ impl Symbolic {
     fn len_into_ssa(&mut self, sym: Symbol, loc: &ast::Location, len: usize) -> Result<(), Error> {
         let tmp = self.temporary(
             format!("len({})", self.memory[sym].name),
-            ast::Typed{
-                t:      ast::Type::USize,
-                ptr:    Vec::new(),
-                loc:    loc.clone(),
-                tail:   ast::Tail::None,
+            ast::Typed {
+                t: ast::Type::USize,
+                ptr: Vec::new(),
+                loc: loc.clone(),
+                tail: ast::Tail::None,
             },
             loc.clone(),
             Tags::new(),
         )?;
-        let lensym = self.builtin.get("len").expect("ICE: len theory not built in");
-        self.ssa.invocation(*lensym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
+        let lensym = self
+            .builtin
+            .get("len")
+            .expect("ICE: len theory not built in");
+        self.ssa
+            .invocation(*lensym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
         self.ssa.literal(tmp, len as u64, smt::Type::Unsigned(64));
         Ok(())
     }
@@ -3246,18 +3962,14 @@ impl Symbolic {
             }
         }
 
-
-        if name.is_absolute()
-            && name.0.len() == 4
-            && name.0[1].as_str() == "ext"
-        {
+        if name.is_absolute() && name.0.len() == 4 && name.0[1].as_str() == "ext" {
             let sym = self.temporary(
                 format!("{}", name),
-                ast::Typed{
-                    t:      ast::Type::Other(name.clone()),
-                    ptr:    Vec::new(),
-                    loc:    used_here.clone(),
-                    tail:   ast::Tail::None,
+                ast::Typed {
+                    t: ast::Type::Other(name.clone()),
+                    ptr: Vec::new(),
+                    loc: used_here.clone(),
+                    tail: ast::Tail::None,
                 },
                 used_here.clone(),
                 Tags::new(),
@@ -3269,31 +3981,33 @@ impl Symbolic {
             return Ok(sym);
         }
 
-        return Err(self.trace(format!("undefined symbol '{}'", name), vec![
-            (used_here.clone(), format!("'{}' is not defined in this scope", name))
-        ]));
+        return Err(self.trace(
+            format!("undefined symbol '{}'", name),
+            vec![(
+                used_here.clone(),
+                format!("'{}' is not defined in this scope", name),
+            )],
+        ));
     }
 
-    fn new(module_name: &Name, solver: Option<String>, macros_available:  bool) -> Self {
+    fn new(module_name: &Name, solver: Option<String>, macros_available: bool) -> Self {
         Symbolic {
-            stack:  vec![
-                Scope {
-                    name:   "global".to_string(),
-                    locals: Default::default(),
-                    trace:  Vec::new(),
-                }
-            ],
-            memory:  Default::default(),
-            ssa:     Solver::new(module_name.0.join("_"), solver),
+            stack: vec![Scope {
+                name: "global".to_string(),
+                locals: Default::default(),
+                trace: Vec::new(),
+            }],
+            memory: Default::default(),
+            ssa: Solver::new(module_name.0.join("_"), solver),
             builtin: Default::default(),
-            defs:    HashMap::new(),
-            current_module_name:    module_name.human_name(),
-            current_function_name:  String::new(),
-            current_function_ret:   None,
+            defs: HashMap::new(),
+            current_module_name: module_name.human_name(),
+            current_function_name: String::new(),
+            current_function_ret: None,
             current_function_model: Vec::new(),
-            current_call:           Vec::new(),
+            current_call: Vec::new(),
             in_loop: false,
-            in_model:false,
+            in_model: false,
             macros_available,
             incomplete: false,
         }
@@ -3301,10 +4015,10 @@ impl Symbolic {
 
     fn push(&mut self, name: String) {
         debug!("  scope {}", name);
-        self.stack.push(Scope{
+        self.stack.push(Scope {
             name,
             locals: HashMap::new(),
-            trace:  Vec::new(),
+            trace: Vec::new(),
         });
     }
 
@@ -3316,8 +4030,12 @@ impl Symbolic {
         self.stack.last_mut().unwrap()
     }
 
-
-    fn literal(&mut self, loc: &ast::Location, value: Value, t: ast::Typed) -> Result<Symbol, Error> {
+    fn literal(
+        &mut self,
+        loc: &ast::Location,
+        value: Value,
+        t: ast::Typed,
+    ) -> Result<Symbol, Error> {
         self.ssa.debug_loc(loc);
         match value {
             Value::Integer(v) => {
@@ -3331,7 +4049,7 @@ impl Symbolic {
                 self.ssa.literal(sym, v as u64, self.memory[sym].t.clone());
                 self.ssa_mark_valid(sym, loc)?;
                 Ok(sym)
-            },
+            }
             _ => {
                 let sym = self.alloc(
                     Name::from(&format!("literal {}", self.memory.len())),
@@ -3346,9 +4064,13 @@ impl Symbolic {
         }
     }
 
-    fn demonstrate(&self, model: &smt::ModelRef, sym: TemporalSymbol, depth: usize) -> Vec<(ast::Location, String)> {
-        let mut estack  = Vec::new();
-
+    fn demonstrate(
+        &self,
+        model: &smt::ModelRef,
+        sym: TemporalSymbol,
+        depth: usize,
+    ) -> Vec<(ast::Location, String)> {
+        let mut estack = Vec::new();
 
         let valloc = match self.memory[sym.0].assignments.get(&sym.1) {
             Some(loc) => loc.clone(),
@@ -3356,12 +4078,15 @@ impl Symbolic {
         };
 
         if depth > 5 {
-            estack.push((valloc, "this expression is too complex to drill down further".to_string()));
+            estack.push((
+                valloc,
+                "this expression is too complex to drill down further".to_string(),
+            ));
             return estack;
         }
 
         match &self.memory[sym.0].value {
-            Value::InfixOp{lhs, rhs, op} => {
+            Value::InfixOp { lhs, rhs, op } => {
                 let overflow = self.ssa.infix_op_will_wrap(
                     *lhs,
                     *rhs,
@@ -3371,15 +4096,28 @@ impl Symbolic {
 
                 if let Some(v) = self.ssa.extract(model, sym) {
                     let v = if self.memory[sym.0].t == smt::Type::Bool {
-                        if v > 0 { "true".to_string() } else { "false".to_string() }
+                        if v > 0 {
+                            "true".to_string()
+                        } else {
+                            "false".to_string()
+                        }
                     } else {
                         format!("0x{:x}", v)
                     };
 
                     if overflow {
-                        estack.push((valloc, format!("for OVERFLOW of {} |{}| = {}", self.memory[sym.0].name, sym.1, v)));
+                        estack.push((
+                            valloc,
+                            format!(
+                                "for OVERFLOW of {} |{}| = {}",
+                                self.memory[sym.0].name, sym.1, v
+                            ),
+                        ));
                     } else {
-                        estack.push((valloc, format!("for {} |{}| = {}", self.memory[sym.0].name, sym.1, v)));
+                        estack.push((
+                            valloc,
+                            format!("for {} |{}| = {}", self.memory[sym.0].name, sym.1, v),
+                        ));
                     }
                 }
 
@@ -3389,37 +4127,52 @@ impl Symbolic {
                 if *rhs != sym {
                     estack.extend(self.demonstrate(model, *rhs, depth + 1));
                 }
-            },
+            }
             //Value::Integer(_) => return estack,
             _ => {
                 if let Some(v) = self.ssa.extract(model, sym) {
                     let v = if self.memory[sym.0].t == smt::Type::Bool {
-                        if v > 0 { "true".into() } else { "false".into() }
+                        if v > 0 {
+                            "true".into()
+                        } else {
+                            "false".into()
+                        }
                     } else {
                         format!("0x{:x}", v)
                     };
-                    estack.push((valloc, format!("for {} |{}| = {}", self.memory[sym.0].name, sym.1, v)));
+                    estack.push((
+                        valloc,
+                        format!("for {} |{}| = {}", self.memory[sym.0].name, sym.1, v),
+                    ));
                 } else {
-                    estack.push((valloc, format!("for {} |{}| = ??", self.memory[sym.0].temporal, sym.1)));
+                    estack.push((
+                        valloc,
+                        format!("for {} |{}| = ??", self.memory[sym.0].temporal, sym.1),
+                    ));
                 }
             }
         };
-
 
         if depth == 0 {
             for stack in self.stack.iter().rev() {
                 for (sym, loc, onlyiftrue) in &stack.trace {
                     match self.ssa.extract(model, *sym) {
                         Some(f) if f > 0 => {
-                            estack.push((loc.clone(), format!("reached because this branch condition was true")));
+                            estack.push((
+                                loc.clone(),
+                                format!("reached because this branch condition was true"),
+                            ));
                             estack.extend(self.demonstrate(model, *sym, depth + 1));
-                        },
-                        Some(_)  => {
+                        }
+                        Some(_) => {
                             if !onlyiftrue {
-                                estack.push((loc.clone(), format!("reached because this branch condition was false")));
+                                estack.push((
+                                    loc.clone(),
+                                    format!("reached because this branch condition was false"),
+                                ));
                                 estack.extend(self.demonstrate(model, *sym, depth + 1));
                             }
-                        },
+                        }
                         None => {}
                     };
                 }
@@ -3428,49 +4181,47 @@ impl Symbolic {
         estack
     }
 
-
     fn stmname(&self, sym: Symbol) -> String {
-        let name =
-            self.memory[sym].name.to_string()
+        let name = self.memory[sym]
+            .name
+            .to_string()
             .replace(|c: char| !c.is_ascii_alphanumeric(), "_");
 
         format!("{}_{}", sym, name)
     }
-
 
     pub fn trace(&self, message: String, mut details: Vec<(ast::Location, String)>) -> Error {
         for loc in self.current_call.iter().rev() {
             details.push((loc.clone(), "last callsite".to_string()));
         }
 
-        Error::new(
-            message,
-            details,
-        )
+        Error::new(message, details)
     }
-
 }
 
-
-pub fn execute(module: &mut flatten::Module, macros_available: bool) -> (bool /* ok*/, bool /* complete for caching */) {
+pub fn execute(
+    module: &mut flatten::Module,
+    macros_available: bool,
+) -> (bool /* ok*/, bool /* complete for caching */) {
     use rayon::prelude::*;
 
-    let mut incomplete  = false;
-    let mut defs        = Vec::new();
+    let mut incomplete = false;
+    let mut defs = Vec::new();
     let mut function_at = Vec::new();
-    for (i, (d,complete)) in module.d.clone().into_iter().enumerate() {
-        if let ast::Def::Function{ref derives , ..} = d.def {
+    for (i, (d, complete)) in module.d.clone().into_iter().enumerate() {
+        if let ast::Def::Function { ref derives, .. } = d.def {
             let mut solver = None;
             for derive in derives {
                 if derive.makro == "solver" {
-                    match derive.args.first().map(|x|*x.clone()) {
-                        Some(ast::Expression::LiteralString{v,..}) => {
+                    match derive.args.first().map(|x| *x.clone()) {
+                        Some(ast::Expression::LiteralString { v, .. }) => {
                             solver = Some(v);
                         }
                         _ => {
-                            parser::emit_error(format!("@solver macro expects one string literal argument"), &[
-                                (derive.loc.clone(), "in this derive")
-                            ]);
+                            parser::emit_error(
+                                format!("@solver macro expects one string literal argument"),
+                                &[(derive.loc.clone(), "in this derive")],
+                            );
                         }
                     }
                 }
@@ -3481,8 +4232,6 @@ pub fn execute(module: &mut flatten::Module, macros_available: bool) -> (bool /*
         }
         defs.push(d.clone());
     }
-
-
 
     // execute one in serial on the borrowed module to get modifications to globals
     if let Some((at, name, _, solver)) = function_at.pop() {
@@ -3496,21 +4245,22 @@ pub fn execute(module: &mut flatten::Module, macros_available: bool) -> (bool /*
         }
     }
 
-    let repl = function_at.into_par_iter().map(|(at, name, mut module, solver)|{
-        let mut sym = Symbolic::new(&Name::from(&name), solver, macros_available);
-        match sym.execute_module(&mut module, at) {
-            Err(e) => {
-                parser::emit_error(e.message.clone(), &e.details);
-                None
+    let repl = function_at
+        .into_par_iter()
+        .map(|(at, name, mut module, solver)| {
+            let mut sym = Symbolic::new(&Name::from(&name), solver, macros_available);
+            match sym.execute_module(&mut module, at) {
+                Err(e) => {
+                    parser::emit_error(e.message.clone(), &e.details);
+                    None
+                }
+                Ok(_) => Some((at, module.d.remove(at).0, sym.incomplete)),
             }
-            Ok(_)  => {
-                Some((at, module.d.remove(at).0, sym.incomplete))
-            }
-        }
-    }).collect::<Vec<Option<(usize, ast::Local,bool)>>> ();
+        })
+        .collect::<Vec<Option<(usize, ast::Local, bool)>>>();
 
     for r in repl {
-        if let Some((at,l, incomplete2)) = r {
+        if let Some((at, l, incomplete2)) = r {
             module.d[at].0 = l;
             if incomplete2 {
                 incomplete = true;
@@ -3522,5 +4272,3 @@ pub fn execute(module: &mut flatten::Module, macros_available: bool) -> (bool /*
 
     (true, !incomplete)
 }
-
-

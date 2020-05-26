@@ -1,7 +1,7 @@
 using <stdio.h>::{printf};
 
 
-fntype add_t(int a, int b) -> int;
+closure add_t(int a, int b) -> int;
 
 
 fn add(int a, int b) -> int {
@@ -11,7 +11,8 @@ fn add(int a, int b) -> int {
 fn bla(add_t adder) -> int
     where safe(adder)
 {
-    return adder(1,2);
+    int r = adder(1,2);
+    return r;
 }
 
 export fn main() -> int {

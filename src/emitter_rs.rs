@@ -1,28 +1,27 @@
-use super::project::{Project};
-use std::fs;
-use super::flatten;
 use super::ast;
+use super::flatten;
 use super::make;
-use std::io::{Write};
-use std::collections::HashSet;
-use std::path::PathBuf;
 use super::name::Name;
 use super::parser::{self, emit_error};
-
+use super::project::Project;
+use std::collections::HashSet;
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
 
 pub struct CFile {
-    pub name:       Name,
-    pub filepath:   String,
-    pub sources:    HashSet<PathBuf>,
-    pub deps:       HashSet<Name>,
+    pub name: Name,
+    pub filepath: String,
+    pub sources: HashSet<PathBuf>,
+    pub deps: HashSet<Name>,
 }
 
-pub struct Emitter{
-    p:              String,
-    f:              fs::File,
-    module:         flatten::Module,
-    inside_macro:   bool,
-    cur_loc:        Option<ast::Location>,
+pub struct Emitter {
+    p: String,
+    f: fs::File,
+    module: flatten::Module,
+    inside_macro: bool,
+    cur_loc: Option<ast::Location>,
 }
 
 pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
@@ -35,21 +34,30 @@ pub fn make_module(make: &super::make::Make) {
 
     for step in &make.steps {
         if step.source.parent().unwrap().file_name().unwrap() == "zz" {
-            let mut mn = step.source.file_stem().unwrap().to_string_lossy().to_string();
-            write!(f, "#[path = \"{}.rs\"]\n", step.source.file_stem().unwrap().to_string_lossy()).unwrap();
+            let mut mn = step
+                .source
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            write!(
+                f,
+                "#[path = \"{}.rs\"]\n",
+                step.source.file_stem().unwrap().to_string_lossy()
+            )
+            .unwrap();
             write!(f, "pub mod {};\n\n", mn).unwrap();
         }
     }
 }
 
 impl Emitter {
-    pub fn new(project: &Project, stage: make::Stage , module: flatten::Module) -> Self {
-
+    pub fn new(project: &Project, stage: make::Stage, module: flatten::Module) -> Self {
         std::fs::create_dir_all(format!("target/{}/rs/", stage)).unwrap();
         let p = outname(project, &stage, &module);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
-        Emitter{
+        Emitter {
             p,
             f,
             module,
@@ -58,11 +66,10 @@ impl Emitter {
         }
     }
 
-
     fn emit_loc(&mut self, loc: &ast::Location) {
         if let Some(cur_loc) = &self.cur_loc {
-            if cur_loc.file  == loc.file && cur_loc.line == loc.line {
-                return
+            if cur_loc.file == loc.file && cur_loc.line == loc.line {
+                return;
             }
         }
         self.cur_loc = Some(loc.clone());
@@ -71,24 +78,24 @@ impl Emitter {
 
     fn to_local_typed_name(&self, name: &ast::Typed) -> Option<String> {
         Some(match name.t {
-            ast::Type::U8   => "u8".to_string(),
-            ast::Type::U16  => "u16".to_string(),
-            ast::Type::U32  => "u32".to_string(),
-            ast::Type::U64  => "u64".to_string(),
+            ast::Type::U8 => "u8".to_string(),
+            ast::Type::U16 => "u16".to_string(),
+            ast::Type::U32 => "u32".to_string(),
+            ast::Type::U64 => "u64".to_string(),
             ast::Type::U128 => "u128".to_string(),
-            ast::Type::I8   => "i8".to_string(),
-            ast::Type::I16  => "i16".to_string(),
-            ast::Type::I32  => "i32".to_string(),
-            ast::Type::I64  => "i64".to_string(),
+            ast::Type::I8 => "i8".to_string(),
+            ast::Type::I16 => "i16".to_string(),
+            ast::Type::I32 => "i32".to_string(),
+            ast::Type::I64 => "i64".to_string(),
             ast::Type::I128 => "i128".to_string(),
-            ast::Type::Int  => "std::os::raw::c_int".to_string(),
+            ast::Type::Int => "std::os::raw::c_int".to_string(),
             ast::Type::UInt => "std::os::raw::c_uint".to_string(),
-            ast::Type::ISize=> "isize".to_string(),
-            ast::Type::USize=> "usize".to_string(),
+            ast::Type::ISize => "isize".to_string(),
+            ast::Type::USize => "usize".to_string(),
             ast::Type::Bool => "bool".to_string(),
-            ast::Type::F32  => "f32".to_string(),
-            ast::Type::F64  => "f64".to_string(),
-            ast::Type::Other(ref n)   => {
+            ast::Type::F32 => "f32".to_string(),
+            ast::Type::F64 => "f64".to_string(),
+            ast::Type::Other(ref n) => {
                 if name.ptr.len() != 1 {
                     if n.0[1] == "ext" {
                         if n.0[3] == "char" {
@@ -97,13 +104,17 @@ impl Emitter {
                             return None;
                         }
                     } else {
-                        format!("super::{}::{}", n.0[1..n.0.len() - 1].join("_"), n.0.last().unwrap())
+                        format!(
+                            "super::{}::{}",
+                            n.0[1..n.0.len() - 1].join("_"),
+                            n.0.last().unwrap()
+                        )
                     }
                 } else {
                     "u8".to_string()
                 }
             }
-                /*
+            /*
                 let mut s = self.to_local_name(&n);
                 match &name.tail {
                     ast::Tail::Dynamic | ast::Tail::None | ast::Tail::Bind(_,_)=> {},
@@ -117,8 +128,11 @@ impl Emitter {
             ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
                 parser::emit_error(
                     "ICE: untyped ended up in emitter",
-                    &[(name.loc.clone(), format!("this should have been resolved earlier"))]
-                    );
+                    &[(
+                        name.loc.clone(),
+                        format!("this should have been resolved earlier"),
+                    )],
+                );
                 std::process::exit(9);
             }
         })
@@ -137,7 +151,6 @@ impl Emitter {
             return s.0.last().unwrap().clone();
         }
 
-
         let mut s = s.clone();
         s.0.remove(0);
         return s.0.join("_");
@@ -147,24 +160,25 @@ impl Emitter {
         let module = self.module.clone();
         debug!("emitting rs {}", module.name);
 
-
-
-        write!(self.f, "#![allow(non_camel_case_types)]\n#![allow(dead_code)]\n").unwrap();
+        write!(
+            self.f,
+            "#![allow(non_camel_case_types)]\n#![allow(dead_code)]\n"
+        )
+        .unwrap();
         write!(self.f, "extern crate libc;\n").unwrap();
 
-
-        for (d,complete) in &module.d {
+        for (d, complete) in &module.d {
             let mut dmodname = Name::from(&d.name);
             dmodname.pop();
             if dmodname != module.name {
                 continue;
             }
             if complete != &flatten::TypeComplete::Complete {
-                continue
+                continue;
             }
             self.emit_loc(&d.loc);
             match d.def {
-                ast::Def::Struct{..} => {
+                ast::Def::Struct { .. } => {
                     self.emit_struct(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
                         for (v, tvloc) in vs {
@@ -173,30 +187,26 @@ impl Emitter {
                             self.emit_struct(&d, Some(*v));
                         }
                     }
-                },
-                ast::Def::Enum{..} => {
-                    self.emit_enum(&d)
                 }
-                ast::Def::Fntype{..} => {
-                    self.emit_fntype(&d);
+                ast::Def::Enum { .. } => self.emit_enum(&d),
+                ast::Def::Closure { .. } => {
+                    self.emit_closure(&d);
                 }
-                ast::Def::Const{..} => {
-                    self.emit_const(&d)
-                }
+                ast::Def::Const { .. } => self.emit_const(&d),
                 _ => (),
             }
         }
 
         write!(self.f, "extern {{\n").unwrap();
 
-        for (d,complete) in &module.d {
+        for (d, complete) in &module.d {
             let mut dmodname = Name::from(&d.name);
             dmodname.pop();
             if dmodname != module.name {
                 continue;
             }
             if complete != &flatten::TypeComplete::Complete {
-                continue
+                continue;
             }
 
             let mut dmodname = Name::from(&d.name);
@@ -205,25 +215,22 @@ impl Emitter {
                 continue;
             }
 
-
             self.emit_loc(&d.loc);
             match d.def {
-                ast::Def::Macro{..} => {}
-                ast::Def::Static{..} => {
-                    self.emit_static(&d)
-                }
-                ast::Def::Struct{..} => {
+                ast::Def::Macro { .. } => {}
+                ast::Def::Static { .. } => self.emit_static(&d),
+                ast::Def::Struct { .. } => {
                     self.emit_struct_len(&d, None);
 
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
-                        for (v,_) in vs {
+                        for (v, _) in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
                             self.emit_struct_len(&d, Some(*v));
                         }
                     }
                 }
-                ast::Def::Function{..} => {
+                ast::Def::Function { .. } => {
                     if !d.name.ends_with("::main") {
                         self.emit_decl(&d);
                     }
@@ -239,31 +246,35 @@ impl Emitter {
     pub fn emit_static(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
         let (_typed, _expr, _tags, storage, _array) = match &ast.def {
-            ast::Def::Static{typed, expr, tags, storage, array} => (typed, expr, tags, storage, array),
+            ast::Def::Static {
+                typed,
+                expr,
+                tags,
+                storage,
+                array,
+            } => (typed, expr, tags, storage, array),
             _ => unreachable!(),
         };
 
         match storage {
             ast::Storage::Atomic => {
                 return;
-            },
+            }
             ast::Storage::ThreadLocal => {
                 return;
-            },
-            ast::Storage::Static  => (),
+            }
+            ast::Storage::Static => (),
         }
-
     }
 
     pub fn emit_const(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
         let (typed, expr) = match &ast.def {
-            ast::Def::Const{typed, expr} => (typed, expr),
+            ast::Def::Const { typed, expr } => (typed, expr),
             _ => unreachable!(),
         };
 
-
-        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
         let fieldtype = match self.to_local_typed_name(&typed) {
             Some(v) => v,
             None => {
@@ -272,15 +283,9 @@ impl Emitter {
         };
 
         let fieldval = match expr {
-            ast::Expression::LiteralString {v, ..} => {
-                format!("b\"{}\".as_ptr()", v)
-            },
-            ast::Expression::LiteralChar {v, ..} => {
-                format!("'{}'", v)
-            },
-            ast::Expression::Literal {v, ..} => {
-                format!("{}", v)
-            },
+            ast::Expression::LiteralString { v, .. } => format!("b\"{}\".as_ptr()", v),
+            ast::Expression::LiteralChar { v, .. } => format!("'{}'", v),
+            ast::Expression::Literal { v, .. } => format!("{}", v),
             _ => {
                 return;
             }
@@ -288,27 +293,26 @@ impl Emitter {
 
         write!(self.f, "pub const {} : ", shortname).unwrap();
         self.emit_pointer(&typed.ptr);
-        write!(self.f, "{} = {};\n",
-               fieldtype,
-               fieldval
-        ).unwrap();
-
+        write!(self.f, "{} = {};\n", fieldtype, fieldval).unwrap();
     }
 
     pub fn emit_enum(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
         let names = match &ast.def {
-            ast::Def::Enum{names} => (names),
+            ast::Def::Enum { names } => (names),
             _ => unreachable!(),
         };
-        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
         write!(self.f, "#[repr(C)]\n").unwrap();
         write!(self.f, "pub enum {} {{\n", shortname).unwrap();
         for (name, literal) in names {
-            write!(self.f, "    {}_{}",
-                   self.to_local_name(&Name::from(&ast.name)),
-                   name
-                   ).unwrap();
+            write!(
+                self.f,
+                "    {}_{}",
+                self.to_local_name(&Name::from(&ast.name)),
+                name
+            )
+            .unwrap();
             if let Some(literal) = literal {
                 write!(self.f, " = {}", literal).unwrap();
             }
@@ -317,30 +321,60 @@ impl Emitter {
         write!(self.f, "\n}}\n\n").unwrap();
     }
 
-
     pub fn emit_struct_len(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
         let (_fields, _packed, tail, _union) = match &ast.def {
-            ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
+            ast::Def::Struct {
+                fields,
+                packed,
+                tail,
+                union,
+                ..
+            } => (fields, packed, tail, union),
             _ => unreachable!(),
         };
-        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
 
         if tail == &ast::Tail::None || tail_variant.is_some() {
-            write!(self.f, "    #[link_name = \"sizeof_{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
-            write!(self.f, "    pub static sizeof_{}: libc::size_t;\n", shortname).unwrap();
+            write!(
+                self.f,
+                "    #[link_name = \"sizeof_{}\"]\n",
+                self.to_local_name(&Name::from(&ast.name))
+            )
+            .unwrap();
+            write!(
+                self.f,
+                "    pub static sizeof_{}: libc::size_t;\n",
+                shortname
+            )
+            .unwrap();
         } else {
-            write!(self.f, "    #[link_name = \"sizeof_{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
-            write!(self.f, "    pub fn sizeof_{}(tail: libc::size_t) -> libc::size_t;\n", shortname).unwrap();
+            write!(
+                self.f,
+                "    #[link_name = \"sizeof_{}\"]\n",
+                self.to_local_name(&Name::from(&ast.name))
+            )
+            .unwrap();
+            write!(
+                self.f,
+                "    pub fn sizeof_{}(tail: libc::size_t) -> libc::size_t;\n",
+                shortname
+            )
+            .unwrap();
         }
     }
 
     pub fn emit_struct(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
         let (fields, _packed, tail, _union) = match &ast.def {
-            ast::Def::Struct{fields, packed, tail, union, ..} => (fields, packed, tail, union),
+            ast::Def::Struct {
+                fields,
+                packed,
+                tail,
+                union,
+                ..
+            } => (fields, packed, tail, union),
             _ => unreachable!(),
         };
-        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
-
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
 
         // dont emit struct if we cant type all fields
         for field in fields {
@@ -349,7 +383,9 @@ impl Emitter {
             };
         }
 
-         write!(self.f, r#"
+        write!(
+            self.f,
+            r#"
 pub struct rs{name} {{
     pub inner:  Box<{name}>,
     pub tail:   usize,
@@ -366,15 +402,30 @@ impl std::ops::Deref for rs{name} {{
 impl std::clone::Clone for rs{name} {{
     fn clone(&self) -> Self {{
         unsafe {{
-"#, name = shortname).unwrap();
+"#,
+            name = shortname
+        )
+        .unwrap();
 
-    if tail == &ast::Tail::None || tail_variant.is_some() {
-        write!(self.f, "            let size = sizeof_{name};\n", name = shortname).unwrap();
-    } else {
-        write!(self.f, "            let size = sizeof_{name}(self.tail);\n", name = shortname).unwrap();
-    }
+        if tail == &ast::Tail::None || tail_variant.is_some() {
+            write!(
+                self.f,
+                "            let size = sizeof_{name};\n",
+                name = shortname
+            )
+            .unwrap();
+        } else {
+            write!(
+                self.f,
+                "            let size = sizeof_{name}(self.tail);\n",
+                name = shortname
+            )
+            .unwrap();
+        }
 
-        write!(self.f, r#"
+        write!(
+            self.f,
+            r#"
             let mut s = Box::new(vec![0u8; size]);
             std::ptr::copy_nonoverlapping(self._self(), s.as_mut_ptr(), size);
 
@@ -397,7 +448,10 @@ impl rs{name} {{
     }}
 }}
 
-"#, name = shortname).unwrap();
+"#,
+            name = shortname
+        )
+        .unwrap();
 
         write!(self.f, "\n\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
 
@@ -417,8 +471,11 @@ impl rs{name} {{
                     if i != (fields.len() - 1) {
                         parser::emit_error(
                             "tail field has no be the last field in a struct",
-                            &[(field.loc.clone(), format!("tail field would displace next field"))]
-                            );
+                            &[(
+                                field.loc.clone(),
+                                format!("tail field would displace next field"),
+                            )],
+                        );
                         std::process::exit(9);
                     }
                     if let Some(tt) = tail_variant {
@@ -434,7 +491,7 @@ impl rs{name} {{
                 ast::Array::None => {
                     write!(self.f, "    pub {} :", field.name).unwrap();
                     self.emit_pointer(&field.typed.ptr);
-                    write!(self.f, "{}",fieldtype).unwrap();
+                    write!(self.f, "{}", fieldtype).unwrap();
                 }
             }
 
@@ -446,32 +503,46 @@ impl rs{name} {{
         if tail == &ast::Tail::None || tail_variant.is_some() {
             write!(self.f, "    pub fn new() -> Self {{\n").unwrap();
             write!(self.f, "        let tail = 0;\n").unwrap();
-            write!(self.f, "        let size = unsafe{{sizeof_{}}};\n", shortname).unwrap();
+            write!(
+                self.f,
+                "        let size = unsafe{{sizeof_{}}};\n",
+                shortname
+            )
+            .unwrap();
         } else {
             write!(self.f, "    pub fn new(tail:  usize) -> Self {{\n").unwrap();
-            write!(self.f, "        let size = unsafe{{sizeof_{}(tail)}};\n", shortname).unwrap();
+            write!(
+                self.f,
+                "        let size = unsafe{{sizeof_{}(tail)}};\n",
+                shortname
+            )
+            .unwrap();
         }
 
         write!(self.f, "        unsafe {{\n").unwrap();
         write!(self.f, "            let s = Box::new(vec![0u8; size]);\n").unwrap();
-        write!(self.f, "            let ss : *mut {}= std::mem::transmute(Box::leak(s).as_mut_ptr());\n", shortname).unwrap();
-        write!(self.f, "            Self {{ inner: Box::from_raw(ss), tail }} \n").unwrap();
+        write!(
+            self.f,
+            "            let ss : *mut {}= std::mem::transmute(Box::leak(s).as_mut_ptr());\n",
+            shortname
+        )
+        .unwrap();
+        write!(
+            self.f,
+            "            Self {{ inner: Box::from_raw(ss), tail }} \n"
+        )
+        .unwrap();
         write!(self.f, "        }}\n").unwrap();
         write!(self.f, "    }}\n").unwrap();
         write!(self.f, "}}\n").unwrap();
-   }
-
-
-
+    }
 
     fn function_args(&mut self, args: &Vec<ast::NamedArg>) {
-        let mut first = true ;
+        let mut first = true;
         for arg in args {
             let argtype = match self.to_local_typed_name(&arg.typed) {
                 Some(v) => v,
-                None => {
-                    continue
-                }
+                None => continue,
             };
             if first {
                 first = false;
@@ -481,48 +552,37 @@ impl rs{name} {{
 
             write!(self.f, " Z{}: ", arg.name).unwrap();
 
-
-
             self.emit_pointer(&arg.typed.ptr);
             write!(self.f, "{}", argtype).unwrap();
-
         }
     }
 
-    pub fn emit_fntype(&mut self, ast: &ast::Local) {
-        let (ret, args, _vararg, _attr) = match &ast.def {
-            ast::Def::Fntype{ret, args, vararg, attr, ..} => (ret, args, *vararg, attr),
+    pub fn emit_closure(&mut self, ast: &ast::Local) {
+        let (ret, args, _attr) = match &ast.def {
+            ast::Def::Closure {
+                ret,
+                args,
+                attr,
+                ..
+            } => (ret, args, attr),
             _ => unreachable!(),
         };
-
-        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
-        let rettype = match &ret {
-            None => None,
-            Some(a) => match self.to_local_typed_name(&a.typed) {
-                None => return,
-                Some(v) => Some(v),
-            },
-        };
-
-        write!(self.f, "pub type {} = extern fn(", shortname).unwrap();
-        self.function_args(args);
-        write!(self.f, ")").unwrap();
-
-        if let (Some(a),Some(rettype)) = (&ret, &rettype) {
-            write!(self.f, "  -> ").unwrap();
-            self.emit_pointer(&a.typed.ptr);
-            write!(self.f, "{}", rettype).unwrap();
-        };
-        write!(self.f, ";\n").unwrap();
     }
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {
         let (ret, args, _body, _vararg, _attr) = match &ast.def {
-            ast::Def::Function{ret, args, body, vararg, attr, ..} => (ret, args, body, *vararg, attr),
+            ast::Def::Function {
+                ret,
+                args,
+                body,
+                vararg,
+                attr,
+                ..
+            } => (ret, args, body, *vararg, attr),
             _ => unreachable!(),
         };
 
-        let shortname   = Name::from(&ast.name).0.last().unwrap().clone();
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
         let rettype = match &ret {
             None => None,
             Some(a) => match self.to_local_typed_name(&a.typed) {
@@ -531,13 +591,18 @@ impl rs{name} {{
             },
         };
 
-        write!(self.f, "    #[link_name = \"{}\"]\n", self.to_local_name(&Name::from(&ast.name))).unwrap();
+        write!(
+            self.f,
+            "    #[link_name = \"{}\"]\n",
+            self.to_local_name(&Name::from(&ast.name))
+        )
+        .unwrap();
         write!(self.f, "    pub fn r#{}(", shortname).unwrap();
 
         self.function_args(args);
         write!(self.f, ")").unwrap();
 
-        if let (Some(a),Some(rettype)) = (&ret, &rettype) {
+        if let (Some(a), Some(rettype)) = (&ret, &rettype) {
             write!(self.f, "  -> ").unwrap();
             self.emit_pointer(&a.typed.ptr);
             write!(self.f, "{}", rettype).unwrap();
@@ -546,12 +611,11 @@ impl rs{name} {{
         write!(self.f, ";\n").unwrap();
     }
 
-
     fn emit_pointer(&mut self, v: &Vec<ast::Pointer>) {
         for ptr in v {
             write!(self.f, "*").unwrap();
             if ptr.tags.contains_key("mut") || ptr.tags.contains_key("mut") {
-                 write!(self.f, "mut ").unwrap();
+                write!(self.f, "mut ").unwrap();
             } else {
                 write!(self.f, "const ").unwrap();
             }
@@ -560,51 +624,66 @@ impl rs{name} {{
 
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
-            ast::Expression::Unsafe{expr, ..} => {
+            ast::Expression::Unsafe { expr, .. } => {
                 self.emit_expr(expr);
             }
-            ast::Expression::MacroCall{loc, ..} => {
+            ast::Expression::MacroCall { loc, .. } => {
                 parser::emit_error(
                     "ICE: incomplete macro expansion ended up in emitter",
-                    &[(loc.clone(), format!("this should have been resolved earlier"))]
-                    );
+                    &[(
+                        loc.clone(),
+                        format!("this should have been resolved earlier"),
+                    )],
+                );
                 std::process::exit(9);
             }
-            ast::Expression::ArrayInit{..} => {
-            },
-            ast::Expression::StructInit{..} => {
-            },
-            ast::Expression::UnaryPost{expr, loc, op} => {
+            ast::Expression::ArrayInit { .. } => {}
+            ast::Expression::StructInit { .. } => {}
+            ast::Expression::UnaryPost { expr, loc, op } => {
                 write!(self.f, "(").unwrap();
                 self.emit_loc(&loc);
                 self.emit_expr(expr);
-                write!(self.f, " {}", match op {
-                    ast::PostfixOperator::Increment    =>  "++",
-                    ast::PostfixOperator::Decrement    =>  "--",
-                }).unwrap();
+                write!(
+                    self.f,
+                    " {}",
+                    match op {
+                        ast::PostfixOperator::Increment => "++",
+                        ast::PostfixOperator::Decrement => "--",
+                    }
+                )
+                .unwrap();
                 write!(self.f, ")").unwrap();
-            },
-            ast::Expression::UnaryPre{expr, loc, op} => {
+            }
+            ast::Expression::UnaryPre { expr, loc, op } => {
                 write!(self.f, "(").unwrap();
                 self.emit_loc(&loc);
-                write!(self.f, " {}", match op {
-                    ast::PrefixOperator::Boolnot   =>  "!",
-                    ast::PrefixOperator::Bitnot    =>  "~",
-                    ast::PrefixOperator::Increment =>  "++",
-                    ast::PrefixOperator::Decrement =>  "--",
-                    ast::PrefixOperator::AddressOf =>  "&",
-                    ast::PrefixOperator::Deref     =>  "*",
-                }).unwrap();
+                write!(
+                    self.f,
+                    " {}",
+                    match op {
+                        ast::PrefixOperator::Boolnot => "!",
+                        ast::PrefixOperator::Bitnot => "~",
+                        ast::PrefixOperator::Increment => "++",
+                        ast::PrefixOperator::Decrement => "--",
+                        ast::PrefixOperator::AddressOf => "&",
+                        ast::PrefixOperator::Deref => "*",
+                    }
+                )
+                .unwrap();
                 self.emit_expr(expr);
                 write!(self.f, ")").unwrap();
-            },
-            ast::Expression::Cast{..} => {
-            },
+            }
+            ast::Expression::Cast { .. } => {}
             ast::Expression::Name(name) => {
                 self.emit_loc(&name.loc);
-                write!(self.f, "    {}", self.to_local_typed_name(&name).unwrap_or("()".to_string())).unwrap();
-            },
-            ast::Expression::LiteralString {loc, v} => {
+                write!(
+                    self.f,
+                    "    {}",
+                    self.to_local_typed_name(&name).unwrap_or("()".to_string())
+                )
+                .unwrap();
+            }
+            ast::Expression::LiteralString { loc, v } => {
                 self.emit_loc(&loc);
                 write!(self.f, "    \"").unwrap();
                 for c in v.as_bytes() {
@@ -612,24 +691,30 @@ impl rs{name} {{
                 }
                 write!(self.f, "\"").unwrap();
             }
-            ast::Expression::LiteralChar {loc, v} => {
+            ast::Expression::LiteralChar { loc, v } => {
                 self.emit_loc(&loc);
                 write!(self.f, "    '").unwrap();
                 self.write_escaped_literal(*v, false);
                 write!(self.f, "'").unwrap();
             }
-            ast::Expression::Literal {loc, v} => {
+            ast::Expression::Literal { loc, v } => {
                 self.emit_loc(&loc);
                 write!(self.f, "    {}", v).unwrap();
             }
-            ast::Expression::Call { loc, name, args, emit , ..} => {
+            ast::Expression::Call {
+                loc,
+                name,
+                args,
+                emit,
+                ..
+            } => {
                 match emit {
-                    ast::EmitBehaviour::Default     => {},
-                    ast::EmitBehaviour::Skip        => {return;},
-                    ast::EmitBehaviour::Error{loc, message}   => {
-                        emit_error(format!("{}", message), &[
-                            (loc.clone(), "here")
-                        ]);
+                    ast::EmitBehaviour::Default => {}
+                    ast::EmitBehaviour::Skip => {
+                        return;
+                    }
+                    ast::EmitBehaviour::Error { loc, message } => {
+                        emit_error(format!("{}", message), &[(loc.clone(), "here")]);
                         std::process::exit(9);
                     }
                 };
@@ -648,40 +733,47 @@ impl rs{name} {{
                     self.emit_expr(arg);
                 }
                 write!(self.f, "    )").unwrap();
-            },
-            ast::Expression::Infix {lhs, rhs, op, loc, ..} => {
+            }
+            ast::Expression::Infix {
+                lhs, rhs, op, loc, ..
+            } => {
                 write!(self.f, "(").unwrap();
                 self.emit_expr(lhs);
                 self.emit_loc(&loc);
-                write!(self.f, " {}", match op {
-                    ast::InfixOperator::Equals      =>  "==",
-                    ast::InfixOperator::Nequals     =>  "!=",
-                    ast::InfixOperator::Add         =>  "+" ,
-                    ast::InfixOperator::Subtract    =>  "-" ,
-                    ast::InfixOperator::Multiply    =>  "*" ,
-                    ast::InfixOperator::Divide      =>  "/" ,
-                    ast::InfixOperator::Bitxor      =>  "^" ,
-                    ast::InfixOperator::Booland     =>  "&&",
-                    ast::InfixOperator::Boolor      =>  "||",
-                    ast::InfixOperator::Moreeq      =>  ">=",
-                    ast::InfixOperator::Lesseq      =>  "<=",
-                    ast::InfixOperator::Lessthan    =>  "<" ,
-                    ast::InfixOperator::Morethan    =>  ">" ,
-                    ast::InfixOperator::Shiftleft   =>  "<<",
-                    ast::InfixOperator::Shiftright  =>  ">>",
-                    ast::InfixOperator::Modulo      =>  "%" ,
-                    ast::InfixOperator::Bitand      =>  "&" ,
-                    ast::InfixOperator::Bitor       =>  "|" ,
-                }).unwrap();
+                write!(
+                    self.f,
+                    " {}",
+                    match op {
+                        ast::InfixOperator::Equals => "==",
+                        ast::InfixOperator::Nequals => "!=",
+                        ast::InfixOperator::Add => "+",
+                        ast::InfixOperator::Subtract => "-",
+                        ast::InfixOperator::Multiply => "*",
+                        ast::InfixOperator::Divide => "/",
+                        ast::InfixOperator::Bitxor => "^",
+                        ast::InfixOperator::Booland => "&&",
+                        ast::InfixOperator::Boolor => "||",
+                        ast::InfixOperator::Moreeq => ">=",
+                        ast::InfixOperator::Lesseq => "<=",
+                        ast::InfixOperator::Lessthan => "<",
+                        ast::InfixOperator::Morethan => ">",
+                        ast::InfixOperator::Shiftleft => "<<",
+                        ast::InfixOperator::Shiftright => ">>",
+                        ast::InfixOperator::Modulo => "%",
+                        ast::InfixOperator::Bitand => "&",
+                        ast::InfixOperator::Bitor => "|",
+                    }
+                )
+                .unwrap();
                 self.emit_expr(rhs);
                 write!(self.f, "  )").unwrap();
             }
-            ast::Expression::MemberAccess {loc, lhs, rhs, op} => {
+            ast::Expression::MemberAccess { loc, lhs, rhs, op } => {
                 self.emit_loc(&loc);
                 self.emit_expr(lhs);
                 write!(self.f, " {}{}", op, rhs).unwrap();
             }
-            ast::Expression::ArrayAccess {loc, lhs, rhs} => {
+            ast::Expression::ArrayAccess { loc, lhs, rhs } => {
                 self.emit_loc(&loc);
                 self.emit_expr(lhs);
                 write!(self.f, " [ ").unwrap();
@@ -690,7 +782,6 @@ impl rs{name} {{
             }
         }
     }
-
 
     fn write_escaped_literal(&mut self, c: u8, isstr: bool) {
         let c = c as char;

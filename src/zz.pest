@@ -104,7 +104,7 @@ ret_arg     = {"->" ~ anon_type }
 call_assert = {"where" ~ expr }
 call_effect = {"model" ~ expr }
 function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( macrocall | call_assert | call_effect)* ~ block }
-fntype      = { ( exported | key_shared)? ~ fn_attr* ~ "fntype" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
+closure     = { ( exported | key_shared)? ~ fn_attr* ~ "closure" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 theory      = { ( exported | key_shared)? ~ "theory" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 
 
@@ -321,7 +321,7 @@ macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 file        = { SOI ~ (struct_d
                         | doc_comment
                         | function
-                        | fntype
+                        | closure
                         | theory
                         | ienum
                         | symbol

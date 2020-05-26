@@ -1,42 +1,41 @@
-use super::Error;
 use super::flatten;
-use crate::name::Name;
-use std::collections::HashMap;
+use super::Error;
 use crate::ast;
+use crate::name::Name;
 use ast::Tags;
-use super::parser::{emit_debug};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 struct Storage {
-    name:           Name,
-    typed:          ast::Typed,
-    declared:       ast::Location,
-    complete:       flatten::TypeComplete,
+    name: Name,
+    typed: ast::Typed,
+    declared: ast::Location,
+    complete: flatten::TypeComplete,
 }
 
 #[derive(Default)]
 struct Scope {
-    name:       String,
-    storage:    HashMap<Name, Storage>,
+    name: String,
+    storage: HashMap<Name, Storage>,
 }
 
 struct Stack {
-    defs:   HashMap<Name, ast::Def>,
-    stack:  Vec<Scope>,
-    moretypevariants:   HashMap<Name, HashMap<u64, ast::Location>>,
+    defs: HashMap<Name, ast::Def>,
+    stack: Vec<Scope>,
+    moretypevariants: HashMap<Name, HashMap<u64, ast::Location>>,
 }
 
 impl Stack {
     fn new() -> Self {
         Self {
-            defs:   HashMap::new(),
-            stack:  Vec::new(),
+            defs: HashMap::new(),
+            stack: Vec::new(),
             moretypevariants: HashMap::new(),
         }
     }
     fn push(&mut self, name: String) {
         debug!("  scope {}", name);
-        self.stack.push(Scope{
+        self.stack.push(Scope {
             name,
             storage: HashMap::new(),
         });
@@ -50,88 +49,115 @@ impl Stack {
         self.stack.last_mut().unwrap()
     }
 
-    fn alloc(&mut self,
-             name: Name,
-             typed: ast::Typed,
-             loc: ast::Location,
-             _tags: ast::Tags,
-             complete: &flatten::TypeComplete
+    fn alloc(
+        &mut self,
+        name: Name,
+        typed: ast::Typed,
+        loc: ast::Location,
+        _tags: ast::Tags,
+        complete: &flatten::TypeComplete,
     ) -> Result<(), Error> {
-
         match format!("{}", name).as_str() {
             "len" | "theory" | "safe" | "nullterm" => {
                 if self.stack.len() > 1 {
-                    return Err(Error::new(format!("redeclaration of builtin theory '{}'", name), vec![
-                        (loc.clone(), "this declaration would shadow a builtin".to_string()),
-                    ]));
+                    return Err(Error::new(
+                        format!("redeclaration of builtin theory '{}'", name),
+                        vec![(
+                            loc.clone(),
+                            "this declaration would shadow a builtin".to_string(),
+                        )],
+                    ));
                 }
-            },
-            _ => {
             }
+            _ => {}
         }
 
         if let Some(prev) = self.cur().storage.get(&name).cloned() {
-            if prev.complete == flatten::TypeComplete::Complete &&  complete == &flatten::TypeComplete::Complete{
-                return Err(Error::new(format!("redeclation of local name '{}'", name), vec![
-                    (loc.clone(), "this declaration would shadow a previous name".to_string()),
-                    (prev.declared.clone(), "previous declaration".to_string())
-                ]));
+            if prev.complete == flatten::TypeComplete::Complete
+                && complete == &flatten::TypeComplete::Complete
+            {
+                return Err(Error::new(
+                    format!("redeclation of local name '{}'", name),
+                    vec![
+                        (
+                            loc.clone(),
+                            "this declaration would shadow a previous name".to_string(),
+                        ),
+                        (prev.declared.clone(), "previous declaration".to_string()),
+                    ],
+                ));
             }
         }
 
-        self.cur().storage.insert(name.clone(), Storage{
-            typed:      typed.clone(),
-            name:       name,
-            declared:   loc.clone(),
-            complete:   complete.clone(),
-        });
+        self.cur().storage.insert(
+            name.clone(),
+            Storage {
+                typed: typed.clone(),
+                name: name,
+                declared: loc.clone(),
+                complete: complete.clone(),
+            },
+        );
 
         Ok(())
-
     }
 
-    pub fn struct_final_tail_type(&self,
-        fields:     &Vec<ast::Field>,
-        tail:       &ast::Tail,
+    pub fn struct_final_tail_type(
+        &self,
+        fields: &Vec<ast::Field>,
+        tail: &ast::Tail,
     ) -> Result<Option<Box<ast::Typed>>, Error> {
-
         // find final tail type
         if let Some(field) = fields.last() {
             match &field.typed.tail {
-
                 // String+ string;
                 ast::Tail::Dynamic(fin) => {
-                    if let ast::Tail::Dynamic(_) = tail {} else {
-                        return Err(Error::new(format!("undeclared nested tail"), vec![
-                            (field.loc.clone(), format!("nested tail but parent type not declared as having a tail"))
-                        ]));
+                    if let ast::Tail::Dynamic(_) = tail {
+                    } else {
+                        return Err(Error::new(
+                            format!("undeclared nested tail"),
+                            vec![(
+                                field.loc.clone(),
+                                format!(
+                                    "nested tail but parent type not declared as having a tail"
+                                ),
+                            )],
+                        ));
                     }
                     if let ast::Type::Other(name) = &field.typed.t {
                         match self.defs.get(name) {
-                            Some(ast::Def::Struct{fields, tail, ..}) => {
+                            Some(ast::Def::Struct { fields, tail, .. }) => {
                                 return self.struct_final_tail_type(fields, tail);
                             }
                             other => {
-                                return Err(Error::new(format!("unavailable type used as tail"), vec![
-                                    (field.loc.clone(), format!("cannot use {} as struct: {:?}", name, other))
-                                ]));
+                                return Err(Error::new(
+                                    format!("unavailable type used as tail"),
+                                    vec![(
+                                        field.loc.clone(),
+                                        format!("cannot use {} as struct: {:?}", name, other),
+                                    )],
+                                ));
                             }
                         }
                     } else {
-                        return Err(Error::new(format!("flat type used as tail"), vec![
-                            (field.loc.clone(), format!("type {} has no tail", field.typed))
-                        ]));
+                        return Err(Error::new(
+                            format!("flat type used as tail"),
+                            vec![(
+                                field.loc.clone(),
+                                format!("type {} has no tail", field.typed),
+                            )],
+                        ));
                     }
-
-                },
+                }
 
                 // no tail because last field is statically sized
                 // String+100 string;
                 ast::Tail::Static(_, _) => {
                     if tail != &ast::Tail::None {
-                        return Err(Error::new(format!("struct declared as having a tail, but has no tail"), vec![
-                            (field.loc.clone(), format!("this is not a tail"))
-                        ]));
+                        return Err(Error::new(
+                            format!("struct declared as having a tail, but has no tail"),
+                            vec![(field.loc.clone(), format!("this is not a tail"))],
+                        ));
                     }
                 }
                 ast::Tail::None => {
@@ -139,16 +165,21 @@ impl Stack {
                         return Ok(Some(Box::new(field.typed.clone())));
                     } else {
                         if tail != &ast::Tail::None {
-                            return Err(Error::new(format!("struct declared as having a tail, but has no tail"), vec![
-                                (field.loc.clone(), format!("this is not a tail"))
-                            ]));
+                            return Err(Error::new(
+                                format!("struct declared as having a tail, but has no tail"),
+                                vec![(field.loc.clone(), format!("this is not a tail"))],
+                            ));
                         }
                     }
-                },
+                }
                 ast::Tail::Bind(_, _) => {
-                    return Err(Error::new(format!("tail sized binding on struct declaration is invalid"), vec![
-                        (field.loc.clone(), format!("tail must be static number or unsized"))
-                    ]));
+                    return Err(Error::new(
+                        format!("tail sized binding on struct declaration is invalid"),
+                        vec![(
+                            field.loc.clone(),
+                            format!("tail must be static number or unsized"),
+                        )],
+                    ));
                 }
             }
         }
@@ -157,51 +188,57 @@ impl Stack {
 }
 
 pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
-
     let mut stack = Stack::new();
     stack.push("global".to_string());
-
 
     // declaration run
     for (d, complete) in &mut module.d {
         stack.defs.insert(Name::from(&d.name), d.def.clone());
 
         match &mut d.def {
-            ast::Def::Theory{..} => {
+            ast::Def::Theory { .. } => {
                 stack.alloc(
                     Name::from(&d.name),
-                    ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr: Vec::new(),
+                        loc: d.loc.clone(),
+                        tail: ast::Tail::None,
                     },
                     d.loc.clone(),
                     Tags::new(),
-                    complete
+                    complete,
                 )?;
-            },
-            ast::Def::Function{args, callassert, callattests, calleffect, ..} => {
+            }
+            ast::Def::Function {
+                args,
+                callassert,
+                callattests,
+                calleffect,
+                ..
+            } => {
                 stack.alloc(
                     Name::from(&d.name),
-                    ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr: Vec::new(),
+                        loc: d.loc.clone(),
+                        tail: ast::Tail::None,
                     },
                     d.loc.clone(),
-                    Tags::new(),complete
+                    Tags::new(),
+                    complete,
                 )?;
-
-            },
-            ast::Def::Static {tags, typed, array, ..} => {
+            }
+            ast::Def::Static {
+                tags, typed, array, ..
+            } => {
                 let mut typed = typed.clone();
                 match array {
                     ast::Array::None => (),
                     _ => {
-                        typed.ptr.push(ast::Pointer{
-                            loc:  d.loc.clone(),
+                        typed.ptr.push(ast::Pointer {
+                            loc: d.loc.clone(),
                             tags: Tags::new(),
                         });
                     }
@@ -214,64 +251,69 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     tags.clone(),
                     complete,
                 )?;
-            },
+            }
             ast::Def::Const { typed, .. } => {
                 stack.alloc(
                     Name::from(&d.name),
                     typed.clone(),
-                    d.loc.clone(), Tags::new(),
-                    complete,
-                )?;
-            },
-            ast::Def::Fntype {..} => {
-                stack.alloc(
-                    Name::from(&d.name),
-                    ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
-                    },
-                    d.loc.clone(), Tags::new(),
-                    complete,
-                )?;
-            },
-            ast::Def::Struct {fields, union, ..} => {
-                stack.alloc(
-                    Name::from(&d.name),
-                    ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
-                    },
-                    d.loc.clone(), Tags::new(),
-                    complete,
-                )?;
-            },
-            ast::Def::Symbol{..} => {
-                stack.alloc(
-                    Name::from(&d.name),
-                    ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
-                    },
-                    d.loc.clone(), Tags::new(),
+                    d.loc.clone(),
+                    Tags::new(),
                     complete,
                 )?;
             }
-            ast::Def::Enum{..} => {
+            ast::Def::Closure { .. } => {
                 stack.alloc(
                     Name::from(&d.name),
-                    ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr: Vec::new(),
+                        loc: d.loc.clone(),
+                        tail: ast::Tail::None,
                     },
-                    d.loc.clone(), Tags::new(),
+                    d.loc.clone(),
+                    Tags::new(),
+                    complete,
+                )?;
+            }
+            ast::Def::Struct { fields, union, .. } => {
+                stack.alloc(
+                    Name::from(&d.name),
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr: Vec::new(),
+                        loc: d.loc.clone(),
+                        tail: ast::Tail::None,
+                    },
+                    d.loc.clone(),
+                    Tags::new(),
+                    complete,
+                )?;
+            }
+            ast::Def::Symbol { .. } => {
+                stack.alloc(
+                    Name::from(&d.name),
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr: Vec::new(),
+                        loc: d.loc.clone(),
+                        tail: ast::Tail::None,
+                    },
+                    d.loc.clone(),
+                    Tags::new(),
+                    complete,
+                )?;
+            }
+            ast::Def::Enum { .. } => {
+                stack.alloc(
+                    Name::from(&d.name),
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr: Vec::new(),
+                        loc: d.loc.clone(),
+                        tail: ast::Tail::None,
+                    },
+                    d.loc.clone(),
+                    Tags::new(),
                     complete,
                 )?;
 
@@ -300,31 +342,36 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     value += 1;
                 }
                 */
-            },
-            ast::Def::Macro{..} => {
+            }
+            ast::Def::Macro { .. } => {
                 stack.alloc(
                     Name::from(&d.name),
-                    ast::Typed{
-                        t:      ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr:    Vec::new(),
-                        loc:    d.loc.clone(),
-                        tail:   ast::Tail::None,
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        ptr: Vec::new(),
+                        loc: d.loc.clone(),
+                        tail: ast::Tail::None,
                     },
-                    d.loc.clone(), Tags::new(),
+                    d.loc.clone(),
+                    Tags::new(),
                     complete,
                 )?;
-            },
-            ast::Def::Testcase {..} => {},
-            ast::Def::Include {..} => {},
+            }
+            ast::Def::Testcase { .. } => {}
+            ast::Def::Include { .. } => {}
         }
     }
-
 
     // definition run
     for (d, complete) in &mut module.d {
         match &mut d.def {
-            ast::Def::Theory{..} => {},
-            ast::Def::Struct {fields, union, tail, ..} => {
+            ast::Def::Theory { .. } => {}
+            ast::Def::Struct {
+                fields,
+                union,
+                tail,
+                ..
+            } => {
                 if *union {
                     for field in fields.iter() {
                         //stack.cannot_drop_union(&field, &field.loc, 0)?;
@@ -336,19 +383,27 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     let ff = stack.struct_final_tail_type(fields, &dump_fucking_rust)?;
                     *fin = ff;
                 }
-            },
-            ast::Def::Function{args, body, callassert, callattests, calleffect, ..} => {
-
+            }
+            ast::Def::Function {
+                args,
+                body,
+                callassert,
+                callattests,
+                calleffect,
+                ..
+            } => {
                 for farg in args.iter_mut() {
                     if farg.typed.ptr.len() > 0 {
-
                         if Name::from(&d.name).0.last() != Some(&"borrow".to_string()) {
                             if let ast::Type::Other(name) = &farg.typed.t {
-                                if let Some(ast::Def::Struct{impls,..}) = stack.defs.get(name) {
-                                    if let Some((fnname,_)) = impls.get("borrow") {
-                                        if let Some(ast::Def::Function{calleffect: calleffect2, callassert: callassert2, ..})
-                                                = stack.defs.get(fnname) {
-
+                                if let Some(ast::Def::Struct { impls, .. }) = stack.defs.get(name) {
+                                    if let Some((fnname, _)) = impls.get("borrow") {
+                                        if let Some(ast::Def::Function {
+                                            calleffect: calleffect2,
+                                            callassert: callassert2,
+                                            ..
+                                        }) = stack.defs.get(fnname)
+                                        {
                                             // borrow where clauses are checked by expression expansion
                                             // but copy them to the body as asserts
                                             for effect in callassert2 {
@@ -389,40 +444,39 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                         } else {
                             // if the function is an attestation of borrow
                             // make sure we don't expand its args recursively
-                            farg.tags.insert("no-borrow-expand".to_string(), String::new(), ast::Location::builtin());
+                            farg.tags.insert(
+                                "no-borrow-expand".to_string(),
+                                String::new(),
+                                ast::Location::builtin(),
+                            );
                         }
-
 
                         // safe is implicit unless the arg is marked unsafe
                         if !farg.tags.contains("unsafe") {
                             let loc = farg.typed.ptr[0].loc.clone();
-                            let ast_safe = ast::Expression::Name(ast::Typed{
-                                t:      ast::Type::Other(Name::from("safe")),
-                                ptr:    Vec::new(),
-                                loc:    loc.clone(),
-                                tail:   ast::Tail::None,
+                            let ast_safe = ast::Expression::Name(ast::Typed {
+                                t: ast::Type::Other(Name::from("safe")),
+                                ptr: Vec::new(),
+                                loc: loc.clone(),
+                                tail: ast::Tail::None,
                             });
-                            let ast_argname = ast::Expression::Name(ast::Typed{
-                                t:      ast::Type::Other(Name::from(&farg.name)),
-                                ptr:    Vec::new(),
-                                loc:    loc.clone(),
-                                tail:   ast::Tail::None,
+                            let ast_argname = ast::Expression::Name(ast::Typed {
+                                t: ast::Type::Other(Name::from(&farg.name)),
+                                ptr: Vec::new(),
+                                loc: loc.clone(),
+                                tail: ast::Tail::None,
                             });
-                            let ast_call = ast::Expression::Call{
-                                loc:        loc.clone(),
-                                name:       Box::new(ast_safe),
-                                args:       vec![Box::new(ast_argname)],
-                                expanded:   true,
-                                emit:       ast::EmitBehaviour::Default,
+                            let ast_call = ast::Expression::Call {
+                                loc: loc.clone(),
+                                name: Box::new(ast_safe),
+                                args: vec![Box::new(ast_argname)],
+                                expanded: true,
+                                emit: ast::EmitBehaviour::Default,
                             };
                             callassert.insert(0, ast_call.clone());
                         }
-
-
                     }
                 }
-
-
 
                 if complete == &flatten::TypeComplete::Complete {
                     stack.push(format!("{}", d.name));
@@ -435,7 +489,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                             args[i].loc.clone(),
                             args[i].tags.clone(),
                             &flatten::TypeComplete::Complete,
-                            )?;
+                        )?;
                     }
 
                     stack.expand_scope(&mut body.statements)?;
@@ -443,96 +497,121 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
 
                     stack.pop();
                 }
-
-
-            },
+            }
             _ => (),
         }
     }
 
-
     for (t, vrs) in stack.moretypevariants {
         for variant in vrs {
-            module.typevariants.entry(t.clone()).or_insert(HashMap::new()).insert(variant.0, variant.1);
+            module
+                .typevariants
+                .entry(t.clone())
+                .or_insert(HashMap::new())
+                .insert(variant.0, variant.1);
         }
     }
-
 
     Ok(())
 }
 
 impl Stack {
-    fn expand_expr(&mut self, _expr: &mut ast::Expression) -> Result<(), Error> {
-        // doesnt do anything yet
-        return Ok(());
-
-        /*
-
-
+    fn expand_expr(&mut self, expr: &mut ast::Expression) -> Result<(), Error> {
         match expr {
-            ast::Expression::Name(_) => {}
-            ast::Expression::MemberAccess {ref mut lhs, ..} => {
-                self.expand_expr(lhs)?;
-            }
-            ast::Expression::ArrayAccess {ref mut lhs, ref mut rhs,..} => {
-                self.expand_expr(lhs)?;
-                self.expand_expr(rhs)?;
-            }
-            ast::Expression::LiteralString {..} => {},
-            ast::Expression::LiteralChar {..} => {},
-            ast::Expression::Literal{..} => {},
-            ast::Expression::Call{ref mut name, ref mut args,..} => {
+            ast::Expression::Call {
+                ref mut name,
+                ref mut args,
+                ..
+            } => {
                 self.expand_expr(name)?;
                 for arg in args {
                     self.expand_expr(arg)?;
                 }
+
+                if let ast::Expression::Name(ftyped) = name.as_ref() {
+                    if let ast::Type::Other(n) = &ftyped.t {
+                        if let Some(ast::Def::Closure { args, .. }) = self.defs.get(n) {
+                            panic!("beep boop");
+                        }
+                    }
+                }
             }
-            ast::Expression::Infix {ref mut lhs, ref mut rhs, ..} => {
+            ast::Expression::Name(_) => {}
+            ast::Expression::MemberAccess { ref mut lhs, .. } => {
+                self.expand_expr(lhs)?;
+            }
+            ast::Expression::ArrayAccess {
+                ref mut lhs,
+                ref mut rhs,
+                ..
+            } => {
                 self.expand_expr(lhs)?;
                 self.expand_expr(rhs)?;
             }
-            ast::Expression::Cast {ref mut expr,..} => {
+            ast::Expression::LiteralString { .. } => {}
+            ast::Expression::LiteralChar { .. } => {}
+            ast::Expression::Literal { .. } => {}
+            ast::Expression::Infix {
+                ref mut lhs,
+                ref mut rhs,
+                ..
+            } => {
+                self.expand_expr(lhs)?;
+                self.expand_expr(rhs)?;
+            }
+            ast::Expression::Cast { ref mut expr, .. } => {
                 self.expand_expr(expr)?;
             }
-            ast::Expression::UnaryPost {ref mut expr, ..} => {
+            ast::Expression::UnaryPost { ref mut expr, .. } => {
                 self.expand_expr(expr)?;
             }
-            ast::Expression::UnaryPre {ref mut expr, ..} => {
+            ast::Expression::UnaryPre { ref mut expr, .. } => {
                 self.expand_expr(expr)?;
             }
-            ast::Expression::StructInit {ref mut fields,..} => {
+            ast::Expression::StructInit { ref mut fields, .. } => {
                 for (_, expr) in fields {
                     self.expand_expr(expr)?;
                 }
             }
-            ast::Expression::ArrayInit {ref mut fields, ..} => {
+            ast::Expression::ArrayInit { ref mut fields, .. } => {
                 for expr in fields {
                     self.expand_expr(expr)?;
                 }
-            },
+            }
+            ast::Expression::MacroCall { ref mut args, .. } => {
+                for arg in args {
+                    self.expand_expr(arg)?;
+                }
+            }
+            ast::Expression::Unsafe { .. } => {}
         }
         Ok(())
-
-        */
     }
 
     fn expand_scope(&mut self, body: &mut Vec<Box<ast::Statement>>) -> Result<(), Error> {
-
-        let mut i   = 0;
+        let mut i = 0;
         let mut len = body.len();
         while i < len {
             match body[i].as_mut() {
-                ast::Statement::Var{loc, typed, tags, name, array, assign, ..} => {
+                ast::Statement::Var {
+                    loc,
+                    typed,
+                    tags,
+                    name,
+                    array,
+                    assign,
+                    ..
+                } => {
                     if let ast::Type::New = typed.t {
-
                         if !tags.contains("mut") {
                             tags.insert("mut".to_string(), String::new(), loc.clone());
                         }
 
                         if array.is_some() {
-                            return Err(Error::new(format!("new stack initialization cannot be array"), vec![
-                                (loc.clone(), "this new statement is invalid".to_string()),
-                            ]));
+                            return Err(Error::new(
+                                format!("new stack initialization cannot be array"),
+                                vec![(loc.clone(), "this new statement is invalid".to_string())],
+                            ));
                         }
                         if assign.is_none() {
                             return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
@@ -540,10 +619,17 @@ impl Stack {
                             ]));
                         }
                         let assign = assign.as_mut().unwrap();
-                        if let ast::Expression::Call{loc, args, name: fname, ..} = assign {
+                        if let ast::Expression::Call {
+                            loc,
+                            args,
+                            name: fname,
+                            ..
+                        } = assign
+                        {
                             if let ast::Expression::Name(ftyped) = fname.as_ref() {
                                 if let ast::Type::Other(n) = &ftyped.t {
-                                    if let Some(ast::Def::Function{args,..}) = self.defs.get(n) {
+                                    if let Some(ast::Def::Function { args, .. }) = self.defs.get(n)
+                                    {
                                         if args.len() < 1 {
                                             return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
                                                 (loc.clone(), "first function argument must be self ptr".to_string()),
@@ -566,7 +652,9 @@ impl Stack {
 
                                         if let ast::Type::Other(tn) = &typed.t {
                                             if let ast::Tail::Static(f, tvloc) = &tail {
-                                                self.moretypevariants.entry(tn.clone()).or_insert(HashMap::new())
+                                                self.moretypevariants
+                                                    .entry(tn.clone())
+                                                    .or_insert(HashMap::new())
                                                     .insert(*f, tvloc.clone());
                                             }
                                         }
@@ -587,53 +675,59 @@ impl Stack {
                                 ]));
                             }
 
-
-                            args.insert(0, Box::new(ast::Expression::UnaryPre{
-                                loc:    loc.clone(),
-                                op:     ast::PrefixOperator::AddressOf,
-                                expr:   Box::new(ast::Expression::Name(ast::Typed{
-                                    t:      ast::Type::Other(Name::from(name.as_str())),
-                                    ptr:    Vec::new(),
-                                    tail:   ast::Tail::None,
+                            args.insert(
+                                0,
+                                Box::new(ast::Expression::UnaryPre {
                                     loc: loc.clone(),
-                                })),
-                            }));
+                                    op: ast::PrefixOperator::AddressOf,
+                                    expr: Box::new(ast::Expression::Name(ast::Typed {
+                                        t: ast::Type::Other(Name::from(name.as_str())),
+                                        ptr: Vec::new(),
+                                        tail: ast::Tail::None,
+                                        loc: loc.clone(),
+                                    })),
+                                }),
+                            );
                         } else {
                             return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
                                 (loc.clone(), "this new statement is invalid".to_string()),
                             ]));
                         }
-                        let stm = Box::new(ast::Statement::Expr{
-                            loc:    assign.loc().clone(),
-                            expr:   assign.clone(),
+                        let stm = Box::new(ast::Statement::Expr {
+                            loc: assign.loc().clone(),
+                            expr: assign.clone(),
                         });
                         *assign = ast::Expression::ArrayInit {
                             loc: loc.clone(),
-                            fields: vec![
-                                Box::new(ast::Expression::Literal{
-                                    loc: loc.clone(),
-                                    v:  "0".to_string(),
-                                }),
-                            ]
+                            fields: vec![Box::new(ast::Expression::Literal {
+                                loc: loc.clone(),
+                                v: "0".to_string(),
+                            })],
                         };
                         body.insert(i + 1, stm);
-                        i   += 1;
+                        i += 1;
                         len += 1;
                     } else {
                         let mut typed = typed.clone();
                         if array.is_some() {
-                            typed.ptr.push(ast::Pointer{
+                            typed.ptr.push(ast::Pointer {
                                 loc: loc.clone(),
                                 tags: Tags::new(),
                             });
                         }
-                        self.alloc(Name::from(name.as_str()), typed, loc.clone(), tags.clone(), &flatten::TypeComplete::Complete)?;
+                        self.alloc(
+                            Name::from(name.as_str()),
+                            typed,
+                            loc.clone(),
+                            tags.clone(),
+                            &flatten::TypeComplete::Complete,
+                        )?;
                         if let Some(expr) = assign {
                             self.expand_expr(expr)?;
                         }
                     }
                 }
-                ast::Statement::If{branches}        => {
+                ast::Statement::If { branches } => {
                     self.push("if".to_string());
                     for (_loc, _expr, block) in branches {
                         self.push("branch".to_string());
@@ -642,10 +736,10 @@ impl Stack {
                     }
                     self.pop();
                 }
-                ast::Statement::Expr{expr,..}      => {
+                ast::Statement::Expr { expr, .. } => {
                     self.expand_expr(expr)?;
                 }
-                ast::Statement::Return{loc,expr, .. }   => {
+                ast::Statement::Return { loc, expr, .. } => {
                     if let Some(expr) = expr {
                         self.expand_expr(expr)?;
                     }
@@ -653,31 +747,30 @@ impl Stack {
                     let r = self.drop_fn(&loc)?;
                     for stm in r.into_iter().rev() {
                         body.insert(i, stm);
-                        i   += 1;
+                        i += 1;
                         len += 1;
                     }
-
                 }
-                ast::Statement::Label{..}           => {}
-                ast::Statement::Mark{..} => {},
-                ast::Statement::Switch{cases,  ..} => {
+                ast::Statement::Label { .. } => {}
+                ast::Statement::Mark { .. } => {}
+                ast::Statement::Switch { cases, .. } => {
                     for (_, block) in cases {
                         self.push("case".to_string());
                         self.expand_scope(&mut block.statements)?;
                         self.pop();
                     }
                 }
-                ast::Statement::Assign{lhs, rhs,..} => {
+                ast::Statement::Assign { lhs, rhs, .. } => {
                     self.expand_expr(lhs)?;
                     self.expand_expr(rhs)?;
                 }
 
-                ast::Statement::Continue{..} => {}
-                ast::Statement::Break{loc} => {
+                ast::Statement::Continue { .. } => {}
+                ast::Statement::Break { loc } => {
                     let r = self.drop(&loc)?;
                     for stm in r.into_iter().rev() {
                         body.insert(i, stm);
-                        i   += 1;
+                        i += 1;
                         len += 1;
                     }
                 }
@@ -687,7 +780,9 @@ impl Stack {
                     block.statements.extend(self.drop(&block.end)?);
                     self.pop();
                 }
-                ast::Statement::For{e1,e2,e3,body, ..} => {
+                ast::Statement::For {
+                    e1, e2, e3, body, ..
+                } => {
                     self.push("for loop".to_string());
                     self.expand_scope(e1)?;
                     if let Some(expr) = e2 {
@@ -698,20 +793,18 @@ impl Stack {
                     body.statements.extend(self.drop(&body.end)?);
                     self.pop();
                 }
-                ast::Statement::While{body, expr, ..} => {
+                ast::Statement::While { body, expr, .. } => {
                     self.push("while loop".to_string());
                     self.expand_scope(&mut body.statements)?;
                     body.statements.extend(self.drop(&body.end)?);
                     self.pop();
                     self.expand_expr(expr)?;
                 }
-                ast::Statement::CBlock{..} => {}
-                ast::Statement::MacroCall{ref mut args,..} => {
-                }
+                ast::Statement::CBlock { .. } => {}
+                ast::Statement::MacroCall { ref mut args, .. } => {}
             }
 
-
-            i+=1;
+            i += 1;
         }
         Ok(())
     }
@@ -727,36 +820,34 @@ impl Stack {
         self.drop_frame(loc, self.stack.len() - 1)
     }
 
-    fn drop_frame(&mut self, loc: &ast::Location, frame: usize) -> Result<Vec<Box<ast::Statement>>, Error> {
+    fn drop_frame(
+        &mut self,
+        loc: &ast::Location,
+        frame: usize,
+    ) -> Result<Vec<Box<ast::Statement>>, Error> {
         let r = Vec::new();
         for (name, storage) in &self.stack[frame].storage {
-
             //TODO also drop owned pointers some day
 
             if storage.typed.ptr.len() != 0 {
-                continue
+                continue;
             }
 
             let accesslocal = ast::Expression::UnaryPre {
-                loc:    loc.clone(),
-                op:     ast::PrefixOperator::AddressOf,
-                expr:   Box::new(ast::Expression::Name(ast::Typed{
-                    t:      ast::Type::Other(name.clone()),
-                    ptr:    Vec::new(),
-                    loc:    loc.clone(),
-                    tail:   ast::Tail::None,
-                }))
+                loc: loc.clone(),
+                op: ast::PrefixOperator::AddressOf,
+                expr: Box::new(ast::Expression::Name(ast::Typed {
+                    t: ast::Type::Other(name.clone()),
+                    ptr: Vec::new(),
+                    loc: loc.clone(),
+                    tail: ast::Tail::None,
+                })),
             };
             //r.extend(self.drop_local(loc, &storage.typed, accesslocal, format!("(&{})", name))?);
         }
         Ok(r)
     }
-
-
 }
-
-
-
 
 fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewith: &ast::Type) {
     match expr {
@@ -765,52 +856,64 @@ fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewit
                 t.t = replacewith.clone();
             }
         }
-        ast::Expression::MemberAccess {ref mut lhs, ..} => {
+        ast::Expression::MemberAccess { ref mut lhs, .. } => {
             replace_named(lhs, replacefrom, replacewith);
         }
-        ast::Expression::ArrayAccess {ref mut lhs, ref mut rhs,..} => {
+        ast::Expression::ArrayAccess {
+            ref mut lhs,
+            ref mut rhs,
+            ..
+        } => {
             replace_named(lhs, replacefrom, replacewith);
             replace_named(rhs, replacefrom, replacewith);
         }
-        ast::Expression::LiteralString {..} => {},
-        ast::Expression::LiteralChar {..} => {},
-        ast::Expression::Literal{..} => {},
-        ast::Expression::Call{ref mut name, ref mut args,..} => {
+        ast::Expression::LiteralString { .. } => {}
+        ast::Expression::LiteralChar { .. } => {}
+        ast::Expression::Literal { .. } => {}
+        ast::Expression::Call {
+            ref mut name,
+            ref mut args,
+            ..
+        } => {
             replace_named(name, replacefrom, replacewith);
             for arg in args {
                 replace_named(arg, replacefrom, replacewith);
             }
         }
-        ast::Expression::MacroCall{ref mut args,..} => {
+        ast::Expression::MacroCall { ref mut args, .. } => {
             for arg in args {
                 replace_named(arg, replacefrom, replacewith);
             }
         }
-        ast::Expression::Infix {ref mut lhs, ref mut rhs, ..} => {
+        ast::Expression::Infix {
+            ref mut lhs,
+            ref mut rhs,
+            ..
+        } => {
             replace_named(lhs, replacefrom, replacewith);
             replace_named(rhs, replacefrom, replacewith);
         }
-        ast::Expression::Cast {ref mut expr,..} => {
+        ast::Expression::Cast { ref mut expr, .. } => {
             replace_named(expr, replacefrom, replacewith);
         }
-        ast::Expression::Unsafe {ref mut expr,..} => {
+        ast::Expression::Unsafe { ref mut expr, .. } => {
             replace_named(expr, replacefrom, replacewith);
         }
-        ast::Expression::UnaryPost {ref mut expr, ..} => {
+        ast::Expression::UnaryPost { ref mut expr, .. } => {
             replace_named(expr, replacefrom, replacewith);
         }
-        ast::Expression::UnaryPre {ref mut expr, ..} => {
+        ast::Expression::UnaryPre { ref mut expr, .. } => {
             replace_named(expr, replacefrom, replacewith);
         }
-        ast::Expression::StructInit {ref mut fields,..} => {
+        ast::Expression::StructInit { ref mut fields, .. } => {
             for (_, expr) in fields {
                 replace_named(expr, replacefrom, replacewith);
             }
         }
-        ast::Expression::ArrayInit {ref mut fields, ..} => {
+        ast::Expression::ArrayInit { ref mut fields, .. } => {
             for expr in fields {
                 replace_named(expr, replacefrom, replacewith);
             }
-        },
+        }
     }
 }

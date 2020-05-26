@@ -1,16 +1,17 @@
 extern crate clap;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate env_logger;
 extern crate pbr;
 extern crate rayon;
 extern crate tempdir;
 
 use clap::{App, Arg, SubCommand};
-use std::process::Command;
-use std::sync::atomic::{Ordering};
-use zz;
 use std::io::{Read, Write};
+use std::process::Command;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
+use zz;
 
 fn main() {
     if let Err(_) = std::env::var("RUST_LOG") {
@@ -25,38 +26,145 @@ fn main() {
     let matches = App::new("Drunk Octopus")
         .version(clap::crate_version!())
         .setting(clap::AppSettings::UnifiedHelpMessage)
-        .arg(Arg::with_name("smt-timeout").takes_value(true).required(false).long("smt-timeout"))
-        .subcommand(SubCommand::with_name("check").about("check the current project")
-            .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
-            .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
-            .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
-            .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
+        .arg(
+            Arg::with_name("smt-timeout")
+                .takes_value(true)
+                .required(false)
+                .long("smt-timeout"),
         )
-        .subcommand(SubCommand::with_name("build").about("build the current project")
-            .arg(Arg::with_name("slow").takes_value(false).required(false).long("slow").short("0"))
-            .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
-            .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
-            .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
-            .arg(Arg::with_name("artifact").takes_value(true).required(false).index(1))
-            .arg(Arg::with_name("export").takes_value(false).required(false).long("export"))
+        .subcommand(
+            SubCommand::with_name("check")
+                .about("check the current project")
+                .arg(
+                    Arg::with_name("slow")
+                        .takes_value(false)
+                        .required(false)
+                        .long("slow")
+                        .short("0"),
+                )
+                .arg(
+                    Arg::with_name("variant")
+                        .takes_value(true)
+                        .required(false)
+                        .long("variant")
+                        .short("s"),
+                )
+                .arg(
+                    Arg::with_name("release")
+                        .takes_value(false)
+                        .required(false)
+                        .long("release"),
+                )
+                .arg(
+                    Arg::with_name("debug")
+                        .takes_value(false)
+                        .required(false)
+                        .long("debug"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("build")
+                .about("build the current project")
+                .arg(
+                    Arg::with_name("slow")
+                        .takes_value(false)
+                        .required(false)
+                        .long("slow")
+                        .short("0"),
+                )
+                .arg(
+                    Arg::with_name("variant")
+                        .takes_value(true)
+                        .required(false)
+                        .long("variant")
+                        .short("s"),
+                )
+                .arg(
+                    Arg::with_name("release")
+                        .takes_value(false)
+                        .required(false)
+                        .long("release"),
+                )
+                .arg(
+                    Arg::with_name("debug")
+                        .takes_value(false)
+                        .required(false)
+                        .long("debug"),
+                )
+                .arg(
+                    Arg::with_name("artifact")
+                        .takes_value(true)
+                        .required(false)
+                        .index(1),
+                )
+                .arg(
+                    Arg::with_name("export")
+                        .takes_value(false)
+                        .required(false)
+                        .long("export"),
+                ),
         )
         .subcommand(SubCommand::with_name("clean").about("remove the target directory"))
-        .subcommand(SubCommand::with_name("bench").about("benchmark tests/*.zz")
-            .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
+        .subcommand(
+            SubCommand::with_name("bench")
+                .about("benchmark tests/*.zz")
+                .arg(
+                    Arg::with_name("testname")
+                        .takes_value(true)
+                        .required(false)
+                        .index(1),
+                ),
         )
-        .subcommand(SubCommand::with_name("test").about("execute tests/*.zz")
-            .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
+        .subcommand(
+            SubCommand::with_name("test")
+                .about("execute tests/*.zz")
+                .arg(
+                    Arg::with_name("testname")
+                        .takes_value(true)
+                        .required(false)
+                        .index(1),
+                ),
         )
         .subcommand(SubCommand::with_name("init").about("init zz project in current directory"))
         .subcommand(
-            SubCommand::with_name("run").about("build and run")
-            .arg(Arg::with_name("release").takes_value(false).required(false).long("release"))
-            .arg(Arg::with_name("debug").takes_value(false).required(false).long("debug"))
-            .arg(Arg::with_name("variant").takes_value(true).required(false).long("variant").short("s"))
-            .arg(Arg::with_name("args").takes_value(true).multiple(true).required(false).index(1))
+            SubCommand::with_name("run")
+                .about("build and run")
+                .arg(
+                    Arg::with_name("release")
+                        .takes_value(false)
+                        .required(false)
+                        .long("release"),
+                )
+                .arg(
+                    Arg::with_name("debug")
+                        .takes_value(false)
+                        .required(false)
+                        .long("debug"),
+                )
+                .arg(
+                    Arg::with_name("variant")
+                        .takes_value(true)
+                        .required(false)
+                        .long("variant")
+                        .short("s"),
+                )
+                .arg(
+                    Arg::with_name("args")
+                        .takes_value(true)
+                        .multiple(true)
+                        .required(false)
+                        .index(1),
+                ),
         )
-        .subcommand(SubCommand::with_name("fuzz").about("execute tests/*.zz with afl fuzzer")
-            .arg(Arg::with_name("testname").takes_value(true).required(false).index(1)),
+        .subcommand(
+            SubCommand::with_name("fuzz")
+                .about("execute tests/*.zz with afl fuzzer")
+                .arg(
+                    Arg::with_name("testname")
+                        .takes_value(true)
+                        .required(false)
+                        .index(1),
+                ),
         )
         .get_matches();
 
@@ -67,14 +175,14 @@ fn main() {
     match matches.subcommand() {
         ("init", Some(_submatches)) => {
             zz::project::init();
-        },
+        }
         ("clean", Some(_submatches)) => {
             let (root, _) = zz::project::load_cwd();
             if root.join("target").exists() {
                 std::fs::remove_dir_all(root.join("target")).unwrap();
             }
-        },
-        ("test", Some(submatches))  | ("bench", Some(submatches)) => {
+        }
+        ("test", Some(submatches)) | ("bench", Some(submatches)) => {
             let bench = matches.subcommand().0 == "bench";
 
             let variant = submatches.value_of("variant").unwrap_or("default");
@@ -92,8 +200,11 @@ fn main() {
                         }
                     }
 
-
-                    let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("{}",artifact.main.replace("::","_")));
+                    let casedir = root
+                        .join("target")
+                        .join(stage.to_string())
+                        .join("testcases")
+                        .join(format!("{}", artifact.main.replace("::", "_")));
                     let mut cases = Vec::new();
                     match std::fs::read_dir(casedir) {
                         Err(_) => (),
@@ -104,24 +215,34 @@ fn main() {
                                     Err(_) => continue,
                                 };
                                 let path = entry.path();
-                                let mut stdin  = None;
+                                let mut stdin = None;
                                 let mut stdout = None;
-                                let mut exit  = 0;
+                                let mut exit = 0;
                                 match std::fs::File::open(path.join("stdin")) {
                                     Ok(mut f) => {
                                         let mut v = Vec::new();
                                         f.read_to_end(&mut v).unwrap();
                                         stdin = Some(v);
-                                    },
-                                    Err(_) => {eprintln!("stdin testfile not found {}", path.to_string_lossy());}
+                                    }
+                                    Err(_) => {
+                                        eprintln!(
+                                            "stdin testfile not found {}",
+                                            path.to_string_lossy()
+                                        );
+                                    }
                                 }
                                 match std::fs::File::open(path.join("stdout")) {
                                     Ok(mut f) => {
                                         let mut v = Vec::new();
                                         f.read_to_end(&mut v).unwrap();
                                         stdout = Some(v);
-                                    },
-                                    Err(_) => {eprintln!("stdout testfile not found {}", path.to_string_lossy());}
+                                    }
+                                    Err(_) => {
+                                        eprintln!(
+                                            "stdout testfile not found {}",
+                                            path.to_string_lossy()
+                                        );
+                                    }
                                 }
 
                                 match std::fs::File::open(path.join("exit")) {
@@ -129,14 +250,14 @@ fn main() {
                                         let mut v = String::new();
                                         f.read_to_string(&mut v).unwrap();
                                         exit = v.parse().unwrap_or(0);
-                                    },
+                                    }
                                     Err(_) => {}
                                 }
                                 cases.push((
-                                        entry.file_name().to_string_lossy().to_string(),
-                                        stdin,
-                                        stdout,
-                                        exit
+                                    entry.file_name().to_string_lossy().to_string(),
+                                    stdin,
+                                    stdout,
+                                    exit,
                                 ));
                             }
                         }
@@ -147,7 +268,11 @@ fn main() {
                     }
 
                     for case in &cases {
-                        let running = root.join("target").join(stage.to_string()).join("bin").join(&artifact.name);
+                        let running = root
+                            .join("target")
+                            .join(stage.to_string())
+                            .join("bin")
+                            .join(&artifact.name);
                         println!("running \"{}\"\n", running.to_string_lossy());
                         let start = Instant::now();
                         let mut average = 0;
@@ -169,7 +294,10 @@ fn main() {
                             match output.status.code() {
                                 Some(c) => {
                                     if c != case.3 {
-                                        error!("FAIL {}::{} exit: {} instead of: {}", artifact.name, case.0, c, case.3);
+                                        error!(
+                                            "FAIL {}::{} exit: {} instead of: {}",
+                                            artifact.name, case.0, c, case.3
+                                        );
                                         std::process::exit(10);
                                     }
                                 }
@@ -177,7 +305,12 @@ fn main() {
                                     #[cfg(unix)]
                                     {
                                         use std::os::unix::process::ExitStatusExt;
-                                        error!("FAIL {}::{} died by signal {}", artifact.name, case.0, output.status.signal().unwrap());
+                                        error!(
+                                            "FAIL {}::{} died by signal {}",
+                                            artifact.name,
+                                            case.0,
+                                            output.status.signal().unwrap()
+                                        );
                                     }
                                     #[cfg(not(unix))]
                                     {
@@ -188,7 +321,7 @@ fn main() {
                             }
                             if let Some(expect_stdout) = &case.2 {
                                 let mut output_stdout = output.stdout;
-                                output_stdout.retain(|&i|i!=b'\r');
+                                output_stdout.retain(|&i| i != b'\r');
                                 if &output_stdout != expect_stdout {
                                     error!("FAIL {} {} \nstdout expected:\n<{}>({})\nbut got:\n<{}>({})\n",
                                            artifact.name,
@@ -213,11 +346,9 @@ fn main() {
                                 break;
                             }
                         }
-
                     }
                 }
             }
-
         }
         ("run", Some(submatches)) => {
             let stage = if submatches.is_present("release") {
@@ -246,21 +377,23 @@ fn main() {
                 std::process::exit(9);
             }
 
-            let running = root.join("target").join(stage.to_string()).join("bin").join(&exes[0].name);
+            let running = root
+                .join("target")
+                .join(stage.to_string())
+                .join("bin")
+                .join(&exes[0].name);
             println!("running \"{}\"\n", running.to_string_lossy());
             let status = Command::new(running)
                 .args(submatches.values_of("args").unwrap_or_default())
                 .status()
                 .expect("failed to execute process");
             std::process::exit(status.code().expect("failed to execute process"));
-        },
+        }
         ("fuzz", Some(submatches)) => {
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::fuzz();
             zz::build(zz::BuildSet::Tests, variant, stage.clone(), false);
             let (root, mut project) = zz::project::load_cwd();
-
-
 
             let mut exes = Vec::new();
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
@@ -268,9 +401,8 @@ fn main() {
                     match submatches.value_of("testname") {
                         Some(v) if v == artifact.name => {
                             exes.push((artifact.name, artifact.main));
-                        },
-                        Some(_) => {
                         }
+                        Some(_) => {}
                         None => {
                             exes.push((artifact.name, artifact.main));
                         }
@@ -289,14 +421,18 @@ fn main() {
 
             if exes.len() > 1 {
                 eprintln!("specify which test to run:");
-                for (exe,_) in exes {
+                for (exe, _) in exes {
                     eprintln!(" - {}", exe);
                 }
                 std::process::exit(1);
             }
 
             let indir = tempdir::TempDir::new("zzfuzz").unwrap();
-            let casedir = root.join("target").join(stage.to_string()).join("testcases").join(format!("{}",exes[0].1.replace("::","_")));
+            let casedir = root
+                .join("target")
+                .join(stage.to_string())
+                .join("testcases")
+                .join(format!("{}", exes[0].1.replace("::", "_")));
             let mut havesome = false;
             match std::fs::read_dir(casedir) {
                 Err(_) => (),
@@ -310,7 +446,8 @@ fn main() {
                         let stdin = path.join("stdin");
                         if stdin.exists() {
                             havesome = true;
-                            std::fs::copy(&stdin, indir.path().join(path.file_name().unwrap())).unwrap();
+                            std::fs::copy(&stdin, indir.path().join(path.file_name().unwrap()))
+                                .unwrap();
                         }
                     }
                 }
@@ -332,19 +469,28 @@ fn main() {
                 .arg(indir.path())
                 .arg("-o")
                 .arg(&outdir)
-                .arg(root.join("target").join(stage.to_string()).join("bin").join(&exes[0].0))
+                .arg(
+                    root.join("target")
+                        .join(stage.to_string())
+                        .join("bin")
+                        .join(&exes[0].0),
+                )
                 .spawn()
                 .expect("failed to execute process");
             child.wait().unwrap();
 
             println!("\n\nfuzzer output in {}", outdir.to_string_lossy());
             return;
-
-        },
+        }
         ("check", Some(submatches)) => {
             zz::parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
-            zz::build(zz::BuildSet::Check, submatches.value_of("variant").unwrap_or("default"), zz::make::Stage::test(), false)
-        },
+            zz::build(
+                zz::BuildSet::Check,
+                submatches.value_of("variant").unwrap_or("default"),
+                zz::make::Stage::test(),
+                false,
+            )
+        }
         ("build", Some(submatches)) => {
             let stage = if submatches.is_present("release") {
                 zz::make::Stage::release()
@@ -362,12 +508,16 @@ fn main() {
                 zz::BuildSet::All
             };
 
-            zz::build(set, submatches.value_of("variant").unwrap_or("default"), stage, submatches.is_present("slow"))
-        },
+            zz::build(
+                set,
+                submatches.value_of("variant").unwrap_or("default"),
+                stage,
+                submatches.is_present("slow"),
+            )
+        }
         ("", None) => {
             zz::build(zz::BuildSet::All, "default", zz::make::Stage::test(), false);
-        },
+        }
         _ => unreachable!(),
     }
 }
-

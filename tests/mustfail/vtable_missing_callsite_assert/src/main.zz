@@ -1,7 +1,7 @@
 using <stdio.h>::{printf};
 
 
-fntype add_t(int a, int b) -> int;
+closure add_t(int a, int b) -> int;
 
 
 fn add(int a, int b) -> int {

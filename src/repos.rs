@@ -1,5 +1,5 @@
 use super::project;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -12,24 +12,23 @@ pub struct Repo {
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Index {
-    pub repos:  HashMap<String, Repo>,
+    pub repos: HashMap<String, Repo>,
 }
 
-pub fn index(project: &project::Config) -> HashSet<PathBuf>
-{
-
+pub fn index(project: &project::Config) -> HashSet<PathBuf> {
     let cachepath = Path::new("target").join("repos").join("index");
     let index = if let Some(index) = cache("zz.toml", &cachepath) {
         index
     } else {
         let mut index = Index::default();
-        std::fs::create_dir_all(Path::new("target").join("repos")).expect("cannot create target/repos");
+        std::fs::create_dir_all(Path::new("target").join("repos"))
+            .expect("cannot create target/repos");
         for (name, surl) in &project.repos {
-
             let url = match url::Url::parse(surl) {
                 Ok(v) => v,
                 Err(url::ParseError::RelativeUrlWithoutBase) => {
-                    url::Url::parse(&format!("file://{}", surl)).expect(&format!("unable to parse repo url: {}", surl))
+                    url::Url::parse(&format!("file://{}", surl))
+                        .expect(&format!("unable to parse repo url: {}", surl))
                 }
                 Err(e) => {
                     panic!(format!("unable to parse repo url: {}: {}", surl, e));
@@ -37,11 +36,13 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf>
             };
 
             match url.scheme() {
-                "file" => {
-                },
+                "file" => {}
                 "https" => {
-                    panic!(format!("unsupported scheme in repo url: {}, did you mean git:// ?", surl));
-                },
+                    panic!(format!(
+                        "unsupported scheme in repo url: {}, did you mean git:// ?",
+                        surl
+                    ));
+                }
                 "git" | "git+ssh" => {
                     let np = Path::new("target").join("repos").join(name);
                     if np.exists() {
@@ -58,27 +59,40 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf>
                     let np_sub = np.join("modules");
                     if !np_sub.exists() {
                         if !np.join("zz.toml").exists() {
-                            panic!("unsupported repo in url: {} : no zz.toml or modules subdir", surl);
+                            panic!(
+                                "unsupported repo in url: {} : no zz.toml or modules subdir",
+                                surl
+                            );
                         }
 
                         let npx = Path::new("target").join("repos").join("___");
                         if npx.exists() {
-                            std::fs::remove_dir_all(&npx).expect(&format!("cannot remove {:?}", npx));
+                            std::fs::remove_dir_all(&npx)
+                                .expect(&format!("cannot remove {:?}", npx));
                         }
                         std::fs::create_dir_all(&npx).expect(&format!("cannot create {:?}", npx));
-                        std::fs::rename(&np, npx.join(name.clone())).expect(&format!("cannot move {:?} to {:?}", np, npx.join(name.clone())));
+                        std::fs::rename(&np, npx.join(name.clone())).expect(&format!(
+                            "cannot move {:?} to {:?}",
+                            np,
+                            npx.join(name.clone())
+                        ));
                     }
-                },
+                }
                 _ => {
                     panic!(format!("unsupported scheme in repo url: {}", surl));
                 }
             }
-            index.repos.insert(name.clone(), Repo{
-                origin: surl.clone(),
-            });
+            index.repos.insert(
+                name.clone(),
+                Repo {
+                    origin: surl.clone(),
+                },
+            );
         }
-        let cachefile = std::fs::File::create(&cachepath).expect(&format!("cannot create {:?}", cachepath));
-        serde_cbor::ser::to_writer(cachefile, &index).expect(&format!("cannot write {:?}", cachepath));
+        let cachefile =
+            std::fs::File::create(&cachepath).expect(&format!("cannot create {:?}", cachepath));
+        serde_cbor::ser::to_writer(cachefile, &index)
+            .expect(&format!("cannot write {:?}", cachepath));
         index
     };
 
@@ -87,7 +101,8 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf>
         let url = match url::Url::parse(&repo.origin) {
             Ok(v) => v,
             Err(url::ParseError::RelativeUrlWithoutBase) => {
-                url::Url::parse(&format!("file://{}", repo.origin)).expect(&format!("unable to parse repo url: {}", repo.origin))
+                url::Url::parse(&format!("file://{}", repo.origin))
+                    .expect(&format!("unable to parse repo url: {}", repo.origin))
             }
             Err(e) => {
                 panic!(format!("unable to parse repo url: {}: {}", repo.origin, e));
@@ -97,46 +112,46 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf>
             "file" => {
                 searchpaths.insert(url.path().into());
                 searchpaths.insert(Path::new(url.path()).join("modules"));
-            },
+            }
             _ => {
                 searchpaths.insert(Path::new("target").join("repos").join("___"));
                 searchpaths.insert(Path::new("target").join("repos").join(name).join("modules"));
             }
         }
-
     }
     return searchpaths;
 }
 
-
-pub fn cache(source_file: &str , cache_file: &Path) -> Option<Index> {
+pub fn cache(source_file: &str, cache_file: &Path) -> Option<Index> {
     let m1 = match std::fs::metadata(&source_file) {
-        Ok(v)  => v,
+        Ok(v) => v,
         Err(_) => return None,
     };
-    let m1 = m1.modified().expect(&format!("cannot stat {:?}", source_file));
+    let m1 = m1
+        .modified()
+        .expect(&format!("cannot stat {:?}", source_file));
 
     let m2 = match std::fs::metadata(&cache_file) {
-        Ok(v)  => v,
+        Ok(v) => v,
         Err(_) => return None,
     };
-    let m2 = m2.modified().expect(&format!("cannot stat {:?}", cache_file));
+    let m2 = m2
+        .modified()
+        .expect(&format!("cannot stat {:?}", cache_file));
 
     if m1 > m2 {
         return None;
     }
 
     match std::fs::File::open(&cache_file) {
-        Ok(f) => {
-            match serde_cbor::from_reader(&f) {
-                Ok(cf) => {
-                    return Some(cf);
-                }
-                Err(_) => {
-                    std::fs::remove_file(&cache_file).expect(&format!("cannot remove {:?}", cache_file));
-                }
+        Ok(f) => match serde_cbor::from_reader(&f) {
+            Ok(cf) => {
+                return Some(cf);
             }
-
+            Err(_) => {
+                std::fs::remove_file(&cache_file)
+                    .expect(&format!("cannot remove {:?}", cache_file));
+            }
         },
         Err(_) => (),
     };

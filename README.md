@@ -333,14 +333,13 @@ unless you want to apply mutability to the local storage named foo
 Coincidentally this is roughly equivalent to Rust, so Rust devs should feel right at home.
 Even if not, you will quickly learn how pointer tags works by following the compiler errors.
 
-#### fntype
+#### closures
 
-function pointers are difficult to do nicely but also make them emit to C code well, so they don't really exist in ZZ.
-instead you declare a function to be a type instead of a concrete implementation.
-An fntype is emited as typedef, and therefore becomes a regular pointer type for both the C compiler and the ZZ memory tracker;
+function pointers are difficult to do nicely but also make them emit to all languages well, so they don't really exist in ZZ.
+instead you declare closures, which are automatically casted from and to functions
 
 ```C++
-fntype rand_t() -> int;
+closure rand_t() -> int;
 
 fn secure_random() -> int {
     return 42;
@@ -351,12 +350,6 @@ fn main() {
 }
 
 ```
-
-closures do not exist in ZZ. One reason being that the C output would be difficult to use in other raw C code.
-But the biggest reason is that most usage of closures is for capturing scope state.
-That only really works well with garbage collected languages, otherwise its difficult to reason about (see rust).
-In ZZ we instead explicitly track all state in structs and simply use plain stateless functions.
-
 
 #### metaprogramming or templates: tail variants
 

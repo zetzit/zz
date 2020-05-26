@@ -90,9 +90,11 @@ test _object_in_array {
 
 
 
-fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, usize mut * depth, char *k, json::Value v)
+fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
     where err::checked(*e)
 {
+    let depth = (usize mut*)user;
+
     for (usize mut i = 0; i < (usize)depth * 2; i++) {
         printf(" ");
     }
@@ -100,14 +102,14 @@ fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, usize mut * depth, char *k
     switch v.t {
         json::ValueType::Object => {
             printf("%s:\n", k);
-            json::next(p,  e, (json::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            json::next(p,  e, pretty, (void mut*)((usize)depth + 1));
             if err::check(e) {
                 return;
             }
         }
         json::ValueType::Array => {
             printf("%s:\n", k);
-            json::next(p,  e, (json::deserialize_t)pretty, (void mut*)((usize)depth + 1));
+            json::next(p,  e, pretty, (void mut*)((usize)depth + 1));
             if err::check(e) {
                 return;
             }
@@ -128,7 +130,7 @@ export fn main() -> int {
 
     usize depth = 0;
 
-    new+100 parser = json::parser(&e, (json::deserialize_t)pretty, (void mut*)depth);
+    new+100 parser = json::parser(&e, pretty, (void mut*)depth);
 
     if err::check(&e) {
         err::eprintf(&e, stderr);

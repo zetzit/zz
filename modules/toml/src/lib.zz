@@ -36,8 +36,8 @@ enum ParserState {
     PostVal,
 }
 
-export fntype Iter      (U *u, err::Err+et mut *e, Parser+pt mut* p, char *k, Value v);
-export fntype Pop       (U *u, err::Err+et mut *e, Parser+pt mut* p);
+export closure Iter      (U *u, err::Err+et mut *e, Parser+pt mut* p, char *k, Value v);
+export closure Pop       (U *u, err::Err+et mut *e, Parser+pt mut* p);
 
 export struct U {
     Iter    it;
@@ -106,7 +106,7 @@ export fn close(Parser+tail mut *self, err::Err+et mut *e)
     for (;;) {
         static_attest(self->depth < len(self->state));
         ParserStack mut * mut stack = &((self->state)[self->depth]);
-        if stack->user.pop != 0 {
+        if stack->user.pop.fn != 0 {
             static_attest(safe(stack->user.pop));
             stack->user.pop(&stack->user, e, self);
             if err::check(e) {
@@ -160,7 +160,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                 if ch  == ' ' || ch == '\t' || ch == '\n' {
                 } else if ch  == '[' {
                     if self->depth > 0 {
-                        if stack->user.pop != 0 {
+                        if stack->user.pop.fn != 0 {
                             static_attest(safe(stack->user.pop));
                             stack->user.pop(&stack->user, e, self);
                             if err::check(e) {
@@ -208,7 +208,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         stack = &((self->state)[self->depth]);
                         memset(stack, 0, sizeof(ParserStack));
                         stack->state = ParserState::Object;
-                        if previous_stack->user.it != 0 {
+                        if previous_stack->user.it.fn != 0 {
                             static_attest(safe(previous_stack->user.it));
                             Iter de = (Iter)previous_stack->user.it;
                             Value val = Value{
@@ -274,7 +274,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         memset(stack, 0, sizeof(ParserStack));
                         stack->state = ParserState::PreVal;
                         stack->in_array = true;
-                        if previous_stack->user.it != 0 {
+                        if previous_stack->user.it.fn != 0 {
                             static_attest(safe(previous_stack->user.it));
                             Iter de = (Iter)previous_stack->user.it;
                             Value val = Value{
@@ -307,7 +307,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     } else {
                         stack->state = ParserState::PostVal;
                     }
-                    if stack->user.it != 0 {
+                    if stack->user.it.fn != 0 {
                         static_attest(safe(stack->user.it));
                         static_attest(self->keylen < len((self->capture).mem));
                         Value val = Value{
@@ -334,7 +334,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
 
                 if ch == '"' && !self->esc {
                     stack->state = ParserState::PostVal;
-                    if stack->user.it != 0 {
+                    if stack->user.it.fn != 0 {
                         static_attest(safe(stack->user.it));
                         static_attest(self->keylen < len((self->capture).mem));
                         Value val = Value{
@@ -390,7 +390,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                 } else if (ch == '}' && !stack->in_array) || (ch == ']' && stack->in_array) {
                     if self->depth > 0 {
                         (self->depth) -=1;
-                        if stack->user.pop != 0 {
+                        if stack->user.pop.fn != 0 {
                             static_attest(safe(stack->user.pop));
                             stack->user.pop(&stack->user, e, self);
                             if err::check(e) {

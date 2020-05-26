@@ -7,9 +7,7 @@ using string;
 
 const usize MAX_DEPTH = 64;
 
-// these are the same. simply avoiding recursion
-fntype deserialize_t(err::Err+et mut *e, Parser+pt mut* p, void mut *user, char *k, Value v);
-fntype deserialize_i(err::Err+et mut *e, void mut* p, void mut *user, char *k, Value v);
+closure deserialize_t(err::Err+et mut *e, Parser+pt mut* p, void mut *user, char *k, Value v);
 
 export symbol ParseError;
 
@@ -40,7 +38,7 @@ enum ParserState {
 
 struct ParserStack {
     ParserState     state;
-    deserialize_i   de;
+    deserialize_t   de;
     void mut*       user;
     bool            in_array;
     usize           index;
@@ -69,7 +67,7 @@ export fn parser(Parser+tail mut new*self, err::Err+et mut *e, deserialize_t de,
 
     self->line  = 1;
 
-    ((self->state)[0]).de     = (deserialize_i)de;
+    ((self->state)[0]).de     = de;
     ((self->state)[0]).user   = user;
 }
 
@@ -90,7 +88,7 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, deserialize_t de, void 
         err::fail(e, ParseError, "invalid parser state for next(), can only call when value is object or array");
     }
 
-    ((self->state)[self->depth]).de     = (deserialize_i)de;
+    ((self->state)[self->depth]).de     = de;
     ((self->state)[self->depth]).user   = user;
 }
 
@@ -273,9 +271,9 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     stack = &((self->state)[self->depth]);
                     memset(stack, 0, sizeof(ParserStack));
                     stack->state = ParserState::Object;
-                    if previous_stack->de != 0 {
+                    if previous_stack->de.fn != 0 {
                         static_attest(safe(previous_stack->de));
-                        deserialize_t de = (deserialize_t)previous_stack->de;
+                        deserialize_t de = previous_stack->de;
                         Value val = Value{
                             index:  previous_stack->index,
                             t:      ValueType::Object,
@@ -299,9 +297,9 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     memset(stack, 0, sizeof(ParserStack));
                     stack->state = ParserState::PreVal;
                     stack->in_array = true;
-                    if previous_stack->de != 0 {
+                    if previous_stack->de.fn != 0 {
                         static_attest(safe(previous_stack->de));
-                        deserialize_t de = (deserialize_t)previous_stack->de;
+                        deserialize_t de = previous_stack->de;
                         Value val = Value{
                             index:  previous_stack->index,
                             t:      ValueType::Array,
@@ -327,10 +325,10 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
         ParserState::StringVal => {
             if token == '"' {
                 stack->state = ParserState::PostVal;
-                if stack->de != 0 {
+                if stack->de.fn != 0 {
                     static_attest(safe(stack->de));
                     static_attest(self->keylen < len((self->capture).mem));
-                    deserialize_t de = (deserialize_t)stack->de;
+                    deserialize_t de = stack->de;
                     Value val = Value{
                         index:  stack->index,
                         t:      ValueType::String,
@@ -367,10 +365,10 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                 return;
             }
 
-            if stack->de != 0 {
+            if stack->de.fn != 0 {
                 static_attest(safe(stack->de));
                 static_attest(self->keylen < len((self->capture).mem));
-                deserialize_t de = (deserialize_t)stack->de;
+                deserialize_t de = stack->de;
 
                 Value val = Value{
                     index:      stack->index,

@@ -1,6 +1,6 @@
 [project]
 version = "0.1.0"
-name = "fn"
+name = "closure"
 cincludes = []
 cobjects = []
 pkgconfig = []

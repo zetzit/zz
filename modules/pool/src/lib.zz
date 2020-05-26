@@ -260,7 +260,7 @@ fn bitarray_test(u8 mut* a, usize index) -> bool
 }
 
 
-export fntype iterator(Pool mut*self, void mut *block, void mut * unsafe user);
+export closure iterator(Pool mut*self, void mut *block, void mut * unsafe user);
 
 /// run an iterator on every allocated block
 /// this is useful when you want to use the pool as a vector
@@ -286,7 +286,7 @@ export fn each(Pool mut*self, iterator it, void mut * unsafe user)
             unsafe{
                 u8 mut* mut mem = self->pool + ((usize)self->blocksize * i);
                 mem += 8;
-                it(self, mem, user);
+                it.fn(self, mem, user, it.ctx);
             }
         }
 

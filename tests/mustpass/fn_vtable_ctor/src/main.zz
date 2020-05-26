@@ -2,7 +2,7 @@ using <stdio.h>::{printf};
 
 
 // abstract
-fntype AdderFn(int a, int b) -> int;
+closure AdderFn(int a, int b) -> int;
 struct Math  {
     AdderFn add;
 }

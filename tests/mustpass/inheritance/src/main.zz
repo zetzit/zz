@@ -4,6 +4,7 @@ using <stdio.h>::{printf};
 
 
 struct A {
+    int whatevs;
 }
 
 struct B {
