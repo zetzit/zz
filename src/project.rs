@@ -163,6 +163,11 @@ export fn main() -> int {{
         write!(f, "/target\n").unwrap();
         write!(f, ".gdb_history\n").unwrap();
         write!(f, "vgcore.*\n").unwrap();
+        write!(f, "**/*.o\n").unwrap();
+        write!(f, "**/*.parsecache\n").unwrap();
+        write!(f, "**/*.buildcache\n").unwrap();
+
+
     }
 
     println!("project '{}' created", c.project.name);

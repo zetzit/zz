@@ -30,6 +30,7 @@ pub struct Emitter {
     casedir: String,
     emit_as_extern: HashSet<Name>,
     symbols: HashSet<Name>,
+    inside_constant_expr: bool,
 }
 
 pub fn outname(
@@ -97,6 +98,7 @@ impl Emitter {
             cur_loc: None,
             emit_as_extern: HashSet::new(),
             symbols: HashSet::new(),
+            inside_constant_expr: false,
         }
     }
 
@@ -123,7 +125,7 @@ impl Emitter {
         .unwrap();
     }
 
-    fn to_local_typed_name(&self, name: &ast::Typed) -> String {
+    pub fn to_local_typed_name(&self, name: &ast::Typed) -> String {
         match name.t {
             ast::Type::U8 => "uint8_t".to_string(),
             ast::Type::U16 => "uint16_t".to_string(),
@@ -164,7 +166,7 @@ impl Emitter {
             }
         }
     }
-    fn to_local_name(&self, s: &Name) -> String {
+    pub fn to_local_name(&self, s: &Name) -> String {
         if !s.is_absolute() {
             return s.0.join("_");
         }
@@ -504,6 +506,7 @@ impl Emitter {
 
         write!(self.f, "{} ", self.to_local_name(&Name::from(&ast.name))).unwrap();
 
+
         match &array {
             ast::Array::Sized(expr) => {
                 write!(self.f, " [ ").unwrap();
@@ -518,7 +521,9 @@ impl Emitter {
         }
 
         write!(self.f, "=").unwrap();
+        self.inside_constant_expr = true;
         self.emit_expr(&expr);
+        self.inside_constant_expr = false;
         write!(self.f, ";\n").unwrap();
     }
 
@@ -835,7 +840,7 @@ impl Emitter {
         }
     }
 
-    fn function_args(&mut self, args: &Vec<ast::NamedArg>) {
+    pub fn function_args(&mut self, args: &Vec<ast::NamedArg>) {
         let mut first = true;
         for arg in args {
             if first {
@@ -1358,7 +1363,7 @@ impl Emitter {
         }
     }
 
-    fn emit_pointer(&mut self, v: &Vec<ast::Pointer>) {
+    pub fn emit_pointer(&mut self, v: &Vec<ast::Pointer>) {
         for ptr in v {
             if !ptr.tags.contains_key("mut") && !ptr.tags.contains_key("mut") {
                 write!(self.f, " const ").unwrap();
@@ -1386,12 +1391,16 @@ impl Emitter {
             }
             ast::Expression::StructInit { typed, fields, loc } => {
                 self.emit_loc(&loc);
-                write!(self.f, "    ({}", self.to_local_typed_name(&typed)).unwrap();
-                write!(self.f, "){{").unwrap();
+
+                // gcc thinks this isnt const. bleh
+                if !self.inside_constant_expr {
+                    write!(self.f, "    ({})", self.to_local_typed_name(&typed)).unwrap();
+                }
+                write!(self.f, "{{").unwrap();
                 for (name, field) in fields {
-                    write!(self.f, ".{} = ", name).unwrap();
+                    write!(self.f, "\n.{} = ", name).unwrap();
                     self.emit_expr(field);
-                    write!(self.f, ",").unwrap();
+                    write!(self.f, ",\n").unwrap();
                 }
                 write!(self.f, "}}").unwrap();
             }

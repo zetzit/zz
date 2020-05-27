@@ -1,0 +1,8 @@
+using <Python.h> as py;
+using slice;
+
+export fn slice_to_PyByteArray(slice::Slice *self) -> py::PyObject *
+{
+    return py::PyByteArray_FromStringAndSize(self->mem, self->size);
+}
+
