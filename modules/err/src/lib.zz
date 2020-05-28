@@ -21,6 +21,7 @@ export struct Err+ {
     String+ mut trace;
 };
 
+/// create a new error
 export fn make(Err+tail mut *self)
     model checked(*self)
 {
@@ -29,6 +30,9 @@ export fn make(Err+tail mut *self)
     static_attest(checked(*self));
 }
 
+/// check if error was set.
+///
+/// returns true if error was set
 export  fn check(
         Err+tail mut* self,
         char* callsite_source<file>      unsafe file,
@@ -44,7 +48,6 @@ model return == true || checked(*self)
     }
     return false;
 }
-
 
 export fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line)
 {

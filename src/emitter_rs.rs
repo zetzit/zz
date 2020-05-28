@@ -9,27 +9,60 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
-pub struct CFile {
-    pub name: Name,
-    pub filepath: String,
-    pub sources: HashSet<PathBuf>,
-    pub deps: HashSet<Name>,
-}
-
 pub struct Emitter {
     p: String,
     f: fs::File,
     module: flatten::Module,
     inside_macro: bool,
     cur_loc: Option<ast::Location>,
+    closure_types:   HashSet<String>,
 }
 
 pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
-    format!("target/{}/rs/{}.rs", stage, module.name.0[1..].join("_"))
+    format!("target/rust/{}.rs", module.name.0[1..].join("_"))
 }
 
 pub fn make_module(make: &super::make::Make) {
-    let p = format!("target/{}/rs/lib.rs", make.stage);
+    let pdir_ = format!("target/rust/{}/", make.artifact.name);
+    let pdir = std::path::Path::new(&pdir_);
+    std::fs::create_dir_all(&pdir).unwrap();
+
+
+
+
+    let p = pdir.join("build.rs");
+    let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
+
+    write!(f, "fn main() {{\n").unwrap();
+    write!(f, "    cc::Build::new()\n").unwrap();
+
+    for step in &make.steps {
+        write!(f,"      .file(\"../../../{}\")\n", step.source.to_string_lossy()).unwrap();
+    }
+    write!(f, "    .compile(\"{}\");\n", make.artifact.name).unwrap();
+    write!(f, "}}\n").unwrap();
+
+
+
+    let p = pdir.join("Cargo.toml");
+    let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
+    write!(f, r#"[package]
+    name = "{an}"
+    version = "0.0.1"
+[dependencies]
+libc = "0.2"
+[build-dependencies]
+cc = "1"
+"#,
+        an = make.artifact.name
+    ).unwrap();
+
+
+
+    let p = pdir.join("src");
+    std::fs::create_dir_all(&p).unwrap();
+    let p = p.join("lib.rs");
+
     let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
 
     for step in &make.steps {
@@ -42,7 +75,7 @@ pub fn make_module(make: &super::make::Make) {
                 .to_string();
             write!(
                 f,
-                "#[path = \"{}.rs\"]\n",
+                "#[path = \"../../{}.rs\"]\n",
                 step.source.file_stem().unwrap().to_string_lossy()
             )
             .unwrap();
@@ -53,7 +86,7 @@ pub fn make_module(make: &super::make::Make) {
 
 impl Emitter {
     pub fn new(project: &Project, stage: make::Stage, module: flatten::Module) -> Self {
-        std::fs::create_dir_all(format!("target/{}/rs/", stage)).unwrap();
+        std::fs::create_dir_all(format!("target/rust/")).unwrap();
         let p = outname(project, &stage, &module);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
@@ -63,6 +96,7 @@ impl Emitter {
             module,
             inside_macro: false,
             cur_loc: None,
+            closure_types: HashSet::new(),
         }
     }
 
@@ -179,12 +213,12 @@ impl Emitter {
             self.emit_loc(&d.loc);
             match d.def {
                 ast::Def::Struct { .. } => {
-                    self.emit_struct(&d, None);
+                    self.emit_struct_stack(&d, None);
                     if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
                         for (v, tvloc) in vs {
                             let mut d = d.clone();
                             d.name = format!("{}_{}", d.name, v);
-                            self.emit_struct(&d, Some(*v));
+                            self.emit_struct_stack(&d, Some(*v));
                         }
                     }
                 }
@@ -196,6 +230,32 @@ impl Emitter {
                 _ => (),
             }
         }
+
+        write!(self.f, "\npub mod heap {{\n").unwrap();
+        for (d, complete) in &module.d {
+            let mut dmodname = Name::from(&d.name);
+            dmodname.pop();
+            if dmodname != module.name {
+                continue;
+            }
+            if complete != &flatten::TypeComplete::Complete {
+                continue;
+            }
+            match d.def {
+                ast::Def::Struct { .. } => {
+                    self.emit_struct_heap(&d, None);
+                    if let Some(vs) = module.typevariants.get(&Name::from(&d.name)) {
+                        for (v, tvloc) in vs {
+                            let mut d = d.clone();
+                            d.name = format!("{}_{}", d.name, v);
+                            self.emit_struct_heap(&d, Some(*v));
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+        write!(self.f, "}}\n").unwrap();
 
         write!(self.f, "extern {{\n").unwrap();
 
@@ -363,7 +423,7 @@ impl Emitter {
         }
     }
 
-    pub fn emit_struct(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
+    pub fn emit_struct_heap(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
         let (fields, _packed, tail, _union) = match &ast.def {
             ast::Def::Struct {
                 fields,
@@ -377,29 +437,32 @@ impl Emitter {
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
 
         // dont emit struct if we cant type all fields
-        for field in fields {
-            if self.to_local_typed_name(&field.typed).is_none() {
-                return;
-            };
+        // TODO this actually sucks.
+        if fields.len() > 1 {
+            for field in &fields[..fields.len() - 1] {
+                if self.to_local_typed_name(&field.typed).is_none() {
+                    return;
+                };
+            }
         }
 
         write!(
             self.f,
             r#"
-pub struct rs{name} {{
-    pub inner:  Box<{name}>,
+pub struct {name} {{
+    pub inner:  Box<super::{name}>,
     pub tail:   usize,
 }}
 
-impl std::ops::Deref for rs{name} {{
-    type Target = {name};
+impl std::ops::Deref for {name} {{
+    type Target = super::{name};
 
-    fn deref(&self) -> &{name} {{
+    fn deref(&self) -> &super::{name} {{
         self.inner.deref()
     }}
 }}
 
-impl std::clone::Clone for rs{name} {{
+impl std::clone::Clone for {name} {{
     fn clone(&self) -> Self {{
         unsafe {{
 "#,
@@ -410,14 +473,14 @@ impl std::clone::Clone for rs{name} {{
         if tail == &ast::Tail::None || tail_variant.is_some() {
             write!(
                 self.f,
-                "            let size = sizeof_{name};\n",
+                "            let size = super::sizeof_{name};\n",
                 name = shortname
             )
             .unwrap();
         } else {
             write!(
                 self.f,
-                "            let size = sizeof_{name}(self.tail);\n",
+                "            let size = super::sizeof_{name}(self.tail);\n",
                 name = shortname
             )
             .unwrap();
@@ -429,22 +492,22 @@ impl std::clone::Clone for rs{name} {{
             let mut s = Box::new(vec![0u8; size]);
             std::ptr::copy_nonoverlapping(self._self(), s.as_mut_ptr(), size);
 
-            let ss : *mut {name}= std::mem::transmute(Box::leak(s).as_mut_ptr());
+            let ss : *mut super::{name} = std::mem::transmute(Box::leak(s).as_mut_ptr());
 
             Self {{ inner: Box::from_raw(ss), tail: self.tail }}
         }}
     }}
 }}
 
-impl rs{name} {{
+impl {name} {{
     pub fn _tail(&mut self) -> usize {{
         self.tail
     }}
     pub fn _self_mut(&mut self) -> *mut u8 {{
-        unsafe {{ std::mem::transmute(self.inner.as_mut() as *mut {name}) }}
+        unsafe {{ std::mem::transmute(self.inner.as_mut() as *mut super::{name}) }}
     }}
     pub fn _self(&self) -> *const u8 {{
-        unsafe {{ std::mem::transmute(self.inner.as_ref() as *const {name}) }}
+        unsafe {{ std::mem::transmute(self.inner.as_ref() as *const super::{name}) }}
     }}
 }}
 
@@ -453,12 +516,79 @@ impl rs{name} {{
         )
         .unwrap();
 
-        write!(self.f, "\n\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
+        write!(self.f, "impl {} {{\n", shortname).unwrap();
 
+        if tail == &ast::Tail::None || tail_variant.is_some() {
+            write!(self.f, "    pub fn new() -> Self {{\n").unwrap();
+            write!(self.f, "        let tail = 0;\n").unwrap();
+            write!(
+                self.f,
+                "        let size = unsafe{{super::sizeof_{}}};\n",
+                shortname
+            )
+            .unwrap();
+        } else {
+            write!(self.f, "    pub fn new(tail:  usize) -> Self {{\n").unwrap();
+            write!(
+                self.f,
+                "        let size = unsafe{{super::sizeof_{}(tail)}};\n",
+                shortname
+            )
+            .unwrap();
+        }
+
+        write!(self.f, "        unsafe {{\n").unwrap();
+        write!(self.f, "            let s = Box::new(vec![0u8; size]);\n").unwrap();
+        write!(
+            self.f,
+            "            let ss : *mut super::{} = std::mem::transmute(Box::leak(s).as_mut_ptr());\n",
+            shortname
+        )
+        .unwrap();
+        write!(
+            self.f,
+            "            Self {{ inner: Box::from_raw(ss), tail }} \n"
+        )
+        .unwrap();
+        write!(self.f, "        }}\n").unwrap();
+        write!(self.f, "    }}\n").unwrap();
+        write!(self.f, "}}\n").unwrap();
+    }
+
+    pub fn emit_struct_stack(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
+        let (fields, _packed, tail, _union) = match &ast.def {
+            ast::Def::Struct {
+                fields,
+                packed,
+                tail,
+                union,
+                ..
+            } => (fields, packed, tail, union),
+            _ => unreachable!(),
+        };
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
+
+        // dont emit struct if we cant type all fields
+        // TODO this actually sucks.
+        if fields.len() > 1 {
+            for field in &fields[..fields.len() - 1] {
+                if self.to_local_typed_name(&field.typed).is_none() {
+                    return;
+                };
+            }
+        }
+
+        write!(self.f, "\n\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
         for i in 0..fields.len() {
             let field = &fields[i];
 
-            let fieldtype = self.to_local_typed_name(&field.typed).unwrap();
+            let fieldtype = match self.to_local_typed_name(&field.typed) {
+                Some(v) => v,
+                None => {
+                    write!(self.f, "    // {}\n", field.name).unwrap();
+                    continue;
+                }
+            };
             match &field.array {
                 ast::Array::Sized(expr) => {
                     write!(self.f, "    pub {} : [", field.name).unwrap();
@@ -498,43 +628,6 @@ impl rs{name} {{
             write!(self.f, " ,\n").unwrap();
         }
         write!(self.f, "}}\n").unwrap();
-        write!(self.f, "impl rs{} {{\n", shortname).unwrap();
-
-        if tail == &ast::Tail::None || tail_variant.is_some() {
-            write!(self.f, "    pub fn new() -> Self {{\n").unwrap();
-            write!(self.f, "        let tail = 0;\n").unwrap();
-            write!(
-                self.f,
-                "        let size = unsafe{{sizeof_{}}};\n",
-                shortname
-            )
-            .unwrap();
-        } else {
-            write!(self.f, "    pub fn new(tail:  usize) -> Self {{\n").unwrap();
-            write!(
-                self.f,
-                "        let size = unsafe{{sizeof_{}(tail)}};\n",
-                shortname
-            )
-            .unwrap();
-        }
-
-        write!(self.f, "        unsafe {{\n").unwrap();
-        write!(self.f, "            let s = Box::new(vec![0u8; size]);\n").unwrap();
-        write!(
-            self.f,
-            "            let ss : *mut {}= std::mem::transmute(Box::leak(s).as_mut_ptr());\n",
-            shortname
-        )
-        .unwrap();
-        write!(
-            self.f,
-            "            Self {{ inner: Box::from_raw(ss), tail }} \n"
-        )
-        .unwrap();
-        write!(self.f, "        }}\n").unwrap();
-        write!(self.f, "    }}\n").unwrap();
-        write!(self.f, "}}\n").unwrap();
     }
 
     fn function_args(&mut self, args: &Vec<ast::NamedArg>) {
@@ -558,7 +651,7 @@ impl rs{name} {{
     }
 
     pub fn emit_closure(&mut self, ast: &ast::Local) {
-        let (ret, args, _attr) = match &ast.def {
+        let (ret, args, attr) = match &ast.def {
             ast::Def::Closure {
                 ret,
                 args,
@@ -567,6 +660,34 @@ impl rs{name} {{
             } => (ret, args, attr),
             _ => unreachable!(),
         };
+        self.emit_loc(&ast.loc);
+
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
+
+        write!(self.f, "#[repr(C)]\npub struct {sn} {{\n    pub ctx: *mut std::ffi::c_void,\n",
+               sn = shortname,
+        ).unwrap();
+
+        write!(self.f, "    pub f: extern fn (").unwrap();
+        self.function_args(args);
+
+        if args.len() > 0 {
+            write!(self.f, ", ").unwrap();
+        }
+        write!(self.f, "ctx: *mut std::ffi::c_void").unwrap();
+
+        match &ret {
+            None => {
+                write!(self.f, "),\n").unwrap();
+            }
+            Some(a) => {
+                write!(self.f, ") -> {},\n", self.to_local_typed_name(&a.typed).unwrap()).unwrap();
+                self.emit_pointer(&a.typed.ptr);
+            }
+        };
+
+        write!(self.f, "}}\n").unwrap();
+
     }
 
     pub fn emit_decl(&mut self, ast: &ast::Local) {

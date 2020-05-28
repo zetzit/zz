@@ -64,6 +64,7 @@ impl Pipeline {
         for artifact in std::mem::replace(&mut self.project.artifacts, None).expect("no artifacts")
         {
             match (&artifact.typ, &buildset) {
+                (project::ArtifactType::Python, super::BuildSet::Export) => (),
                 (project::ArtifactType::Rust, super::BuildSet::Export) => (),
                 (project::ArtifactType::NodeModule, super::BuildSet::Export) => (),
                 (project::ArtifactType::CMake, super::BuildSet::Export) => (),
