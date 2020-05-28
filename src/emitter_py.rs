@@ -415,7 +415,7 @@ static inline void * pyFATGetPtr(PyObject * obj , char * expected_type) {{
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
         let longname = self.to_local_name(&Name::from(&ast.name));
 
-        write!(self.f, "PyTypeObject py_Type_{ln};\n", ln = longname).unwrap();
+        write!(self.f, "extern PyTypeObject py_Type_{ln};\n", ln = longname).unwrap();
 
         self.struct_types.insert(longname);
     }
