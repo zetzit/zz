@@ -985,8 +985,9 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                 match part.as_rule() {
                     Rule::struct_init_field => {
                         let mut part = part.into_inner();
-                        let name = part.next().unwrap().as_str().to_string();
-                        let expr = parse_expr(n, part.next().unwrap());
+                        let name = part.next().unwrap();
+                        let expr = parse_expr(n, part.next().unwrap_or(name.clone()));
+                        let name = name.as_str().to_string();
                         fields.push((name, Box::new(expr)));
                     }
                     e => panic!("unexpected rule {:?} in struct init", e),
