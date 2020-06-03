@@ -1,0 +1,17 @@
+[project]
+version = "0.1.0"
+name = "short_hand_struct_init_field"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
+mem = "1"
+log = "1"
+
+[repos]

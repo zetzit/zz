@@ -1,0 +1,17 @@
+using log;
+
+struct Object {
+  char *string;
+  int number;
+  bool boolean;
+  void *data;
+}
+
+export fn main() -> int {
+    char *string = "hello";
+    int number = 123;
+    bool boolean = true;
+    let object = Object { string, number, boolean, data: "hello" };
+    log::info("hello %s\n", "short_hand_struct_init_field");
+    return 0;
+}
