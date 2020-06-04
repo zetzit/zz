@@ -986,7 +986,17 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                     Rule::struct_init_field => {
                         let mut part = part.into_inner();
                         let name = part.next().unwrap();
-                        let expr = parse_expr(n, part.next().unwrap_or(name.clone()));
+                        let expr = if let Some(e) = part.next() {
+                            parse_expr(n, e)
+                        } else {
+                            Expression::Name(Typed {
+                                t: Type::Other(Name::from(name.as_str())),
+                                ptr: Vec::new(),
+                                loc: Location::from_span(n.into(), &name.as_span()),
+                                tail: Tail::None,
+                            })
+                        };
+
                         let name = name.as_str().to_string();
                         fields.push((name, Box::new(expr)));
                     }
