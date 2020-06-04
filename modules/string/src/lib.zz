@@ -77,7 +77,7 @@ export fn make(String+tail mut new* self)
 }
 
 /// clear the string
-export fn clear(String+tail mut new* self)
+export fn clear(String+tail mut * self)
     model self->len  == 0
     model nullterm(self->mem)
 {
