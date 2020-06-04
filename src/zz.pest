@@ -234,7 +234,7 @@ takeref         = { "&"  ~ expr_to_precedence_2}
 arrayaccess     = _{ expr ~ "]" }
 cast            = { "as" ~ "<" ~ anon_type ~ ">" ~ expr_to_precedence_2 | "(" ~ anon_type ~ ")" ~ expr_to_precedence_2}
 
-struct_init_field = { (expr | ident) ~ ":"? ~ expr? }
+struct_init_field = { (ident ~ (":" ~ expr)? ) }
 struct_init     = { anon_type ~ "{" ~  struct_init_field ~ ("," ~ struct_init_field)* ~ ","?  ~ "}" }
 array_init      = { "{" ~ expr ~ ("," ~ expr)* ~ ","?  ~ "}" }
 
