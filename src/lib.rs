@@ -231,7 +231,12 @@ fn getdep(
             .expect(&format!("{}: cannot resolve cobject {:?}", name, ii));
         rootproj.cobjects.push(i.to_string_lossy().into());
     }
-    rootproj.pkgconfig.extend(project.project.pkgconfig);
+    for i in project.project.pkgconfig {
+        let ii = root.join(&i);
+        let i = std::fs::canonicalize(&ii)
+            .expect(&format!("{}: cannot resolve pkgconfig {:?}", name, ii));
+        rootproj.pkgconfig.push(i.to_string_lossy().into());
+    }
     rootproj.cflags.extend(project.project.cflags);
     rootproj.lflags.extend(project.project.lflags);
 
