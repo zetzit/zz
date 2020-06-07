@@ -403,7 +403,7 @@ impl Emitter {
             .unwrap();
             write!(
                 self.f,
-                "    pub static sizeof_{}: libc::size_t;\n",
+                "    pub fn sizeof_{}() -> libc::size_t;\n",
                 shortname
             )
             .unwrap();
@@ -473,7 +473,7 @@ impl std::clone::Clone for {name} {{
         if tail == &ast::Tail::None || tail_variant.is_some() {
             write!(
                 self.f,
-                "            let size = super::sizeof_{name};\n",
+                "            let size = super::sizeof_{name}();\n",
                 name = shortname
             )
             .unwrap();
@@ -523,7 +523,7 @@ impl {name} {{
             write!(self.f, "        let tail = 0;\n").unwrap();
             write!(
                 self.f,
-                "        let size = unsafe{{super::sizeof_{}}};\n",
+                "        let size = unsafe{{super::sizeof_{}()}};\n",
                 shortname
             )
             .unwrap();
