@@ -2,8 +2,8 @@ using <string.h> as c_string;
 using mut_slice::{MutSlice};
 
 export struct Slice {
-    usize   size;
     u8 *    mem;
+    usize   size;
 }
 
 export fn borrow(Slice *self) -> Slice *
