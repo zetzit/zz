@@ -47,6 +47,18 @@ export fn mem(MutSlice mut * self) -> u8 mut*
     return m;
 }
 
+export fn append_slice(MutSlice mut * self, Slice *other) -> bool
+    model self->at <= self->slice.size
+{
+    if self->at >= self->slice.size || other->size >  self->slice.size || self->at  > self->slice.size - other->size {
+        return false;
+    }
+
+    c_string::memcpy(self->mem() + self->at, other->mem, other->size);
+    self->at += other->size;
+    return true;
+}
+
 export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
     @solver("yices2")
     where len(b) >= l

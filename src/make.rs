@@ -371,6 +371,7 @@ impl Make {
             | super::project::ArtifactType::Test
             | super::project::ArtifactType::Macro
             | super::project::ArtifactType::Lib => true,
+            | super::project::ArtifactType::Staticlib => true,
             _ => false,
         };
 
