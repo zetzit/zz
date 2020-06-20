@@ -33,8 +33,6 @@ pub mod symbolic;
 use name::Name;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Error {
     message: String,
@@ -57,7 +55,7 @@ pub enum BuildSet {
     Named(String),
 }
 
-pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, slow: bool) {
+pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool) {
     let (root, mut project) = project::load_cwd();
     std::env::set_current_dir(&root).unwrap();
     //

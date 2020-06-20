@@ -15,6 +15,7 @@ struct Storage {
 
 #[derive(Default)]
 struct Scope {
+    #[allow(unused)]
     name: String,
     storage: HashMap<Name, Storage>,
 }
@@ -111,7 +112,7 @@ impl Stack {
         if let Some(field) = fields.last() {
             match &field.typed.tail {
                 // String+ string;
-                ast::Tail::Dynamic(fin) => {
+                ast::Tail::Dynamic(_) => {
                     if let ast::Tail::Dynamic(_) = tail {
                     } else {
                         return Err(Error::new(
@@ -211,10 +212,6 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                 )?;
             }
             ast::Def::Function {
-                args,
-                callassert,
-                callattests,
-                calleffect,
                 ..
             } => {
                 stack.alloc(
@@ -275,7 +272,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     complete,
                 )?;
             }
-            ast::Def::Struct { fields, union, .. } => {
+            ast::Def::Struct { .. } => {
                 stack.alloc(
                     Name::from(&d.name),
                     ast::Typed {
@@ -373,7 +370,7 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                 ..
             } => {
                 if *union {
-                    for field in fields.iter() {
+                    for _field in fields.iter() {
                         //stack.cannot_drop_union(&field, &field.loc, 0)?;
                     }
                 }
@@ -530,7 +527,7 @@ impl Stack {
 
                 if let ast::Expression::Name(ftyped) = name.as_ref() {
                     if let ast::Type::Other(n) = &ftyped.t {
-                        if let Some(ast::Def::Closure { args, .. }) = self.defs.get(n) {
+                        if let Some(ast::Def::Closure {  .. }) = self.defs.get(n) {
                             panic!("beep boop");
                         }
                     }
@@ -801,7 +798,7 @@ impl Stack {
                     self.expand_expr(expr)?;
                 }
                 ast::Statement::CBlock { .. } => {}
-                ast::Statement::MacroCall { ref mut args, .. } => {}
+                ast::Statement::MacroCall {  .. } => {}
             }
 
             i += 1;
@@ -833,7 +830,7 @@ impl Stack {
                 continue;
             }
 
-            let accesslocal = ast::Expression::UnaryPre {
+            let _accesslocal = ast::Expression::UnaryPre {
                 loc: loc.clone(),
                 op: ast::PrefixOperator::AddressOf,
                 expr: Box::new(ast::Expression::Name(ast::Typed {

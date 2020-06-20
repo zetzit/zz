@@ -74,15 +74,6 @@ impl Scope {
         None
     }
 
-    fn get_mut(&mut self, n: &str) -> Option<&mut InScope> {
-        for scope in self.v.iter_mut().rev() {
-            if let Some(v) = scope.get_mut(n) {
-                return Some(v);
-            }
-        }
-        None
-    }
-
     pub fn insert(
         &mut self,
         local: String,

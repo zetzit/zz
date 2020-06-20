@@ -5,7 +5,6 @@ use crate::ast;
 use pest::Parser;
 use std::collections::HashMap;
 use std::io::Read;
-use std::io::Write;
 use std::process::{Command, Stdio};
 
 use serde::Serialize;
@@ -152,7 +151,7 @@ pub fn sieve(md: &ast::Module) -> Vec<ast::Module> {
     let mut newmods = Vec::new();
     for local in &md.locals {
         match &local.def {
-            ast::Def::Macro { args, body } => {
+            ast::Def::Macro {body, .. } => {
                 let mut body = body.clone();
                 body.statements.push(Box::new(ast::Statement::Return {
                     loc: ast::Location::builtin(),

@@ -664,7 +664,7 @@ impl Tags {
 }
 
 use lazy_static::lazy_static;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {

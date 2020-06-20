@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use super::ast;
 use super::flatten;
 use super::make;

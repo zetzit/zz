@@ -1,4 +1,3 @@
-use super::abs;
 use super::ast;
 use super::make::Stage;
 use super::name::Name;

@@ -933,7 +933,7 @@ impl Solver {
         }
     }
 
-    pub fn new(module_name: String, solver: Option<String>) -> Self {
+    pub fn new(module_name: String, _solver: Option<String>) -> Self {
         //Config::set_global_param_value(":model.partial", "true");
         //Config::set_global_param_value(":parallel.enable", "true");
         //config.set_model_generation(true);

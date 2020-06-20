@@ -5,7 +5,6 @@ use super::pp::PP;
 use pest::prec_climber::{Assoc, Operator, PrecClimber};
 use pest::Parser;
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 

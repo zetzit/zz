@@ -4,7 +4,6 @@ use super::parser::{emit_error, emit_warn, Rule};
 use crate::make::Stage;
 use pest;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
 pub struct PP {
     decl: pest::iterators::Pairs<'static, Rule>,

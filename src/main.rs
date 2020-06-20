@@ -10,7 +10,7 @@ use clap::{App, Arg, SubCommand};
 use std::io::{Read, Write};
 use std::process::Command;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 use zz;
 
 fn main() {

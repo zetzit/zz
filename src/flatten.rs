@@ -603,10 +603,10 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                 )
             }
 
-            for (dep, complete, loc) in &impl_deps {
+            for (dep, _complete, loc) in &impl_deps {
                 incomming.push((dep.clone(), loc.clone()));
             }
-            for (dep, complete, loc) in &decl_deps {
+            for (dep, _complete, loc) in &decl_deps {
                 incomming.push((dep.clone(), loc.clone()));
             }
 

@@ -1,3 +1,4 @@
+#![allow(unused)]
 use super::parser::{self, emit_debug, emit_warn};
 use super::Error;
 use crate::ast;
@@ -1811,7 +1812,7 @@ impl Symbolic {
     ) -> Result<Symbol, Error> {
 
 
-        if let ast::Type::Other(n) = &self.memory[lhs_sym].typed.t {
+        if let ast::Type::Other(n) = &self.memory[lhs_sym].typed.t.clone() {
             if let Some(ast::Def::Closure{ret,args,nameloc,..}) = self.defs.get(&n).cloned() {
                 if let Value::Closure{..} = self.memory[lhs_sym].value {
                 } else {
@@ -3015,7 +3016,7 @@ impl Symbolic {
 
         match &self.memory[name_sym].value.clone() {
             Value::Unconstrained(_) | Value::Uninitialized => {
-                if let ast::Type::Other(n) = &self.memory[name_sym].typed.t {
+                if let ast::Type::Other(n) = &self.memory[name_sym].typed.t.clone() {
                     if let Some(ast::Def::Closure{..}) = self.defs.get(&n) {
                         self.memory[name_sym].value = self.make_closure_val(n.clone())?;
                     }
