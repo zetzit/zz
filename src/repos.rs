@@ -65,16 +65,16 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                             );
                         }
 
-                        let npx = Path::new("target").join("repos").join("___");
+                        let npx = Path::new("target").join("repos").join("___").join(name.clone());
                         if npx.exists() {
                             std::fs::remove_dir_all(&npx)
                                 .expect(&format!("cannot remove {:?}", npx));
                         }
                         std::fs::create_dir_all(&npx).expect(&format!("cannot create {:?}", npx));
-                        std::fs::rename(&np, npx.join(name.clone())).expect(&format!(
+                        std::fs::rename(&np, npx.clone()).expect(&format!(
                             "cannot move {:?} to {:?}",
                             np,
-                            npx.join(name.clone())
+                            npx
                         ));
                     }
                 }
@@ -97,6 +97,7 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
     };
 
     let mut searchpaths = HashSet::new();
+    searchpaths.insert(Path::new("target").join("repos").join("___").canonicalize().unwrap());
     for (name, repo) in &index.repos {
         let url = match url::Url::parse(&repo.origin) {
             Ok(v) => v,
@@ -114,7 +115,6 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                 searchpaths.insert(Path::new(url.path()).join("modules"));
             }
             _ => {
-                searchpaths.insert(Path::new("target").join("repos").join("___"));
                 searchpaths.insert(Path::new("target").join("repos").join(name).join("modules"));
             }
         }
