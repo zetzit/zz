@@ -149,6 +149,8 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
                 }
                 _ => (),
             }
+
+            std::env::set_current_dir(&root).unwrap();
         }
     }
 
@@ -189,7 +191,7 @@ fn getdep(
         }
     };
 
-    //let pp = std::env::current_dir().unwrap();
+    let pp = std::env::current_dir().unwrap();
     //std::env::set_current_dir(&found).unwrap();
     let (root, project) = project::load(&found);
     let project_name = Name(vec![String::new(), project.project.name.clone()]);
@@ -208,9 +210,13 @@ fn getdep(
             &stage,
         );
     }
-    //std::env::set_current_dir(pp).unwrap();
+
+    std::env::set_current_dir(&root).unwrap();
+    let depsearchpaths = repos::index(&project);
+    std::env::set_current_dir(pp).unwrap();
 
     searchpaths.insert(root.join("modules"));
+    searchpaths.extend(depsearchpaths);
 
     for i in project.project.cincludes {
         let ii = root.join(&i);
