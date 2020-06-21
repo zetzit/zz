@@ -65,16 +65,16 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                             );
                         }
 
-                        let npx = Path::new("target").join("repos").join("___");
+                        let npx = Path::new("target").join("repos").join("___").join(name.clone());
                         if npx.exists() {
                             std::fs::remove_dir_all(&npx)
                                 .expect(&format!("cannot remove {:?}", npx));
                         }
                         std::fs::create_dir_all(&npx).expect(&format!("cannot create {:?}", npx));
-                        std::fs::rename(&np, npx.join(name.clone())).expect(&format!(
+                        std::fs::rename(&np, &npx).expect(&format!(
                             "cannot move {:?} to {:?}",
                             np,
-                            npx.join(name.clone())
+                            npx
                         ));
                     }
                 }
