@@ -110,12 +110,18 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
         };
         match url.scheme() {
             "file" => {
-                searchpaths.insert(url.path().into());
-                searchpaths.insert(Path::new(url.path()).join("modules"));
+                let path = Path::new(url.path()).to_path_buf();
+                searchpaths.insert(path.canonicalize().unwrap_or(path));
+
+                let path = Path::new(url.path()).join("modules");
+                searchpaths.insert(path.canonicalize().unwrap_or(path));
             }
             _ => {
-                searchpaths.insert(Path::new("target").join("repos").join("___"));
-                searchpaths.insert(Path::new("target").join("repos").join(name).join("modules"));
+                let path = Path::new("target").join("repos").join("___");
+                searchpaths.insert(path.canonicalize().unwrap_or(path));
+
+                let path = Path::new("target").join("repos").join(name).join("modules");
+                searchpaths.insert(path.canonicalize().unwrap_or(path));
             }
         }
     }
