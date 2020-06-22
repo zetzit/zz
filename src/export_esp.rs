@@ -23,12 +23,7 @@ pub fn export(make: Make) {
             .unwrap();
         }
     }
-    write!(
-        f,
-        "INCLUDE_DIRS ${{CMAKE_CURRENT_LIST_DIR}}/../../{}/include/\n",
-        make.stage
-    )
-    .unwrap();
+    write!(f, "INCLUDE_DIRS ${{CMAKE_CURRENT_LIST_DIR}}/../../include/\n").unwrap();
 
     if make.artifact.requires.len() > 0 {
         write!(f, " REQUIRES ").unwrap();

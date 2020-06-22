@@ -14,6 +14,7 @@ pub mod emitter_docs;
 pub mod emitter_js;
 pub mod emitter_py;
 pub mod emitter_rs;
+pub mod emitter_go;
 pub mod expand;
 pub mod export_cmake;
 pub mod export_esp;
@@ -68,14 +69,8 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
         .expect("create target dir");
     std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("zz"))
         .expect("create target dir");
-    std::fs::create_dir_all(
-        root.join("target")
-            .join(stage.to_string())
-            .join("include")
-            .join("zz")
-            .join(&project.project.name),
-    )
-    .expect("create target dir");
+    std::fs::create_dir_all(root.join("target").join("include").join("zz"))
+        .expect("create target dir");
 
     let project_name = Name(vec![String::new(), project.project.name.clone()]);
     let project_tests_name = Name(vec![

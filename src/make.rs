@@ -1,6 +1,7 @@
 use super::project::{Artifact, Config};
 use crate::emitter_js;
 use crate::emitter_py;
+use crate::emitter_go;
 use crate::emitter_rs;
 use crate::export_cmake;
 use crate::export_esp;
@@ -441,6 +442,10 @@ impl Make {
         match self.artifact.typ {
             super::project::ArtifactType::Python => {
                 emitter_py::make_module(&self);
+                return;
+            }
+            super::project::ArtifactType::Go=> {
+                emitter_go::make_module(&self);
                 return;
             }
             super::project::ArtifactType::NodeModule => {

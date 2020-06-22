@@ -2,6 +2,7 @@ using <stdarg.h>::{va_list, va_start, va_end};
 using slice::{Slice, MutSlice};
 using mem;
 
+using <stdio.h>::{FILE};
 inline using "native.h" as native;
 
 export struct String+ {
@@ -299,7 +300,7 @@ export fn ends_with_cstr(String+tail *self, char *unsafe a) -> bool
 }
 
 /// append to this string by reading from a FILE
-export fn fgets(String+tail mut* self, native::FILE mut * unsafe stream) -> bool
+export fn fgets(String+tail mut* self, FILE mut * unsafe stream) -> bool
 {
     static_attest(self->len < tail);
 

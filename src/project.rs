@@ -28,6 +28,8 @@ pub enum ArtifactType {
     Esp32,
     #[serde(rename = "python")]
     Python,
+    #[serde(rename = "go")]
+    Go,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
