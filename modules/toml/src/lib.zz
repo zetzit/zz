@@ -288,6 +288,20 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                         }
                         previous_stack->index += 1;
                     }
+                } else if ch == ']' {
+                    if self->depth > 0 {
+                        (self->depth) -=1;
+                        if stack->user.pop.fn != 0 {
+                            static_attest(safe(stack->user.pop));
+                            stack->user.pop(&stack->user, e, self);
+                            if err::check(e) {
+                                return;
+                            }
+                        }
+
+                    } else {
+                        stack->state = ParserState::Document;
+                    }
                 } else {
                     err::fail(e, ParseError, "unexpected '%c', expected value at %u:%u", ch , self->line, self->col);
                     return;
