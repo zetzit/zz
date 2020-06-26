@@ -76,6 +76,17 @@ export fn make(String+tail mut new* self)
     clear(self)
 }
 
+/// make a string from raw bytes with given len
+export fn from(String+t new mut* self, u8* bytes, usize mut inlen)
+    @solver("yices2")
+    where len(bytes) >= inlen
+    model self->len < t
+    model nullterm(self->mem)
+{
+  make(self);
+  self->append_bytes(bytes, inlen);
+}
+
 /// clear the string
 export fn clear(String+tail mut new* self)
     model self->len  == 0

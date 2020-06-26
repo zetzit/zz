@@ -1,0 +1,28 @@
+using string;
+using <stdio.h>::{printf, stdin};
+using <stdlib.h>::{free};
+inline using "native.h"::{getline};
+
+
+test from{
+    stdin  = "hello world\n"
+    stdout = "hello world\n"
+}
+
+export fn main() -> int {
+  char mut * mut line = 0;
+  usize mut l = 0;
+  int nread = as<int>(getline(&line, &l, stdin));
+  if nread < 1 {
+    free(line);
+  } else {
+    static_attest(safe(line));
+    static_attest(nullterm(line));
+    static_attest(len(line) == (usize) nread);
+    new+50 mut s = string::from((u8 *) line, (usize) nread);
+    free(line);
+    printf("%.*s", s.len, s.mem);
+  }
+
+  return 0;
+}
