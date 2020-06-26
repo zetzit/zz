@@ -42,6 +42,7 @@ export fn cstr(String * self) -> char *
 /// string as slice
 export fn slice(String+tail mut * self) -> Slice
     model return.size <= tail
+    model len(return.mem) >= return.size
 {
     static_attest(self->len < tail);
     return Slice {
@@ -85,6 +86,21 @@ export fn from(String+t new mut* self, u8* bytes, usize mut inlen)
 {
   make(self);
   self->append_bytes(bytes, inlen);
+}
+
+/// make a string from a slice
+export fn from_slice(String+t new mut* self, Slice *slice)
+    @solver("yices2")
+    where safe(slice)
+    where len(slice->mem) >= slice->size
+    model self->len < t
+    model nullterm(self->mem)
+{
+  make(self);
+  u8* bytes = slice->mem;
+  usize size = slice->size;
+  static_attest(safe(bytes));
+  self->append_bytes(bytes, size);
 }
 
 /// clear the string
