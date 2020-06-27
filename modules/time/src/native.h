@@ -3,7 +3,9 @@
 
 #if defined(__linux__) || defined(__APPLE__)
 
+    #ifndef _POSIX_C_SOURCE
     #define _POSIX_C_SOURCE 199309L
+    #endif
     #include <time.h>
 
 #elif defined(_WIN32)

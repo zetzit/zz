@@ -263,6 +263,7 @@ impl Make {
 
         if self.stage.asan {
             args.push("-fsanitize=address".into());
+            args.push("-fsanitize=undefined".into());
         }
 
         if self.stage.fuzz {
@@ -431,6 +432,7 @@ impl Make {
         }
         if self.stage.asan {
             args.push("-fsanitize=address".into());
+            args.push("-fsanitize=undefined".into());
         }
         if self.stage.fuzz {
             args.push("-m32".into());
@@ -512,6 +514,7 @@ impl Make {
                 args.extend_from_slice(&self.lobjs);
                 if self.stage.asan {
                     args.push("-fsanitize=address".into());
+                    args.push("-fsanitize=undefined".into());
                 }
                 args.push("-o".into());
                 args.push(format!("./target/macro/{}{}", self.artifact.name, EXE_EXT));
