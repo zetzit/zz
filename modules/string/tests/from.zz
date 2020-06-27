@@ -6,7 +6,7 @@ inline using "native.h"::{getline};
 
 test from{
     stdin  = "hello world\n"
-    stdout = "hello world\nhello world\n"
+    stdout = "hello world\nhello world\nhello world\n"
 }
 
 export fn main() -> int {
@@ -22,9 +22,11 @@ export fn main() -> int {
     new+50 mut s = string::from((u8 *) line, (usize) nread);
     let slice = s.slice();
     new+50 mut copy = string::from_slice(&slice);
+    new+50 mut cstr_copy = string::from_cstr(copy.cstr());
     free(line);
     printf("%.*s", s.len, s.mem);
     printf("%.*s", copy.len, copy.mem);
+    printf("%.*s", cstr_copy.len, cstr_copy.mem);
   }
 
   return 0;

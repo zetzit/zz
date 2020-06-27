@@ -103,6 +103,17 @@ export fn from_slice(String+t new mut* self, Slice *slice)
   self->append_bytes(bytes, size);
 }
 
+/// make a string from a c string
+export fn from_cstr(String+t new mut* self, char *cstr)
+    @solver("yices2")
+    where nullterm(cstr)
+    model nullterm(self->mem)
+    model self->len < t
+{
+  make(self);
+  self->append_cstr(cstr);
+}
+
 /// clear the string
 export fn clear(String+tail mut new* self)
     model self->len  == 0
