@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::io::Write;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Repo {
@@ -89,10 +90,14 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                 },
             );
         }
-        let cachefile =
+
+        let mut cachefile =
             std::fs::File::create(&cachepath).expect(&format!("cannot create {:?}", cachepath));
-        serde_cbor::ser::to_writer(cachefile, &index)
-            .expect(&format!("cannot write {:?}", cachepath));
+
+        cachefile.write(
+            &rmp_serde::to_vec(&index).expect(&format!("cannot encode {:?}", cachepath))[..]
+        ).expect(&format!("cannot write {:?}", cachepath));
+
         index
     };
 
@@ -150,7 +155,7 @@ pub fn cache(source_file: &str, cache_file: &Path) -> Option<Index> {
     }
 
     match std::fs::File::open(&cache_file) {
-        Ok(f) => match serde_cbor::from_reader(&f) {
+        Ok(f) => match rmp_serde::from_read(&f) {
             Ok(cf) => {
                 return Some(cf);
             }

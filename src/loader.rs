@@ -9,6 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+use std::io::Write;
 
 #[derive(Clone)]
 pub enum Module {
@@ -71,7 +72,7 @@ pub fn load(
             if !is_cache_outdated(&path, &cachepath) {
                 match std::fs::File::open(&cachepath) {
                     Ok(f) => {
-                        match serde_cbor::from_reader(&f) {
+                        match rmp_serde::from_read(&f) {
                             Ok(cf) => {
                                 if !silent {
                                     //pb.lock().unwrap().message(&format!("cached {} ", module.name));
@@ -100,10 +101,13 @@ pub fn load(
                 pb.lock().unwrap().inc();
             }
 
-            let cachefile =
-                std::fs::File::create(&cachepath).expect(&format!("cannot create {}", cachepath));
-            serde_cbor::ser::to_writer(cachefile, &m)
-                .expect(&format!("cannot write {}", cachepath));
+            let mut cachefile =
+                std::fs::File::create(&cachepath)
+                .expect(&format!("cannot create {}", cachepath));
+
+            cachefile.write(
+                &rmp_serde::to_vec(&m).expect(&format!("cannot encode {}", cachepath))[..]
+            ).expect(&format!("cannot write {}", cachepath));
 
             (m.name.clone(), Module::ZZ(m))
         })

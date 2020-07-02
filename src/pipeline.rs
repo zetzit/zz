@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::io::Write;
 
 static ABORT: AtomicBool = AtomicBool::new(false);
 
@@ -325,9 +326,12 @@ impl Pipeline {
         let (_, outname) = emitter::outname(&self.project.project, &self.stage, &cf.name, false);
         let cachename = format!("{}.buildcache", outname);
 
-        let cachefile =
+        let mut cachefile =
             std::fs::File::create(&cachename).expect(&format!("cannot create {}", cachename));
-        serde_cbor::ser::to_writer(cachefile, &cf).expect(&format!("cannot write {}", cachename));
+
+        cachefile.write(
+            &rmp_serde::to_vec(&cf).expect(&format!("cannot encode {}", cachename))[..]
+        ).expect(&format!("cannot write {}", cachename));
     }
 
     fn from_buildcache(&self, module: &Name) -> Option<emitter::CFile> {
@@ -335,7 +339,7 @@ impl Pipeline {
 
         let cachename = format!("{}.buildcache", outname);
         let cached: Option<emitter::CFile> = match std::fs::File::open(&cachename) {
-            Ok(f) => match serde_cbor::from_reader(&f) {
+            Ok(f) => match rmp_serde::from_read(&f) {
                 Ok(cf) => Some(cf),
                 Err(_) => {
                     std::fs::remove_file(&cachename)

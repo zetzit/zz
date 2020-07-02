@@ -35,7 +35,7 @@ which = "3.1.0"
 askama = "0.9"
 getrandom = "0.1.14"
 lazy_static = "1.4.0"
-serde_cbor = "0.11.1"
+rmp-serde = "0.14.3"
 sha2 = "0.8"
 url = "2.1.1"
 rsmt2 = { git = "https://github.com/kino-mc/rsmt2" , rev = "ebce2e4"}
