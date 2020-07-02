@@ -16,6 +16,7 @@ pub mod emitter_py;
 pub mod emitter_rs;
 pub mod emitter_go;
 pub mod expand;
+pub mod export_make;
 pub mod export_cmake;
 pub mod export_esp;
 pub mod flatten;

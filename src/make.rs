@@ -3,6 +3,7 @@ use crate::emitter_js;
 use crate::emitter_py;
 use crate::emitter_go;
 use crate::emitter_rs;
+use crate::export_make;
 use crate::export_cmake;
 use crate::export_esp;
 use metrohash::MetroHash128;
@@ -460,6 +461,10 @@ impl Make {
             }
             super::project::ArtifactType::CMake => {
                 export_cmake::export(self);
+                return;
+            }
+            super::project::ArtifactType::Make => {
+                export_make::export(self);
                 return;
             }
             super::project::ArtifactType::Esp32 => {

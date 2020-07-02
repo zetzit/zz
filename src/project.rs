@@ -30,6 +30,8 @@ pub enum ArtifactType {
     Python,
     #[serde(rename = "go")]
     Go,
+    #[serde(rename = "make")]
+    Make,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
