@@ -495,6 +495,7 @@ impl Emitter {
 
         self.emit_loc(&ast.loc);
 
+        self.inside_macro = true;
         write!(
             self.f,
             "#define {} ((",
@@ -507,6 +508,8 @@ impl Emitter {
         write!(self.f, ")").unwrap();
         self.emit_expr(&expr);
         write!(self.f, ")\n").unwrap();
+
+        self.inside_macro = false;
     }
 
     pub fn emit_symbol(&mut self, ast: &ast::Local) {
