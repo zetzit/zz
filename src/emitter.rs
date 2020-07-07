@@ -395,6 +395,7 @@ impl Emitter {
             }
             self.f.write_all(&v).unwrap();
 
+
             return;
         }
         self.emit_loc(&loc);
@@ -427,6 +428,7 @@ impl Emitter {
         if fqn.len() > 3 {
             write!(self.f, "using namespace {} ;\n", fqn.0[3..].join("::")).unwrap();
         }
+
     }
 
     pub fn emit_static(&mut self, ast: &ast::Local) {
@@ -1091,7 +1093,33 @@ impl Emitter {
             write!(self.f, ", ...").unwrap();
         }
         write!(self.f, ")\n").unwrap();
-        self.emit_zblock(&body, true);
+
+        write!(self.f, "#if 0\n").unwrap();
+
+        let mut has_default = false;
+        for (loc, expr, body) in &body.branches {
+            if let Some(expr) = &expr {
+                self.emit_loc(&expr.loc());
+                self.inside_macro = true;
+                write!(self.f, "#elif ").unwrap();
+                self.emit_cppexpr(expr);
+                write!(self.f, "\n").unwrap();
+                self.inside_macro = false;
+            } else {
+                has_default = true;
+                write!(self.f, "#else\n").unwrap();
+            }
+            self.emit_zblock(&body, true);
+        }
+
+        if !has_default {
+            write!(self.f, "#else\n").unwrap();
+            self.emit_loc(&ast.loc);
+            write!(self.f, "#error function has no matching implementation branch\n").unwrap();
+        }
+
+        write!(self.f, "#endif\n").unwrap();
+
         write!(self.f, "\n").unwrap();
     }
 
@@ -1338,6 +1366,18 @@ impl Emitter {
         }
     }
 
+    fn emit_cppexpr(&mut self, v: &ast::Expression) {
+        match v {
+            ast::Expression::Cpp {loc, expr} => {
+                self.emit_expr(expr);
+            }
+            _ =>  {
+                emit_error(format!("expression not usable (yet?) in cpp context"), &[(v.loc().clone(), "here")]);
+                std::process::exit(9);
+            }
+        }
+    }
+
     fn emit_expr(&mut self, v: &ast::Expression) {
         match v {
             ast::Expression::Unsafe { expr, .. } => {
@@ -1514,6 +1554,16 @@ impl Emitter {
                 write!(self.f, " [ ").unwrap();
                 self.emit_expr(rhs);
                 write!(self.f, "]").unwrap();
+            }
+            ast::Expression::Cpp {loc, ..} => {
+                parser::emit_error(
+                    "invalid c preprocessor directive in local expression location".to_string(),
+                    &[(
+                        loc.clone(),
+                        format!("c preprocessor expression not possible in this location"),
+                    )],
+                );
+                std::process::exit(9);
             }
         }
     }

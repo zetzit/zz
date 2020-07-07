@@ -1,7 +1,6 @@
 use super::ast::*;
 use super::make::Stage;
 use super::name::Name;
-use super::pp::PP;
 use pest::prec_climber::{Assoc, Operator, PrecClimber};
 use pest::Parser;
 use std::collections::HashMap;
@@ -69,12 +68,7 @@ fn p(
     let mut file = ZZParser::parse(Rule::file, file_str)?;
     let mut doccomments = String::new();
 
-    for decl in PP::new(
-        &n,
-        features.clone(),
-        stage.clone(),
-        file.next().unwrap().into_inner(),
-    ) {
+    for decl in file.next().unwrap().into_inner() {
         match decl.as_rule() {
             Rule::doc_comment => {
                 let mut s = decl.as_str().to_string();
@@ -132,7 +126,9 @@ fn p(
                 let mut name = String::new();
                 let mut args = Vec::new();
                 let mut ret = None;
-                let mut body = None;
+                let mut body = ConditionalBlock{
+                    branches: Vec::new(),
+                };
                 let mut attr = HashMap::new();
                 let mut vararg = false;
                 let mut callassert = Vec::new();
@@ -195,8 +191,35 @@ fn p(
                             let part = part.into_inner().next().unwrap();
                             calleffect.push(parse_expr(n, part));
                         }
-                        Rule::block => {
-                            body = Some(parse_block(n, features, stage, part));
+                        Rule::gblock => {
+                            body.branches = Vec::new();
+                            for branch in part.into_inner() {
+                                match branch.as_rule() {
+                                    Rule::if_stm | Rule::elseif_stm => {
+                                        let mut stm = branch.into_inner();
+                                        let part = stm.next().unwrap();
+                                        let expr = parse_expr(n, part);
+                                        let part = stm.next().unwrap();
+                                        let body2 = parse_block(n, features, stage, part);
+                                        body.branches.push((loc.clone(), Some(expr), body2));
+                                    }
+                                    Rule::else_stm => {
+                                        let mut stm = branch.into_inner();
+                                        let part = stm.next().unwrap();
+                                        let body2 = parse_block(n, features, stage, part);
+                                        body.branches.push((loc.clone(), None, body2));
+                                    }
+                                    Rule::block => {
+                                        body.branches = vec![(
+                                            loc.clone(),
+                                            None,
+                                            parse_block(n, features, stage, branch),
+                                        )];
+                                    }
+                                    e => panic!("unexpected rule {:?} in gblock", e),
+                                }
+                            }
+
                         }
                         Rule::macrocall => {
                             derives.push(parse_derive(n, part));
@@ -218,7 +241,7 @@ fn p(
                                 attr,
                                 derives,
                                 args,
-                                body: body.unwrap(),
+                                body,
                                 vararg,
                                 callassert,
                                 calleffect,
@@ -258,7 +281,7 @@ fn p(
                 let mut vis = Visibility::Object;
                 let mut name = None;
                 let mut loc = None;
-                for part in PP::new(n, features.clone(), stage.clone(), decl) {
+                for part in decl {
                     match part.as_rule() {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
@@ -290,7 +313,7 @@ fn p(
                 let mut names = Vec::new();
                 let mut loc = None;
 
-                for part in PP::new(n, features.clone(), stage.clone(), decl) {
+                for part in decl {
                     match part.as_rule() {
                         Rule::key_shared => {
                             vis = Visibility::Shared;
@@ -340,7 +363,7 @@ fn p(
                 let mut loc = Location::from_span(n.into(), &decl.as_span());
 
                 let decl = decl.into_inner();
-                for part in PP::new(n, features.clone(), stage.clone(), decl) {
+                for part in decl {
                     match part.as_rule() {
                         Rule::ident => {
                             loc = Location::from_span(n.into(), &part.as_span());
@@ -376,7 +399,7 @@ fn p(
                 let mut tail = Tail::None;
                 let mut union = false;
 
-                for part in PP::new(n, features.clone(), stage.clone(), decl) {
+                for part in decl {
                     match part.as_rule() {
                         Rule::doc_comment => {
                             //TODO
@@ -874,6 +897,15 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                 expr: Box::new(expr),
             }
         }
+        Rule::cpp_expr => {
+            let mut expr = expr.into_inner();
+            let part = expr.next().unwrap();
+            let expr = parse_expr(n, part);
+            Expression::Cpp {
+                loc,
+                expr: Box::new(expr),
+            }
+        }
         Rule::type_name => {
             let name = Name::from(expr.as_str());
             Expression::Name(Typed {
@@ -1353,7 +1385,7 @@ pub(crate) fn parse_block(
 
     let mut statements = Vec::new();
     let mut cif_state = None;
-    for stm in PP::new(n, features.clone(), stage.clone(), decl.into_inner()) {
+    for stm in decl.into_inner() {
         parse_statement(n, features, stage, stm, &mut statements, &mut cif_state)
     }
     Block {

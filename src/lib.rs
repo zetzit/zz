@@ -26,7 +26,6 @@ pub mod makro;
 pub mod name;
 pub mod parser;
 pub mod pipeline;
-pub mod pp;
 pub mod project;
 pub mod repos;
 pub mod smt;

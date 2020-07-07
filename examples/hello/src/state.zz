@@ -2,26 +2,11 @@ using <string.h>::{memset};
 
 
 pub struct State {
-#if def("debug")
-    #if 0
-        uint19_t invalid;
-    #elif 0
-    #else
-        u8 yalla;
-    #endif
-#endif
     u8 mut counter;
 }
 
-#if 0
-    const int lol = 3;
-#endif
-
 pub fn new(State mut* self) {
     memset(self, 0, sizeof(State));
-#if 0
-    return nothing;
-#endif
 }
 
 pub fn add(State mut* self, u8 i) {

@@ -103,13 +103,13 @@ fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->" ~ anon_type }
 call_assert = {"where" ~ expr }
 call_effect = {"model" ~ expr }
-function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( macrocall | call_assert | call_effect)* ~ block }
+function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( macrocall | call_assert | call_effect)* ~ gblock }
 closure     = { ( exported | key_shared)? ~ fn_attr* ~ "closure" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 theory      = { ( exported | key_shared)? ~ "theory" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
 
 
 enum_i      = { ident ~ ( "=" ~ int_literal)? }
-enum_list   = _{ (pp | enum_i ) ~ "," ~ enum_list | pp | enum_i  }
+enum_list   = _{enum_i ~ "," ~ enum_list | enum_i  }
 ienum       = { (exported | key_shared)? ~ "enum" ~ ident ~ "{" ~ enum_list? ~ ","?  ~ "}"  }
 
 symbol        = { ( exported | key_shared)? ~ "symbol" ~ ident  ~ ";" }
@@ -128,23 +128,12 @@ localpath   = @{"\"" ~ path ~ "\""}
 
 
 
-// legacy expr without prec climber, just here until we change pp to go POST parser
-pp_call        = !{ ident ~ "(" ~ call_args? ~ ")"  }
-pp_expr        = { number_literal | string_literal | pp_call }
-
-
-pp          = { ppif | ppelse | ppelif | ppendif}
-ppif        = ${ "#if" ~ WHITESPACE+ ~ pp_expr ~ WHITESPACE+}
-ppelif      = ${ "#elif" ~ WHITESPACE+ ~ pp_expr ~ WHITESPACE+}
-ppelse      = ${ "#else" ~ WHITESPACE+ }
-ppendif     = ${ "#endif" ~ WHITESPACE+}
-
 testop      = { "==" | "=" | "!=" | "<" | ">" | ">=" | "<=" }
 testfield   = { ident ~ testop ~ expr }
 testcase    = { "test" ~ ident? ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
-struct_c    = _{"{" ~ (pp | doc_comment |  struct_f )* ~ "}" }
+struct_c    = _{"{" ~ (doc_comment |  struct_f )* ~ "}" }
 struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail? ~ (key_packed)* ~ struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
@@ -163,7 +152,9 @@ vararg          = @{"..."}
 macro_args      = {ident ~ ( "," ~ ( ident | vararg) )* }
 imacro          = { ( exported | key_shared)? ~ "macro" ~ ident ~ "(" ~ macro_args? ~")" ~ block }
 
+// pp
 
+gblock = { block | (if_stm | elseif_stm | else_stm )+ }
 
 
 // statements
@@ -223,7 +214,7 @@ postop = _{ increment |  decrement }
 
 term    = _{
     unarypost | number_literal | char_literal | string_literal |bool_literal| struct_init | array_init |
-    unarypre | takeref | deref | cast | type_name | unsafe_expr | "(" ~ expr ~ ")"
+    unarypre | takeref | deref | cast | type_name | unsafe_expr | cpp_expr | "(" ~ expr ~ ")"
 }
 
 unarypost       = { ( type_name | "(" ~ expr ~ ")") ~ postop }
@@ -272,6 +263,7 @@ label       = ${ ident ~ ":"}
 mark_stm    = ${ expr ~ WHITESPACE+ ~ "is" ~ WHITESPACE+ ~ tag_name }
 unsafe_block = {"unsafe" ~ block }
 unsafe_expr  = {"unsafe" ~ "<" ~ anon_type ~ ">" ~"(" ~ expr ~ ")" }
+cpp_expr     = {"#" ~"(" ~ expr ~ ")" }
 
 cblock_inner = { ( (!"}}@" ~ ANY))*}
 cblock       = !{ "@{{" ~ cblock_inner ~ "}}@" }
@@ -306,7 +298,7 @@ statement = _{
     (term_statement ~ ";")
 }
 
-block = { "{" ~ (pp | statement | label)* ~ expr_stm? ~ "}" ~ ";"? }
+block = { "{" ~ (statement | label)* ~ expr_stm? ~ "}" ~ ";"? }
 
 macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 
@@ -327,7 +319,6 @@ file        = { SOI ~ (struct_d
                         | symbol
                         | import
                         | constant
-                        | pp
                         | testcase
                         | imacro
                         | istatic
