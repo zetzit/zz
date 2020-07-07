@@ -616,6 +616,9 @@ fn abs_expr(
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
             abs_expr(rhs, scope, inbody, all_modules, self_md_name);
         }
+        ast::Expression::Cpp{ expr, ..} => {
+            abs_expr(expr, scope, inbody, all_modules, self_md_name);
+        }
     }
 }
 
@@ -988,6 +991,13 @@ pub fn abs(
                 calleffect,
                 ..
             } => {
+
+                for (_,expr, _) in &mut body.branches {
+                    if let Some(expr) = expr {
+                        abs_expr(expr, &scope, false, all_modules, &md.name);
+                    }
+                }
+
                 scope.push();
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
@@ -1004,7 +1014,9 @@ pub fn abs(
                 for callassert in callassert {
                     abs_expr(callassert, &scope, true, all_modules, &md.name);
                 }
-                abs_block(body, &scope, all_modules, &md.name);
+                for (_,_,block) in &mut body.branches {
+                    abs_block(block, &scope, all_modules, &md.name);
+                }
                 scope.pop();
             }
             ast::Def::Closure { ret, args, .. } => {

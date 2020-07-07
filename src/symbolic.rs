@@ -614,23 +614,25 @@ impl Symbolic {
                 callattests,
                 ..
             } => {
-                self.execute_function(
-                    &fun.name,
-                    args,
-                    ret.as_ref(),
-                    body,
-                    callassert,
-                    calleffect,
-                    callattests,
-                )?;
-                if !self.ssa.solve() {
-                    return Err(self.trace(
-                        format!("function is unprovable"),
-                        vec![(
-                            fun.loc.clone(),
-                            format!("this function body is impossible to prove"),
-                        )],
-                    ));
+                for (_, branch_expr, body) in &mut body.branches {
+                    self.execute_function(
+                        &fun.name,
+                        args,
+                        ret.as_ref(),
+                        body,
+                        callassert,
+                        calleffect,
+                        callattests,
+                    )?;
+                    if !self.ssa.solve() {
+                        return Err(self.trace(
+                            format!("function is unprovable"),
+                            vec![(
+                                fun.loc.clone(),
+                                format!("this function body is impossible to prove"),
+                            )],
+                        ));
+                    }
                 }
             }
             _ => unreachable!(),
@@ -2005,6 +2007,11 @@ impl Symbolic {
         let exprloc = expr.loc().clone();
         self.ssa.debug_loc(expr.loc());
         match expr {
+            ast::Expression::Cpp {loc, ..} => {
+                Err(self.trace("invalid c preprocessor directive in local expression location".to_string(), vec![
+                    (loc.clone(), format!("expression cannot be reduced because it depends on a c macro"))
+                ]))
+            },
             ast::Expression::Call {..} => {
                 return self.execute_call(expr);
             }

@@ -113,7 +113,7 @@ pub enum Def {
         args: Vec<NamedArg>,
         derives: Vec<Derive>,
         attr: HashMap<String, Location>,
-        body: Block,
+        body:       ConditionalBlock,
         vararg: bool,
         callassert: Vec<Expression>,
         calleffect: Vec<Expression>,
@@ -527,6 +527,10 @@ pub enum Expression {
         into: Typed,
         expr: Box<Expression>,
     },
+    Cpp {
+        loc:    Location,
+        expr:   Box<Expression>,
+    },
 }
 
 impl Expression {
@@ -547,6 +551,7 @@ impl Expression {
             Expression::ArrayInit { loc, .. } => loc,
             Expression::MacroCall { loc, .. } => loc,
             Expression::Unsafe { loc, .. } => loc,
+            Expression::Cpp { loc, .. } => loc,
         }
     }
 }
@@ -621,6 +626,11 @@ pub enum Statement {
         name: Name,
         args: Vec<Box<Expression>>,
     },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConditionalBlock {
+    pub branches: Vec<(Location, Option<Expression>, Block)>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

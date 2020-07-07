@@ -1,0 +1,16 @@
+using log;
+inline using "os.h" as os;
+
+export fn main() -> int if #(os::ZZ_OS_WINDOWS) {
+    log::info("hello windows %d\n", os::GetVersion());
+    return 0;
+} else if #(os::ZZ_OS_APPLE) {
+    log::info("hello apple \n");
+    return 0;
+} else if #(os::ZZ_OS_LINUX) {
+    log::info("hello linux %ld\n", os::gethostid());
+    return 0;
+} else {
+    log::info("hello unknown OS\n");
+    return 0;
+}

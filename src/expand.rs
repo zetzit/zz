@@ -476,23 +476,31 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                 }
 
                 if complete == &flatten::TypeComplete::Complete {
-                    stack.push(format!("{}", d.name));
 
-                    for i in 0..args.len() {
-                        let argname = Name::from(&args[i].name);
-                        stack.alloc(
-                            argname.clone(),
-                            args[i].typed.clone(),
-                            args[i].loc.clone(),
-                            args[i].tags.clone(),
-                            &flatten::TypeComplete::Complete,
-                        )?;
+                    for (_, branch_expr, body) in &mut body.branches {
+
+                        if let Some(expr) = branch_expr {
+                            stack.expand_expr(expr)?;
+                        }
+
+                        stack.push(format!("{}", d.name));
+
+                        for i in 0..args.len() {
+                            let argname = Name::from(&args[i].name);
+                            stack.alloc(
+                                argname.clone(),
+                                args[i].typed.clone(),
+                                args[i].loc.clone(),
+                                args[i].tags.clone(),
+                                &flatten::TypeComplete::Complete,
+                            )?;
+                        }
+
+                        stack.expand_scope(&mut body.statements)?;
+                        body.statements.extend(stack.drop_fn(&body.end)?);
+
+                        stack.pop();
                     }
-
-                    stack.expand_scope(&mut body.statements)?;
-                    body.statements.extend(stack.drop_fn(&body.end)?);
-
-                    stack.pop();
                 }
             }
             _ => (),
@@ -581,6 +589,9 @@ impl Stack {
                 }
             }
             ast::Expression::Unsafe { .. } => {}
+            ast::Expression::Cpp{expr, ..} => {
+                self.expand_expr(expr)?;
+            }
         }
         Ok(())
     }
@@ -912,5 +923,6 @@ fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewit
                 replace_named(expr, replacefrom, replacewith);
             }
         }
+        ast::Expression::Cpp{..} => {}
     }
 }

@@ -903,6 +903,16 @@ impl {name} {{
                 self.emit_expr(rhs);
                 write!(self.f, "]").unwrap();
             }
+            ast::Expression::Cpp{loc, ..} => {
+                parser::emit_error(
+                    "invalid c preprocessor directive in local expression location".to_string(),
+                    &[(
+                        loc.clone(),
+                        format!("c preprocessor expression not possible in this location"),
+                    )],
+                );
+                std::process::exit(9);
+            }
         }
     }
 

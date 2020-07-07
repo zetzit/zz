@@ -299,6 +299,9 @@ fn expr_deps(
             v.extend(expr_deps(cr, rhs));
             v
         }
+        ast::Expression::Cpp {expr, .. } => {
+            expr_deps(cr, expr)
+        },
     }
 }
 
@@ -533,7 +536,15 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                         decl_deps.extend(expr_deps(cr, expr));
                     }
 
-                    impl_deps.extend(block_deps(cr, body));
+                    //TODO
+                    // some day we might want to trace dependencies more fine grained into
+                    // conditional compilation. for now everything depends on all deps of all branches
+                    for (_, branch_expr, body) in &body.branches {
+                        if let Some(expr) = branch_expr {
+                            impl_deps.extend(expr_deps(cr, expr));
+                        }
+                        impl_deps.extend(block_deps(cr, body));
+                    }
 
                     if attr.contains_key("inline") {
                         forceinline.insert(name.clone());

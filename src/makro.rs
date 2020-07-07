@@ -174,7 +174,7 @@ pub fn sieve(md: &ast::Module) -> Vec<ast::Module> {
                     args: Vec::new(),
                     derives: Vec::new(),
                     attr: HashMap::new(),
-                    body: body,
+                    body: ast::ConditionalBlock{branches: vec![(local.loc.clone(), None, body)]},
                     vararg: false,
                     callassert: Vec::new(),
                     calleffect: Vec::new(),
