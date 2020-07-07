@@ -1113,9 +1113,7 @@ impl Emitter {
         }
 
         if !has_default {
-            write!(self.f, "#else\n").unwrap();
-            self.emit_loc(&ast.loc);
-            write!(self.f, "#error function has no matching implementation branch\n").unwrap();
+            write!(self.f, "#else\n;\n").unwrap();
         }
 
         write!(self.f, "#endif\n").unwrap();
