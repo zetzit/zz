@@ -7,7 +7,6 @@ using bam;
 
 /// creates literal string with arg0 repeated arg1 times
 export macro repeat()  {
-
     new+1000 a = ast::from_macro();
     err::assert2(a.args[0].t == ast::Expression::LiteralString, "expected arg0: string");
     err::assert2(a.args[1].t == ast::Expression::Literal,       "expected arg1: number");
@@ -32,9 +31,33 @@ export macro make_int() {
     printf("return a;\n");
 }
 
+export macro increment() {
+    new+1000 a = ast::from_macro();
+    if a.args[0].t == ast::Expression::Name {
+        printf("%s = %s + 1;\n", a.args[0].v.string, a.args[0].v.string);
+    }
+}
+
+export macro add() {
+    new+1000 a = ast::from_macro();
+    if a.args[0].t == ast::Expression::Name {
+        printf("%s = %s + %s;\n", a.args[0].v.string, a.args[1].v.string, a.args[2].v.string);
+    }
+}
+
 export fn main() -> int {
 
     @bam::happyness();
+
+    int mut foo = 0;
+    @increment(foo);
+    if 1 != foo {
+      return 1;
+    }
+    @add(foo, 1, 2);
+    if 3 != foo {
+      return 1;
+    }
 
     printf("hello %s\n", @repeat("world ", 32));
     @make_int("a", 1);

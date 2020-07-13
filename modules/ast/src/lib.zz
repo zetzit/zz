@@ -34,6 +34,67 @@ fn parse_v(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k,
         }
     }
 }
+
+fn parse_t(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+    where err::checked(*e)
+    where nullterm(k)
+{
+    let arg = (ExpressionS mut*)user;
+
+    if string::cstr_eq(k, "t") {
+        switch v.t {
+            json::ValueType::Object => {
+              json::next(p,  e, parse_t_other, (void mut*)arg);
+              if err::check(e) {
+                return;
+              }
+            }
+            default => {
+            }
+        }
+    }
+}
+
+fn parse_t_other(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+    where err::checked(*e)
+    where nullterm(k)
+{
+    let arg = (ExpressionS mut*)user;
+
+    if string::cstr_eq(k, "Other") {
+        switch v.t {
+            json::ValueType::Array => {
+              json::next(p,  e, parse_t_other_value, (void mut*)arg);
+              if err::check(e) {
+                return;
+              }
+            }
+            default => {
+            }
+        }
+    }
+}
+
+fn parse_t_other_value(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+    where err::checked(*e)
+    where nullterm(k)
+{
+  let arg = (ExpressionS mut*)user;
+
+  switch v.t {
+    json::ValueType::String => {
+      static_attest(safe(arg->pool));
+      static_attest(safe(v.string));
+      static_attest(nullterm(v.string));
+      char mut * dup = arg->pool->malloc(string::strlen(v.string));
+      memcpy(dup, v.string, string::strlen(v.string) + 1);
+      arg->v.string = dup;
+    }
+    default => {
+    }
+  }
+}
+
 fn parse_arg(err::Err+et mut *e, json::Parser+pt mut* p, void mut*user, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
@@ -51,6 +112,12 @@ fn parse_arg(err::Err+et mut *e, json::Parser+pt mut* p, void mut*user, char *k,
             } else if string::cstr_eq(k, "LiteralString") {
                 arg->t = Expression::LiteralString;
                 json::next(p,  e, parse_v, (void mut*)arg);
+                if err::check(e) {
+                    return;
+                }
+            } else if string::cstr_eq(k, "Name") {
+                arg->t = Expression::Name;
+                json::next(p,  e, parse_t, (void mut*)arg);
                 if err::check(e) {
                     return;
                 }
@@ -120,6 +187,7 @@ export enum Expression
     Invalid,
     Literal,
     LiteralString,
+    Name,
 }
 
 export union ExpressionValue {
