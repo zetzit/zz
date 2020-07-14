@@ -101,6 +101,8 @@ pub fn load(
                 pb.lock().unwrap().inc();
             }
 
+            //TODO there's a serde bug somewhere, incorrectly serializing "char * f [];"
+            /*
             let mut cachefile =
                 std::fs::File::create(&cachepath)
                 .expect(&format!("cannot create {}", cachepath));
@@ -108,6 +110,7 @@ pub fn load(
             cachefile.write(
                 &rmp_serde::to_vec(&m).expect(&format!("cannot encode {}", cachepath))[..]
             ).expect(&format!("cannot write {}", cachepath));
+            */
 
             (m.name.clone(), Module::ZZ(m))
         })
