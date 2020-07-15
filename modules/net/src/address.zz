@@ -1,0 +1,441 @@
+using byteorder;
+using buffer;
+
+using <stdio.h>::{printf};
+using <string.h>::{memset,memcmp};
+
+inline using "os.h" as os;
+
+/// the internet protocol version
+export enum Type {
+    Invalid,
+    Ipv4,
+    Ipv6,
+}
+
+/// a network address
+export struct Address {
+    Type                    typ;
+    os::zz_os_net_Address   os;
+}
+
+/// make an invalid network address
+export fn none(Address mut new* self) {
+    self->typ = Type::Invalid;
+}
+
+/// compare equality between two addresses
+export fn eq(Address * self, Address * other) -> bool {
+    return memcmp(self, other, sizeof(Address)) == 0;
+}
+
+/// check if address is valid
+export fn valid(Address * self) -> bool {
+    return self->typ != Type::Invalid;
+}
+
+/// parse a buffer to an address
+///
+/// both ipv4 and ipv6 with and without port are supported
+///
+/// valid examples:
+///  - 192.168.0.1:8080
+///  - 1.1.1.1
+///  - [2001:4860:4860::8888]:9000
+///  - [10f::]:9000
+///  - 2003:fb:ef05:6000:6000:9a6a:dd59:1234
+export fn from_buffer(Address mut new * self, buffer::Buffer+st *s)
+    where buffer::integrity(s, st)
+{
+    from_str(self, s->mem, s->at);
+}
+
+/// parse a char * to an address
+///
+/// same as from_buffer
+export fn from_cstr(Address mut new * self, char *s)
+    where nullterm(s)
+{
+    usize slen = buffer::strlen(s);
+    static_attest(len(s) >= slen);
+
+    from_str(self, s, slen);
+}
+
+/// parse a char * with len to an address
+///
+/// same as from_buffer
+export fn from_str(Address mut new*self, char * mut s, usize mut slen)
+    where len(s) >= slen
+{
+    if slen < 2 {
+        return;
+    }
+
+    if s[0] == '[' {
+        s  = s + 1;
+        slen -= 1;
+        static_attest(safe(s));
+        static_attest(len(s) >= slen);
+        from_str_ipv6(self, s, slen);
+        return;
+    }
+
+    bool unused = (from_str_ipv4(self, s, slen) || from_str_ipv6(self, s, slen));
+    //bug in xtensa-esp32-elf-gcc
+    (void)unused;
+    return;
+}
+
+/// parse a char * with len to an ipv6 address
+///
+/// will fail for ipv4 address
+export fn from_str_ipv6(Address mut new* self, char * s, usize slen) -> bool
+    where len(s) >= slen
+    where slen > 0
+{
+    memset(self, 0, sizeof(Address));
+
+    u8 mut  ip[16] = {0};
+    u16 mut port = 0;
+
+    usize mut at_part = 0;
+    u32 mut parts[8] = {0};
+
+    int mut skip_at = -1;
+    bool mut empty_part = false;
+    for(usize mut i = 0; i < slen; i++) {
+        char ch = s[i];
+        if ch == ':' {
+            if i == 0 {
+                empty_part = true;
+                continue;
+            }
+            if empty_part {
+                if skip_at != -1 {
+                    return false;
+                }
+                skip_at = (int)at_part;
+            }
+            empty_part = true;
+            at_part += 1;
+            if at_part > 7 {
+                return false;
+            }
+        } else if (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') {
+            empty_part = false;
+            u8 mut n = 0;
+            unsafe {
+                n = hexmap[(ch & 0x1f) ^ 0x10];
+            }
+            if at_part > 7 {
+                return false;
+            }
+            parts[at_part] = (parts[at_part] << 4) | (u32)n;
+            if parts[at_part] > 0xffff {
+                return false;
+            }
+        } else if ch == ']' && i + 2 < slen {
+            i += 1;
+            static_attest(i < len(s));
+            if s[i] != ':' {
+                return false;
+            }
+            i += 1;
+            for(; i < slen; i++) {
+                char ch = s[i];
+                if ch >= '0' && ch <= '9' {
+                    uint nv = as<uint>(port * 10) + as<uint>(ch - '0');
+                    if nv > 65535 {
+                        return false;
+                    }
+                    port = as<u16>(nv);
+                } else {
+                    return false;
+                }
+            }
+        } else {
+            break;
+        }
+    }
+
+    if at_part < 7 && skip_at == -1 {
+        return false;
+    }
+
+    usize mut j = 0;
+    usize mut i = 0;
+    for (; j < 16 && i < 8; i++, j+=2) {
+        if skip_at != -1 && (usize)skip_at == i {
+            j += 2 * (7 - at_part);
+        } else {
+            u8 * p = (u8*)(&parts[i]);
+            static_attest(j < 16);
+            static_attest(len(p) == 2);
+            ip[j]   = p[1];
+            ip[j+1] = p[0];
+        }
+    }
+
+    self->set_ip(Type::Ipv6, ip);
+    self->set_port(port);
+
+    self->typ = Type::Ipv6;
+    return true;
+}
+
+/// parse a char * with len to an ipv4 address
+///
+/// will fail for ipv6 address
+export fn from_str_ipv4(Address mut new* self, char *s, usize slen) -> bool
+    where len(s) >= slen
+{
+    memset(self, 0, sizeof(Address));
+
+    u8 mut ip[4] = {0};
+    u16 mut port = 0;
+    usize mut at = 0;
+
+    for(usize mut i = 0; i < slen; i++) {
+        char ch = s[i];
+        if ch >= '0' && ch <= '9' {
+            uint nv = as<uint>(ip[at] * 10) + as<uint>(ch - '0');
+            if nv > 255 {
+                return false;
+            }
+            ip[at] = as<u8>(nv);
+        } else if ch == '.' {
+            at += 1;
+            if at == 4 {
+                return false;
+            }
+        } else if ch == ':' {
+            i += 1;
+            for(; i < slen; i++) {
+                char ch = s[i];
+                if ch >= '0' && ch <= '9' {
+                    uint nv = as<uint>(port * 10) + as<uint>(ch - '0');
+                    if nv > 65535 {
+                        return false;
+                    }
+                    port =  as<u16>(nv);
+                } else {
+                    return false;
+                }
+            }
+        } else {
+            return false;
+        }
+    }
+    if at != 3 {
+        return false;
+    }
+
+    self->set_ip(Type::Ipv4, ip);
+    self->set_port(port);
+
+    self->typ = Type::Ipv4;
+    return true;
+}
+
+/// append ip address to buffer, excluding port
+export fn ip_to_buffer(Address * self, buffer::Buffer+st mut*to)
+    where   buffer::integrity(to,st)
+    model   buffer::integrity(to,st)
+    where   st>2
+{
+    switch self->typ {
+        Type::Invalid => {
+        }
+        Type::Ipv4 => {
+            u8 * ip = os::os_net_address_ipv4_get_ip(&self->os);
+            static_attest(len(ip) == 4);
+
+            buffer::format(to, "%u.%u.%u.%u",
+                    ip[0],
+                    ip[1],
+                    ip[2],
+                    ip[3]
+            );
+        }
+        Type::Ipv6 => {
+            u8 * ip = os::os_net_address_ipv6_get_ip(&self->os);
+            static_attest(len(ip) == 16);
+
+            // find the largest skippable section
+            int mut largest_skippable_start   = -1;
+            usize mut largest_skipable_size   = 0;
+
+            int mut current_skippable_start    = -1;
+            usize mut current_skippable_size   = 0;
+
+            for (usize mut i = 0; i < 15; i += 2) {
+                if ip[i] == 0 && ip[i+1] == 0 {
+                    if current_skippable_start == -1 {
+                        current_skippable_start = (int)i;
+                    }
+                    current_skippable_size += 1;
+                } else {
+                    if current_skippable_size > largest_skipable_size {
+                        largest_skipable_size   = current_skippable_size;
+                        largest_skippable_start = current_skippable_start;
+                    }
+                    current_skippable_size  = 0;
+                    current_skippable_start = -1;
+                }
+            }
+            if current_skippable_size > largest_skipable_size {
+                largest_skipable_size   = current_skippable_size;
+                largest_skippable_start = current_skippable_start;
+            }
+
+
+            for (usize mut i = 0; i < 15; i += 2) {
+                if i == (usize)largest_skippable_start && largest_skipable_size > 0{
+                    buffer::push(to, ':');
+                    if i == 0 {
+                        buffer::push(to, ':');
+                    }
+                    i += ((largest_skipable_size -1) * 2);
+                    continue;
+                }
+                static_attest(i < 15);
+                if ip[i] == 0 {
+                    buffer::format(to, "%x", ip[i+1]);
+                } else {
+                    buffer::format(to, "%x",   ip[i]);
+                    buffer::format(to, "%02x", ip[i+1]);
+                }
+                if i != 14 {
+                    buffer::push(to, ':');
+                }
+            }
+        }
+    }
+}
+
+/// append ip address to buffer, including port
+export fn to_buffer(Address * self, buffer::Buffer+st mut*to)
+    where   buffer::integrity(to,st)
+    model   buffer::integrity(to,st)
+    where   st>2
+{
+
+    switch self->typ {
+        Type::Invalid => {}
+        Type::Ipv4 => {
+            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv4_get_port(&self->os));
+
+            ip_to_buffer(self, to);
+            buffer::format(to, ":%u",port);
+        }
+        Type::Ipv6 => {
+            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv6_get_port(&self->os));
+
+            if port != 0 {
+                buffer::push(to, '[');
+            }
+
+            ip_to_buffer(self, to);
+
+            if port != 0 {
+                buffer::format(to, "]:%u", port);
+            }
+        }
+    }
+}
+
+
+/// set port number
+export fn set_port(Address mut*self, u16 port) {
+    switch self->typ {
+        Type::Ipv4 => {
+            os::os_net_address_ipv4_set_port(&self->os, byteorder::to_be16(port));
+        }
+        Type::Ipv6 => {
+            os::os_net_address_ipv6_set_port(&self->os, byteorder::to_be16(port));
+        }
+        Type::Invalid => {
+        }
+    }
+}
+
+/// get port number
+///
+/// returns 0 if address does not have a port
+export fn get_port(Address *self) -> u16 {
+    switch self->typ {
+        Type::Ipv4 => {
+            return (u16)byteorder::from_be16(os::os_net_address_ipv4_get_port(&self->os));
+        }
+        Type::Ipv6 => {
+            return (u16)byteorder::from_be16(os::os_net_address_ipv6_get_port(&self->os));
+        }
+        Type::Invalid => {
+            return 0;
+        }
+    }
+
+    // c compiler gets really confused for some reason
+    // this never happens
+    return 0;
+}
+
+/// get ip address as raw bytes.
+///
+/// length depends on self->typ
+///  - ipv4 is 4  bytes long
+///  - ipv6 is 16 bytes long
+export fn get_ip(Address *self) -> u8*
+    model len(return) == 16 || len(return) == 4
+{
+    switch self->typ {
+        Type::Ipv6 => {
+            let m = (u8*)os::os_net_address_ipv6_get_ip(&self->os);
+            static_attest(len(m) == 16);
+            return m;
+        }
+        default => {
+            let m = (u8*)os::os_net_address_ipv4_get_ip(&self->os);
+            static_attest(len(m) == 4);
+            return m;
+        }
+    }
+
+    // c compiler gets really confused for some reason
+    // this never happens
+    u8*m = 0;
+    static_attest(len(m) == 4);
+    return m;
+}
+
+/// set ip address from raw bytes.
+///
+/// length depends on self->typ
+///  - ipv4 is 4  bytes long
+///  - ipv6 is 16 bytes long
+export fn set_ip(Address mut *self, Type t, u8*b)
+    where (t == Type::Ipv4 && len(b) >= 4) || (t == Type::Ipv6 && len(b) >= 16)
+{
+    self->typ = t;
+    switch self->typ {
+        Type::Ipv4=> {
+            os::os_net_address_ipv4_set_ip(&self->os, b);
+        }
+        Type::Ipv6 => {
+            os::os_net_address_ipv6_set_ip(&self->os, b);
+        }
+        Type::Invalid => {
+
+        }
+    }
+}
+
+static u8 hexmap[] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567
+    0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 89:;<=>?
+    0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x00, // @ABCDEFG
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // HIJKLMNO
+};
+
+

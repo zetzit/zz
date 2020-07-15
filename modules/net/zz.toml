@@ -1,0 +1,20 @@
+[project]
+version = "0.1.0"
+name = "net"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+#doesnt exist. use "set LDFLAGS=-lWs2_32" not sure yet how to do this properly
+win32_lflags = ["-lWs2_32"]
+
+[variants]
+default = []
+
+[dependencies]
+byteorder = "1"
+err = "1"
+
+[repos]

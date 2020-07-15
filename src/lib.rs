@@ -63,13 +63,14 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
     //
     let mut searchpaths = repos::index(&project);
 
-    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("c"))
+    let td = project::target_dir();
+    std::fs::create_dir_all(td.join(stage.to_string()).join("c"))
         .expect("create target dir");
-    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("gen"))
+    std::fs::create_dir_all(td.join(stage.to_string()).join("gen"))
         .expect("create target dir");
-    std::fs::create_dir_all(root.join("target").join(stage.to_string()).join("zz"))
+    std::fs::create_dir_all(td.join(stage.to_string()).join("zz"))
         .expect("create target dir");
-    std::fs::create_dir_all(root.join("target").join("include").join("zz"))
+    std::fs::create_dir_all(td.join("include").join("zz"))
         .expect("create target dir");
 
     let project_name = Name(vec![String::new(), project.project.name.clone()]);
@@ -250,3 +251,5 @@ fn getdep(
         }
     }
 }
+
+

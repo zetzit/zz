@@ -19,8 +19,9 @@ pub struct Emitter {
 }
 
 pub fn make_module(make: &super::make::Make) {
+    let td = super::project::target_dir();
 
-    let pdir_ = format!("target/go/{}/", make.artifact.name);
+    let pdir_ = td.join("go").join(&make.artifact.name);
     let pdir = std::path::Path::new(&pdir_);
     std::fs::create_dir_all(&pdir).unwrap();
 

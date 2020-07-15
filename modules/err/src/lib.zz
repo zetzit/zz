@@ -1,12 +1,12 @@
 using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, vfprintf, stderr, FILE};
 using <string.h>::{memset, strncat, strlen};
 using <errno.h>::{errno, strerror};
-using <stdlib.h>::{abort as cabort};
 using <stdarg.h>::{va_list, va_start, va_end};
-using buffer::{Buffer};
 using buffer;
 using log;
 using symbols;
+
+inline using "os.h" as os;
 
 pub theory checked(Err * self) -> bool;
 
@@ -18,7 +18,7 @@ export symbol NotImplemented;
 export struct Err+ {
     usize   mut error;
     int     mut system;
-    Buffer+ mut trace;
+    buffer::Buffer+ mut trace;
 };
 
 
@@ -26,6 +26,16 @@ export struct Err+ {
 export fn make(Err+tail mut new*self)
     where   tail > 0
     model   checked(*self)
+{
+    memset(self, 0, sizeof(Err));
+    buffer::clear(&(self->trace));
+    static_attest(checked(*self));
+}
+
+/// ignore any previous errors and reset error state
+export fn ignore(Err+tail mut *self)
+    where   tail > 0
+    model checked(*self)
 {
     memset(self, 0, sizeof(Err));
     buffer::clear(&self->trace);
@@ -88,6 +98,38 @@ export fn fail_with_errno(
     static_attest(checked(*self));
 }
 
+export fn fail_with_system_error(
+        Err+tail mut* self,
+        int merrno,
+        char* callsite_source<file>      unsafe file,
+        char* callsite_source<function>  unsafe scope,
+        usize callsite_source<line>      line,
+        char*  fmt,
+        ...
+)
+    where   nullterm(fmt)
+    model   checked(*self)
+{
+    static_attest(buffer::integrity(&self->trace, tail));
+    self->error  = SystemError;
+    self->system = merrno;
+
+    if tail > 2 && self->trace.at > 0 {
+        self->trace.push('\n');
+    }
+    self->trace.format("%s : ", strerror(merrno));
+
+    va_list mut vargs;
+    va_start(vargs, fmt);
+    static_attest((self->trace).at < tail);
+    self->trace.vformat(fmt, vargs);
+    va_end(vargs);
+
+    self->trace.format("\n");
+    backtrace(self, file, scope, line);
+    static_attest(checked(*self));
+}
+
 export fn fail(
         Err+tail mut* self,
         usize e,
@@ -136,7 +178,7 @@ export fn abort(
         backtrace(self, file, scope, line);
         self->eprintf((FILE mut *)stderr);
         for(;;){
-            cabort();
+            os::abort();
         }
     }
     static_attest(checked(*self));
@@ -182,7 +224,7 @@ export fn panic(
     fprintf(stderr, "\n");
 
     for(;;){
-        cabort();
+        os::abort();
     }
 }
 
@@ -197,7 +239,7 @@ export fn assert(
     if (!a) {
         fprintf(stderr, "assertion failed in %s:%zu \t%s\n", file, line, scope);
         for(;;){
-            cabort();
+            os::abort();
         }
     }
     static_attest(a == true);
@@ -224,7 +266,7 @@ export fn assert2(
         fprintf(stderr, "\n");
 
         for(;;){
-            cabort();
+            os::abort();
         }
     }
     static_attest(a == true);
@@ -241,8 +283,52 @@ export fn assert_safe(
     if (a == 0) {
         fprintf(stderr, "assertion failed in %s:%zu \t%s\n", file, line, scope);
         for(;;){
-            cabort();
+            os::abort();
         }
     }
     static_attest(safe(a));
+}
+
+export fn fail_with_win32(
+        Err+tail mut* self,
+        char* callsite_source<file>      unsafe file,
+        char* callsite_source<function>  unsafe scope,
+        usize callsite_source<line>      line,
+        char*  fmt,
+        ...
+)
+    where nullterm(fmt)
+    where checked(*self)
+    model checked(*self)
+    if #(os::defined(os::_WIN32))
+{
+    static_attest(buffer::integrity(&self->trace, tail));
+    self->system = (int)os::GetLastError();
+    self->error  = SystemError;
+
+    char mut * mut buf= 0;
+    unsafe {
+        buf = self->trace.mem + as<usize>(strlen(self->trace.mem));
+    }
+
+    os::FormatMessageA(
+            (int)os::FORMAT_MESSAGE_FROM_SYSTEM |
+            (int)os::FORMAT_MESSAGE_IGNORE_INSERTS,
+            0,
+            self->system,
+            os::MAKELANGID(os::LANG_NEUTRAL, os::SUBLANG_DEFAULT), 
+            buf,
+            tail - as<usize>(strlen(self->trace.mem)),
+            0
+            );
+
+    self->trace.format(" : ");
+
+    va_list mut vargs;
+    va_start(vargs, fmt);
+    self->trace.vformat(fmt, vargs);
+    va_end(vargs);
+
+    backtrace(self, file, scope, line);
+    static_attest(checked(*self));
 }
