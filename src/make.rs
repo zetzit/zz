@@ -105,6 +105,7 @@ pub struct Make {
     pub cxx: String,
     pub ar: String,
     pub cflags: Vec<String>,
+    pub cincludes: Vec<String>,
     pub lflags: Vec<String>,
     pub lobjs: Vec<String>,
     pub variant: String,
@@ -171,9 +172,9 @@ impl Make {
             user_lflags.extend(feature.lflags.clone());
         }
 
-        for cinc in cincludes {
+        for cinc in &cincludes {
             cflags.push("-I".into());
-            cflags.push(cinc);
+            cflags.push(cinc.clone());
         }
 
         for pkg in &pkgconfig {
@@ -228,6 +229,7 @@ impl Make {
             host_cc,
             cxx,
             host_cxx,
+            cincludes,
         };
 
         for c in cobjects {

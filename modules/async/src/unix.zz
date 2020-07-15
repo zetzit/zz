@@ -1,0 +1,51 @@
+using err;
+using async;
+inline using "os.h" as os;
+
+using <unistd.h> as unistd;
+using <errno.h>::{errno, EAGAIN};
+
+
+pub fn read_bytes(async::Io mut* self, err::Err+et mut* e, u8 mut* mem, usize mut *size) -> async::Result
+    where err::checked(*e)
+    where *size >= len(mem)
+    model *size <= len(mem)
+    if #(os::defined(os::ZZ_ASYNC_UNIX))
+{
+    if *size  == 0 {
+        err::fail(e, err::InvalidArgument, "buffer is 0 long");
+        return async::Result::Error;
+    }
+
+    isize rr = unsafe<isize>(unistd::read(self->io.fd, mem, *size));
+    if rr < 0 {
+        *size  = 0;
+        if (int)errno == (int)EAGAIN {
+            return async::Result::Later;
+        }
+        err::fail_with_errno(e, "read");
+        return async::Result::Error;
+    } else if rr == 0 {
+        *size  = 0;
+        return async::Result::Eof;
+    }
+    static_attest((usize)rr < len(mem));
+    *size = (usize)rr;
+    return async::Result::Ready;
+}
+
+pub fn make_read_async(async::Io mut* self, err::Err+et mut* e)
+    where err::checked(*e)
+{
+    int mut flags = unsafe<int>(os::fcntl(self->io.fd, os::F_GETFL, 0));
+    if (flags == -1) {
+        err::fail_with_errno(e, "F_GETFL");
+        return;
+    }
+    flags = flags | unsafe<int>(os::O_NONBLOCK);
+
+    if unsafe<int>(os::fcntl(self->io.fd, os::F_SETFL, flags)) != 0 {
+        err::fail_with_errno(e, "F_SETFL");
+    }
+}
+

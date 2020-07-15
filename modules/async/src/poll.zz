@@ -1,0 +1,83 @@
+using err;
+using async;
+using time;
+using log;
+
+inline using "os.h" as os;
+
+pub fn make(async::Driver+tailsize mut new * self)
+{
+    os::memset(self, 0, sizeof(async::Driver));
+    unsafe {
+        self->driver.tailsize  = tailsize;
+    }
+    os::memset(self->tail, 0, unsafe<usize>(sizeof(os::Tail)) * tailsize);
+}
+
+pub fn wake(async::Driver mut* self, err::Err+et mut* e, int fd, int events)
+    where err::checked(*e)
+{
+
+    for (usize mut i = 0; i < unsafe<usize>(self->driver.count);  i++) {
+        static_attest(i < len(self->tail));
+        unsafe {
+            if ((self->tail)[i]).fd == fd && ((self->tail)[i]).events == events {
+                return;
+            }
+        }
+    }
+
+    if unsafe<bool>(self->driver.count + 1 >= self->driver.tailsize) {
+        e->fail(err::OutOfTail, "max fd tail");
+        return;
+    }
+    unsafe{
+        self->tail[self->driver.count].fd       = fd;
+        self->tail[self->driver.count].events   = events;
+        self->driver.count += 1;
+    }
+    return;
+}
+
+pub fn deadline(async::Driver mut* self, u64 deadline)
+{
+    unsafe {
+        if !self->driver.has_deadline  || self->driver.deadline > deadline {
+            self->driver.deadline = deadline;
+            self->driver.has_deadline = true;
+        }
+    }
+}
+
+pub fn reset(async::Driver mut *self)
+{
+    unsafe {
+        self->driver.count          = 0;
+        self->driver.has_deadline   = false;
+    }
+    os::memset(self->tail, 0, unsafe<usize>(sizeof(os::Tail)) * unsafe<usize>(self->driver.tailsize));
+}
+
+pub fn wait(async::Driver mut* self, err::Err+et mut*e)
+    where err::checked(*e)
+{
+    int mut timeout = -1;
+
+    if unsafe<bool>(self->driver.has_deadline) {
+        time::Time now  = time::tick();
+        u64 mut now_m = now.to_millis();
+        if now_m > unsafe<u64>(self->driver.deadline)  {
+            timeout = 0;
+        } else {
+            timeout = (int)(unsafe<u64>(self->driver.deadline) - now_m);
+        }
+    }
+
+    int rr = unsafe<int>(poll(self->tail, self->driver.count, timeout));
+    reset(self);
+    if rr < 0 && unsafe<bool>(errno != EINTR){
+        err::fail_with_errno(e, "poll");
+        return;
+    }
+}
+

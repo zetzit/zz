@@ -22,7 +22,16 @@ export struct Err+ {
 };
 
 /// create a new error
-export fn make(Err+tail mut *self)
+export fn make(Err+tail mut new *self)
+    model checked(*self)
+{
+    memset(self, 0, sizeof(Err));
+    string::clear(&(self->trace));
+    static_attest(checked(*self));
+}
+
+/// ignore any previous errors and reset error state
+export fn ignore(Err+tail mut *self)
     model checked(*self)
 {
     memset(self, 0, sizeof(Err));

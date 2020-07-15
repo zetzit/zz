@@ -1,0 +1,192 @@
+using time;
+using string;
+using err;
+using slice;
+using <stdio.h>::{printf};
+using log;
+
+
+inline using "os.h" as os;
+using unix;
+using poll;
+
+export symbol NotImplemented;
+export symbol Timeout;
+
+export enum Ready {
+    Read,
+    Write,
+}
+
+export enum Result {
+    Ready,
+    Later,
+    Error,
+    Eof,
+}
+
+// ---
+
+/// the eventloop driver
+export struct Driver+ {
+    os::Driver  driver;
+    os::Tail    tail[];
+}
+
+/// construct a default eventloop driver
+export fn system(Driver+tailsize mut new * self)
+if #(os::ZZ_ASYNC_POLL)
+{
+    poll::make(self);
+}
+
+/// wait for events to happen.
+///
+/// blocks the current thread until either an event happened or a deadline expired
+export fn wait(Driver mut * self, err::Err+et mut* e)
+    where err::checked(*e)
+if #(os::ZZ_ASYNC_POLL)
+{
+    poll::wait(self, e);
+}
+
+/// wait must have returned before this tick
+///
+/// note that this is system tick time. i.e. time::tick(), not human time
+/// if you need a timer, prefer using async::tick() instead
+export fn deadline(Driver mut * self, u64 deadline_at_ticks)
+if #(os::ZZ_ASYNC_POLL)
+{
+    poll::deadline(self, deadline_at_ticks);
+}
+
+
+
+// ---
+
+/// Tick state
+///
+/// An interval timer that expires at fixed intervals
+/// does not need to be cleaned up, it's just state for async::expired
+export struct Tick {
+    bool        isvalid;
+    Driver mut* driver;
+    time::Time  interval;
+    u64         expires;
+}
+
+/// create a new Tick that expires every interval
+///
+/// does nothing unless you call async::expired
+export fn tick(Tick mut new * self,  Driver mut * driver, time::Time interval)
+{
+    os::memset(self, 0, sizeof(Tick));
+    self->driver    = driver;
+    self->isvalid   = true;
+    self->interval  = interval;
+
+    time::Time now  = time::tick();
+    self->expires = now.to_millis() + self->interval.to_millis();
+}
+
+/// check if tick has expired
+///
+/// also ensures that the eventloop will wake up when this timer expires
+export fn expired(Tick mut *self) -> bool {
+
+    static_attest(safe(self->driver));
+
+    time::Time now  = time::tick();
+    u64 now_m = now.to_millis();
+
+    if now_m >= self->expires  {
+        self->expires = now_m + self->interval.to_millis();
+        deadline(self->driver, self->expires);
+        return true;
+    } else {
+        deadline(self->driver, self->expires);
+        return false;
+    }
+}
+
+
+
+// ---
+
+
+/// Io state that can be used with read/write
+///
+/// must call close() to cleanup, as it holds system resources
+export struct Io {
+    bool        isvalid;
+    Driver mut* driver;
+    os::Io      io;
+}
+
+/// create an async io from stdin
+export fn stdin(Io new mut *self, err::Err+et mut* e, Driver mut * driver)
+    where err::checked(*e)
+if #(os::ZZ_ASYNC_UNIX)
+{
+    os::memset(self, 0, sizeof(Io));
+    self->driver  = driver;
+    self->isvalid = true;
+    unsafe{ self->io.fd = os::fileno(os::stdin); }
+    unix::make_read_async(self, e);
+}
+
+/// check if io holds a valid resource
+export fn valid(Io *self) -> bool {
+    return self->isvalid;
+}
+
+/// cleanup io and release system resources
+export fn close(Io mut* self, err::Err+et mut* e)
+    if #(os::ZZ_ASYNC_UNIX)
+{
+    if !self->isvalid {
+        return;
+    }
+    if unsafe<int>(os::close(self->io.fd)) != 0 {
+        err::fail_with_errno(e, "close");
+    }
+    self->isvalid = false;
+
+    //TODO unselect from driver
+}
+
+/// read immediately available data from io and append to slice
+export fn read(Io mut* self, err::Err+et mut* e, slice::MutSlice mut * slice) -> Result
+    where err::checked(*e)
+{
+    usize mut l = slice->slice.size - slice->at;
+    static_attest(slice->at < len(slice->slice.mem));
+    u8 mut* mem = (u8 mut*)slice->slice.mem + slice->at;
+    static_attest(safe(mem));
+    let r = self->read_bytes(e, mem, &l);
+    slice->at = l;
+    return r;
+}
+
+/// read immediately available data from io into raw byte array
+export fn read_bytes(Io mut* self, err::Err+et mut* e, u8 mut* mem, usize mut *size) -> Result
+    where err::checked(*e)
+    where *size >= len(mem)
+    model *size <= len(mem)
+    if #(os::ZZ_ASYNC_UNIX && os::ZZ_ASYNC_POLL)
+{
+    static_attest(safe(self->driver));
+    poll::wake(self->driver, e, unsafe<int>(self->io.fd), unsafe<int>(os::POLLIN));
+    if err::check(e) { *size = 0; return Result::Error; }
+    return unix::read_bytes(self, e, mem, size);
+}
+
+/// read immediately available data from io and append to string
+export fn read_string(Io mut* self, err::Err+et mut* e, string::String+st mut* str) -> Result
+    where err::checked(*e)
+{
+    let mut sl = str->as_mut_slice();
+    let r = self->read(e, &sl);
+    str->len = sl.at;
+    return r;
+}
