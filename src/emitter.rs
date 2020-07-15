@@ -11,6 +11,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use super::project;
 
 #[derive(Serialize, Deserialize)]
 pub struct CFile {
@@ -29,7 +30,7 @@ pub struct Emitter {
     header: bool,
     inside_macro: bool,
     cur_loc: Option<ast::Location>,
-    casedir: String,
+    casedir: PathBuf,
     emit_as_extern: HashSet<Name>,
     symbols: HashSet<Name>,
     inside_constant_expr: bool,
@@ -41,6 +42,9 @@ pub fn outname(
     module: &Name,
     header: bool,
 ) -> (bool, String) {
+
+    let td = project::target_dir().join(stage.to_string());
+
     let mut cxx = false;
     if let Some(std) = &project.std {
         if std.contains("c++") {
@@ -52,16 +56,14 @@ pub fn outname(
     ns.remove(0);
     if header {
         (
-            cxx,
-            format!(
-                "target/include/zz/{}.h",
-                ns.join("_")
-            ),
+            (cxx, format!("{}/include/zz/{}.h",
+                          project::target_dir().to_string_lossy(),
+                          ns.join("_")))
         )
     } else if cxx {
-        (cxx, format!("target/{}/zz/{}.cpp", stage, ns.join("_")))
+        (cxx, format!("{}/{}.cpp", td.to_string_lossy(), ns.join("_")))
     } else {
-        (cxx, format!("target/{}/zz/{}.c", stage, ns.join("_")))
+        (cxx, format!("{}/{}.c", td.to_string_lossy(), ns.join("_")))
     }
 }
 
@@ -75,11 +77,10 @@ impl Emitter {
         let (cxx, p) = outname(project, &stage, &module.name, header);
         let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
-        let casedir = format!(
-            "target/{}/testcases/{}",
-            stage,
-            module.name.0[1..].join("_")
-        );
+        let casedir = project::target_dir()
+            .join(stage.to_string())
+            .join("testcases")
+            .join(module.name.0[1..].join("_"));
         std::fs::remove_dir_all(&casedir).ok();
         std::fs::create_dir_all(&casedir).unwrap();
 
@@ -560,12 +561,12 @@ impl Emitter {
         };
 
         let testname = Name::from(&ast.name).0.last().cloned().unwrap();
-        let dir = format!("{}/{}", self.casedir, testname);
+        let dir = self.casedir.join(testname);
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         for (fname, expr) in fields {
-            let p = format!("{}/{}", dir, fname);
-            let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
+            let p = dir.join(fname);
+            let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p.to_string_lossy()));
             match expr {
                 ast::Expression::LiteralString { v, .. } => {
                     let mut v = v.clone();

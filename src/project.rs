@@ -198,6 +198,34 @@ pub fn load_cwd() -> (PathBuf, Config) {
     load(&search)
 }
 
+pub fn target_dir() -> PathBuf {
+    match std::env::var("ZZ_TARGET_DIR") {
+        Ok(val) => {
+            PathBuf::from(val).join("target")
+        }
+        Err(_) => {
+            let mut search = std::env::current_dir().unwrap();
+            loop {
+                if !search.join("zz.toml").exists() {
+                    search = match search.parent() {
+                        Some(v) => v.into(),
+                        None => {
+                            error!(
+                                "error: could not find \"zz.toml\" in {:?} or any parent directory",
+                                std::env::current_dir().unwrap()
+                            );
+                            std::process::exit(9);
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+            search.join("target")
+        }
+    }
+}
+
 fn sanitize(s: &mut String) {
     *s = s
         .chars()

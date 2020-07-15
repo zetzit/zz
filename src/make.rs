@@ -47,12 +47,18 @@ impl Stage {
         }
     }
     pub fn test() -> Self {
+        let asan = if let Ok(v) = std::env::var("ZZ_ASAN") {
+            v.parse().unwrap()
+        } else {
+            true
+        };
+
         Stage {
             name: "test".to_string(),
             debug: true,
             optimize: None,
             lto: false,
-            asan: true,
+            asan,
             fuzz: false,
             pic: !cfg!(windows),
         }
@@ -69,12 +75,18 @@ impl Stage {
         }
     }
     pub fn fuzz() -> Self {
+        let asan = if let Ok(v) = std::env::var("ZZ_ASAN") {
+            v.parse().unwrap()
+        } else {
+            true
+        };
+
         Stage {
             name: "fuzz".to_string(),
             debug: true,
             optimize: None,
             lto: false,
-            asan: true,
+            asan,
             fuzz: true,
             pic: !cfg!(windows),
         }
@@ -105,6 +117,7 @@ pub struct Make {
     pub cxx: String,
     pub ar: String,
     pub cflags: Vec<String>,
+    pub cincludes: Vec<String>,
     pub lflags: Vec<String>,
     pub lobjs: Vec<String>,
     pub variant: String,
@@ -171,9 +184,9 @@ impl Make {
             user_lflags.extend(feature.lflags.clone());
         }
 
-        for cinc in cincludes {
+        for cinc in &cincludes {
             cflags.push("-I".into());
-            cflags.push(cinc);
+            cflags.push(cinc.clone());
         }
 
         for pkg in &pkgconfig {
@@ -228,6 +241,7 @@ impl Make {
             host_cc,
             cxx,
             host_cxx,
+            cincludes,
         };
 
         for c in cobjects {
@@ -283,7 +297,12 @@ impl Make {
             .to_string_lossy()
             .replace(|c: char| !c.is_alphanumeric(), "_");
         let outp = format!("{}_{:x}{:x}", outp, hash.0, hash.1);
-        let outp = format!("./target/{}/c/", self.stage) + &outp + ".o";
+        let outp = super::project::target_dir()
+            .join(self.stage.to_string())
+            .join("c")
+            .join(outp + ".o")
+            .to_string_lossy().to_string();
+
 
         args.push(outp.clone());
 
@@ -346,13 +365,12 @@ impl Make {
         hasher.write(&b);
         let hash = hasher.finish128();
 
-        let outp = format!(
-            "./target/{}/zz/{}_{:x}{:x}.o",
-            self.stage,
-            cf.name.0.join("_"),
-            hash.0,
-            hash.1
-        );
+        let outp = super::project::target_dir()
+            .join(self.stage.to_string())
+            .join("zz")
+            .join(format!("{}_{:x}{:x}.o", cf.name.0.join("_"), hash.0, hash.1))
+            .to_string_lossy().to_string()
+        ;
         args.push(outp.clone());
 
         self.steps.push(Step {
@@ -368,6 +386,8 @@ impl Make {
     pub fn link(self) {
         use rayon::prelude::*;
         use std::sync::{Arc, Mutex};
+
+        let td = super::project::target_dir();
 
         let needs_objects = match self.artifact.typ {
             super::project::ArtifactType::Exe
@@ -472,12 +492,19 @@ impl Make {
                 return;
             }
             super::project::ArtifactType::Staticlib => {
-                std::fs::create_dir_all(format!("./target/{}/lib/", self.stage))
+                std::fs::create_dir_all(td
+                    .join(self.stage.to_string())
+                    .join("lib"))
                     .expect("create target dir");
+
                 cmd = self.ar.clone();
                 args = vec![
                     "rcs".to_string(),
-                    format!("./target/{}/lib/lib{}.a", self.stage, self.artifact.name),
+                    td
+                        .join(self.stage.to_string())
+                        .join("lib")
+                        .join(format!("lib{}.a", self.artifact.name))
+                        .to_string_lossy().to_string()
                 ];
                 args.extend_from_slice(&self.lobjs);
 
@@ -502,19 +529,24 @@ impl Make {
                     args.push("-fPIC".into());
                 }
 
-                std::fs::create_dir_all(format!("./target/{}/lib/", self.stage))
+                std::fs::create_dir_all(td
+                    .join(self.stage.to_string())
+                    .join("lib"))
                     .expect("create target dir");
+
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-shared".into());
                 args.push("-o".into());
-                args.push(format!(
-                    "./target/{}/lib/lib{}.so",
-                    self.stage, self.artifact.name
-                ));
+                args.push(td
+                          .join(self.stage.to_string())
+                          .join("lib")
+                          .join(format!("lib{}.so", self.artifact.name))
+                          .to_string_lossy().to_string()
+                );
             }
             super::project::ArtifactType::Macro => {
-                std::fs::create_dir_all(format!("./target/macro/")).expect("create target dir");
+                std::fs::create_dir_all(td.join("macro")).expect("create target dir");
                 cmd = self.host_cc.clone();
                 args.extend_from_slice(&self.lobjs);
                 if self.stage.asan {
@@ -522,7 +554,10 @@ impl Make {
                     args.push("-fsanitize=undefined".into());
                 }
                 args.push("-o".into());
-                args.push(format!("./target/macro/{}{}", self.artifact.name, EXE_EXT));
+                args.push(td.join("macro")
+                    .join(format!("{}{}", self.artifact.name, EXE_EXT))
+                    .to_string_lossy().to_string()
+                );
             }
             super::project::ArtifactType::Exe => {
                 args.push("-fvisibility=hidden".into());
@@ -536,29 +571,33 @@ impl Make {
                     args.push("-fPIC".into());
                 }
 
-                std::fs::create_dir_all(format!("./target/{}/bin/", self.stage))
+                std::fs::create_dir_all(td.join(self.stage.to_string()).join("bin"))
                     .expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!(
-                    "./target/{}/bin/{}{}",
-                    self.stage, self.artifact.name, EXE_EXT
-                ));
+                args.push(td
+                    .join(self.stage.to_string())
+                    .join("bin")
+                    .join(format!("{}{}", self.artifact.name , EXE_EXT))
+                    .to_string_lossy().to_string()
+                );
             }
             super::project::ArtifactType::Test => {
                 if self.stage.pic {
                     args.push("-fPIC".into());
                 }
-                std::fs::create_dir_all(format!("./target/{}/bin/", self.stage))
+                std::fs::create_dir_all(td.join(self.stage.to_string()).join("bin"))
                     .expect("create target dir");
                 args.extend_from_slice(&self.lobjs);
                 args.extend_from_slice(&self.lflags);
                 args.push("-o".into());
-                args.push(format!(
-                    "./target/{}/bin/{}{}",
-                    self.stage, self.artifact.name, EXE_EXT
-                ));
+                args.push(td
+                    .join(self.stage.to_string())
+                    .join("bin")
+                    .join(format!("{}{}", self.artifact.name , EXE_EXT))
+                    .to_string_lossy().to_string()
+                );
             }
         }
 

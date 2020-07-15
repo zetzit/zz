@@ -959,8 +959,9 @@ impl Solver {
             panic!("z3 or yices-smt2 required in PATH")
         };
 
-        std::fs::create_dir_all("./target/ssa/").unwrap();
-        let outfile = format!("./target/ssa/{}.smt2", module_name);
+        let td = super::project::target_dir().join("ssa");
+        std::fs::create_dir_all(&td).unwrap();
+        let outfile = format!("{}/{}.smt2", td.to_string_lossy(), module_name);
 
         let mut solver = rsmt2::Solver::new(conf, Rsmt2Junk).unwrap();
         solver.path_tee(outfile).unwrap();

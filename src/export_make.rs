@@ -10,6 +10,10 @@ pub fn export(make: Make) {
     let p = pdir.join("Makefile.include");
     let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
 
+
+
+
+
     write!(
         f,
         r#"
@@ -33,4 +37,13 @@ pub fn export(make: Make) {
     }
 
     write!(f, "\n").unwrap();
+
+
+    write!(f, "{an}_CINCLUDES += ${{{an}_SOURCE_DIR}} \\\n", an = make.artifact.name).unwrap();
+    for ss in &make.cincludes{
+        write!(f, "  ${{{an}_SOURCE_DIR}}/{ss}\\\n", an = make.artifact.name, ss = ss).unwrap();
+    }
+    write!(f, "\n").unwrap();
+
+
 }

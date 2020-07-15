@@ -177,9 +177,9 @@ fn main() {
             zz::project::init();
         }
         ("clean", Some(_submatches)) => {
-            let (root, _) = zz::project::load_cwd();
-            if root.join("target").exists() {
-                std::fs::remove_dir_all(root.join("target")).unwrap();
+            let td = zz::project::target_dir();
+            if td.exists() {
+                std::fs::remove_dir_all(td).unwrap();
             }
         }
         ("test", Some(submatches)) | ("bench", Some(submatches)) => {
@@ -200,8 +200,7 @@ fn main() {
                         }
                     }
 
-                    let casedir = root
-                        .join("target")
+                    let casedir = zz::project::target_dir()
                         .join(stage.to_string())
                         .join("testcases")
                         .join(format!("{}", artifact.main.replace("::", "_")));
@@ -268,8 +267,7 @@ fn main() {
                     }
 
                     for case in &cases {
-                        let running = root
-                            .join("target")
+                        let running = zz::project::target_dir()
                             .join(stage.to_string())
                             .join("bin")
                             .join(&artifact.name);
@@ -377,8 +375,7 @@ fn main() {
                 std::process::exit(9);
             }
 
-            let running = root
-                .join("target")
+            let running = zz::project::target_dir()
                 .join(stage.to_string())
                 .join("bin")
                 .join(&exes[0].name);
@@ -428,8 +425,7 @@ fn main() {
             }
 
             let indir = tempdir::TempDir::new("zzfuzz").unwrap();
-            let casedir = root
-                .join("target")
+            let casedir = zz::project::target_dir()
                 .join(stage.to_string())
                 .join("testcases")
                 .join(format!("{}", exes[0].1.replace("::", "_")));
@@ -458,7 +454,7 @@ fn main() {
                 std::process::exit(1);
             }
 
-            let outdir = root.join("target").join(stage.to_string()).join(&exes[0].1);
+            let outdir = zz::project::target_dir().join(stage.to_string()).join(&exes[0].1);
             std::fs::create_dir_all(&outdir).unwrap();
 
             println!("fuzzer output in {}", outdir.to_string_lossy());
@@ -470,7 +466,7 @@ fn main() {
                 .arg("-o")
                 .arg(&outdir)
                 .arg(
-                    root.join("target")
+                    zz::project::target_dir()
                         .join(stage.to_string())
                         .join("bin")
                         .join(&exes[0].0),

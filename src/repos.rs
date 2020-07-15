@@ -17,12 +17,13 @@ pub struct Index {
 }
 
 pub fn index(project: &project::Config) -> HashSet<PathBuf> {
-    let cachepath = Path::new("target").join("repos").join("index");
+    let td = super::project::target_dir();
+    let cachepath = td.join("repos").join("index");
     let index = if let Some(index) = cache("zz.toml", &cachepath) {
         index
     } else {
         let mut index = Index::default();
-        std::fs::create_dir_all(Path::new("target").join("repos"))
+        std::fs::create_dir_all(td.join("repos"))
             .expect("cannot create target/repos");
         for (name, surl) in &project.repos {
             let url = match url::Url::parse(surl) {
@@ -45,7 +46,7 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                     ));
                 }
                 "git" | "git+ssh" => {
-                    let np = Path::new("target").join("repos").join(name);
+                    let np = td.join("repos").join(name);
                     if np.exists() {
                         std::fs::remove_dir_all(&np).expect(&format!("cannot remove {:?}", np));
                     }
@@ -66,7 +67,7 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                             );
                         }
 
-                        let npx = Path::new("target").join("repos").join("___").join(name.clone());
+                        let npx = td.join("repos").join("___").join(name.clone());
                         if npx.exists() {
                             std::fs::remove_dir_all(&npx)
                                 .expect(&format!("cannot remove {:?}", npx));
@@ -122,10 +123,10 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                 searchpaths.insert(path.canonicalize().unwrap_or(path));
             }
             _ => {
-                let path = Path::new("target").join("repos").join("___");
+                let path = td.join("repos").join("___");
                 searchpaths.insert(path.canonicalize().unwrap_or(path));
 
-                let path = Path::new("target").join("repos").join(name).join("modules");
+                let path = td.join("repos").join(name).join("modules");
                 searchpaths.insert(path.canonicalize().unwrap_or(path));
             }
         }

@@ -8,6 +8,8 @@
     #endif
     #include <time.h>
 
+    #define zz__clock_gettime clock_gettime
+
 #elif defined(_WIN32)
 
     #define WIN32_LEAN_AND_MEAN
@@ -25,7 +27,7 @@
     #define CLOCK_MONOTONIC 1
     #define CLOCK_REALTIME  2
 
-    static inline int clock_gettime_monotonic(struct timespec *tv)
+    static inline int zz__clock_gettime_monotonic(struct timespec *tv)
     {
         static LARGE_INTEGER ticksPerSec;
         LARGE_INTEGER ticks;
@@ -48,7 +50,7 @@
         return 0;
     }
 
-    static inline int clock_gettime_realtime(struct timespec *tv)
+    static inline int zz__clock_gettime_realtime(struct timespec *tv)
     {
         FILETIME ft;
         ULARGE_INTEGER hnsTime;
@@ -68,15 +70,15 @@
         return 0;
     }
 
-    static inline int clock_gettime(int type, struct timespec *tp)
+    static inline int zz__clock_gettime(int type, struct timespec *tp)
     {
         if (type == CLOCK_MONOTONIC)
         {
-            return clock_gettime_monotonic(tp);
+            return zz__clock_gettime_monotonic(tp);
         }
         else if (type == CLOCK_REALTIME)
         {
-            return clock_gettime_realtime(tp);
+            return zz__clock_gettime_realtime(tp);
         }
 
         errno = ENOTSUP;
@@ -88,7 +90,7 @@
 #if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
     static int os_time_tick(uint64_t *secs, uint64_t* nanos) {
         struct timespec tt;
-        int r = clock_gettime(CLOCK_MONOTONIC, &tt);
+        int r = zz__clock_gettime(CLOCK_MONOTONIC, &tt);
         if (r != 0) {
             return r;
         }
@@ -100,7 +102,7 @@
 
     static int os_time_real(uint64_t *secs, uint64_t* nanos) {
         struct timespec tt;
-        int r = clock_gettime(CLOCK_REALTIME, &tt);
+        int r = zz__clock_gettime(CLOCK_REALTIME, &tt);
         if (r != 0) {
             return r;
         }

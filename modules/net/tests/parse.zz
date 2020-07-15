@@ -1,0 +1,137 @@
+using <stdio.h>::{printf, stdin};
+using net::address;
+using buffer;
+using err;
+
+
+test {
+    stdin  =  "127.0.0.1:8083"
+    stdout == "127.0.0.1:8083"
+}
+
+test {
+    stdin  =  "127.0.0.1"
+    stdout == "127.0.0.1:0"
+}
+
+test {
+    stdin  =  "255.255.255.255:65535"
+    stdout == "255.255.255.255:65535"
+}
+
+test {
+    stdin  =  "255.255.255.255:65535123123"
+    exit   =  3
+}
+
+test t5 {
+    stdin  =  "355.255.255.255:12"
+    exit   =  3
+}
+
+test {
+    stdin  =  "1.1.1.1.1"
+    exit   =  3
+}
+
+test {
+    stdin  =  "1.1.1"
+    exit   =  3
+}
+
+test {
+    stdin  =  ""
+    exit   =  3
+}
+
+test {
+    stdin  =  "1.1.1.1::22"
+    exit   =  3
+}
+
+test {
+    stdin  =  "bob1.1.1.1:22"
+    exit   =  3
+}
+
+test {
+    stdin  =  "192.168.11.1"
+    stdout =  "192.168.11.1:0"
+}
+
+test {
+    stdin =  "[2001:4860:4860::8888]:9000"
+    stdout = "[2001:4860:4860::8888]:9000"
+}
+
+
+test {
+    stdin =  "[2001:4860:4860:0:0:0:0:8888]:9000"
+    stdout = "[2001:4860:4860::8888]:9000"
+}
+
+test {
+    stdin =  "[::]:9000"
+    stdout = "[::]:9000"
+}
+
+test {
+    stdin =  "[10f::]:9000"
+    stdout = "[10f::]:9000"
+}
+
+test {
+    stdin =  "[::10f]:9000"
+    stdout = "[::10f]:9000"
+}
+
+test {
+    stdin =  "[::4860:4860:0:0:0:0:8888]:9000"
+    stdout = "[0:4860:4860::8888]:9000"
+}
+
+test {
+    stdin =  "[::10f::]:9000"
+    exit   =  3
+}
+
+test maxv6 {
+    stdin =  "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:65535"
+    stdout =  "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:65535"
+}
+
+test {
+    stdin =  "[ffff:ffff:effff:ffff:ffff:ffff:ffff:ffff]:65535"
+    exit   =  3
+}
+
+test {
+    stdin =  "::10f"
+    stdout = "::10f"
+}
+
+test {
+    stdin =  "::"
+    stdout = "::"
+}
+
+test {
+    stdin =  "100::100"
+    stdout = "100::100"
+}
+export fn main() -> int {
+    new+100 sin = buffer::make();
+    buffer::fgets(&sin, stdin);
+
+    new sa = address::from_buffer(&sin);
+    if !sa.valid() {
+        return 3;
+    }
+
+    new+100 sout = buffer::make();
+    sa.to_buffer(&sout);
+
+    printf("%.*s", (int)sout.at, sout.mem);
+
+    return 0;
+}
