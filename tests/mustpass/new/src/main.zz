@@ -36,6 +36,11 @@ export fn get(A mut *self) -> int
     return self->f;
 }
 
+export fn convert(B+t mut * self, A mut new *that)
+{
+}
+
+
 export fn main() -> int {
 
     new a = null();
@@ -45,6 +50,7 @@ export fn main() -> int {
 
 
     new+100 b = none();
+    new x = convert(&b);
 
     return 0;
 }

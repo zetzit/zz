@@ -12,7 +12,7 @@ fn add_impl(int a, int b) -> int {
     return a+b;
 }
 
-fn nu(Math mut *self, AdderFn add)
+fn nu(Math mut new * self, AdderFn add)
     where safe(self)
     where safe(add)
     model safe(self->add)

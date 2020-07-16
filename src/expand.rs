@@ -634,39 +634,66 @@ impl Stack {
                             ..
                         } = assign
                         {
+                            let mut nuargpos = None;
+
+                            let mut fname = fname.clone();
+                            self.expand_expr(&mut fname)?;
+
+
                             if let ast::Expression::Name(ftyped) = fname.as_ref() {
                                 if let ast::Type::Other(n) = &ftyped.t {
                                     if let Some(ast::Def::Function { args, .. }) = self.defs.get(n)
                                     {
-                                        if args.len() < 1 {
-                                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
-                                                (loc.clone(), "first function argument must be self ptr".to_string()),
-                                            ]));
-                                        }
-                                        let arg = args.first().unwrap();
-                                        if arg.name != "self" {
-                                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
-                                                (loc.clone(), "first function argument must be self".to_string()),
-                                            ]));
-                                        }
-                                        if arg.typed.ptr.len() != 1 {
-                                            return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
-                                                (loc.clone(), "first function argument must be self ptr".to_string()),
-                                            ]));
-                                        }
-                                        let tail = typed.tail.clone();
-                                        *typed = arg.typed.clone();
-                                        typed.ptr = Vec::new();
-
-                                        if let ast::Type::Other(tn) = &typed.t {
-                                            if let ast::Tail::Static(f, tvloc) = &tail {
-                                                self.moretypevariants
-                                                    .entry(tn.clone())
-                                                    .or_insert(HashMap::new())
-                                                    .insert(*f, tvloc.clone());
+                                        for (n, arg) in args.iter().enumerate() {
+                                            if let Some(v) = arg.tags.get("new") {
+                                                for (_,v) in v {
+                                                    return Err(Error::new(format!("invalid use of new tag"), vec![
+                                                                          (v.clone(), "a local scope variable cannot be \"new\". you probably wanted the tag on the pointer".to_string()),
+                                                    ]));
+                                                }
                                             }
+
+                                            if arg.typed.ptr.len() < 1 {
+                                                continue
+                                            }
+
+                                            if !arg.typed.ptr[0].tags.contains("new") {
+                                                continue;
+                                            }
+
+                                            if ! (n == args.len() - 1 || n == 0) {
+                                                return Err(Error::new(format!("new must be first or last argument"), vec![
+                                                    (arg.loc.clone(), "cannot insert new into the middle or arglist".to_string()),
+                                                ]));
+                                            }
+
+                                            if nuargpos.is_some() {
+                                                return Err(Error::new(format!("only one argument can be new"), vec![
+                                                    (arg.loc.clone(), "second new argument".to_string()),
+                                                ]));
+                                            }
+
+                                            if arg.typed.ptr.len() != 1 {
+                                                return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                                    (loc.clone(), "incorrect new argument pointer length".to_string()),
+                                                ]));
+                                            }
+                                            let tail = typed.tail.clone();
+                                            *typed = arg.typed.clone();
+                                            typed.ptr = Vec::new();
+
+                                            if let ast::Type::Other(tn) = &typed.t {
+                                                if let ast::Tail::Static(f, tvloc) = &tail {
+                                                    self.moretypevariants
+                                                        .entry(tn.clone())
+                                                        .or_insert(HashMap::new())
+                                                        .insert(*f, tvloc.clone());
+                                                }
+                                            }
+                                            typed.tail = tail;
+                                            nuargpos = Some(n);
                                         }
-                                        typed.tail = tail;
+
                                     } else {
                                         return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
                                             (loc.clone(), "this new statement is invalid".to_string()),
@@ -679,23 +706,31 @@ impl Stack {
                                 }
                             } else {
                                 return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
-                                    (loc.clone(), "this new statement is uninitialized".to_string()),
+                                    (loc.clone(), format!("this new statement is {:?}", fname)),
                                 ]));
                             }
 
-                            args.insert(
-                                0,
-                                Box::new(ast::Expression::UnaryPre {
+                            if nuargpos.is_none() {
+                                return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
+                                    (loc.clone(), "function has no argument with a \"new\" pointer".to_string()),
+                                ]));
+                            }
+
+                            let nua = Box::new(ast::Expression::UnaryPre {
+                                loc: loc.clone(),
+                                op: ast::PrefixOperator::AddressOf,
+                                expr: Box::new(ast::Expression::Name(ast::Typed {
+                                    t: ast::Type::Other(Name::from(name.as_str())),
+                                    ptr: Vec::new(),
+                                    tail: ast::Tail::None,
                                     loc: loc.clone(),
-                                    op: ast::PrefixOperator::AddressOf,
-                                    expr: Box::new(ast::Expression::Name(ast::Typed {
-                                        t: ast::Type::Other(Name::from(name.as_str())),
-                                        ptr: Vec::new(),
-                                        tail: ast::Tail::None,
-                                        loc: loc.clone(),
-                                    })),
-                                }),
-                            );
+                                })),
+                            });
+                            if nuargpos.unwrap() == 0 {
+                                args.insert(0, nua);
+                            } else {
+                                args.push(nua);
+                            }
                         } else {
                             return Err(Error::new(format!("new stack initialization requires function call to constructor"), vec![
                                 (loc.clone(), "this new statement is invalid".to_string()),

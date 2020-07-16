@@ -22,7 +22,7 @@ export struct Err+ {
 };
 
 /// create a new error
-export fn make(Err+tail mut *self)
+export fn make(Err+tail mut new*self)
     model checked(*self)
 {
     memset(self, 0, sizeof(Err));
