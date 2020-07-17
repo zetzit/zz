@@ -1030,7 +1030,7 @@ pub fn abs(
                 abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
                 scope.pop();
             }
-            ast::Def::Theory { ret, args, .. } => {
+            ast::Def::Theory { ret, args, body, .. } => {
                 if let Some(ret) = ret {
                     scope.abs(&mut ret.typed, false);
                     if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
@@ -1043,6 +1043,9 @@ pub fn abs(
                     if let ast::Type::Other(ref mut name) = &mut arg.typed.t {
                         check_abs_available(name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
                     }
+                }
+                if let Some(body) = body {
+                    abs_expr(body, &scope, true, all_modules, &md.name);
                 }
             }
             ast::Def::Struct { fields, .. } => {

@@ -1,4 +1,4 @@
-using string;
+using buffer;
 using <stdio.h>::{printf, stdin};
 
 
@@ -19,11 +19,11 @@ test limiter {
 }
 
 pub fn main() -> int {
-    string::String+10 mut s = {0};
-    string::clear(&s);
-    if !string::fgets(&s, stdin) {
+    buffer::Buffer+10 mut s = {0};
+    buffer::clear(&s);
+    if !buffer::fgets(&s, stdin) {
         return 2;
     }
-    printf("%.*s", (int)s.len, s.mem);
+    printf("%.*s", (int)s.at, s.mem);
     return 0;
 }

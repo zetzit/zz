@@ -1,4 +1,4 @@
-using string;
+using buffer;
 using <stdio.h>::{printf, stdin};
 
 
@@ -30,17 +30,17 @@ test test5 {
 
 export fn main() -> int {
 
-    string::String+100 mut a;
-    string::clear(&a);
-    string::fgets(&a, stdin);
+    buffer::Buffer+100 mut a;
+    buffer::clear(&a);
+    buffer::fgets(&a, stdin);
 
 
     usize mut iterator = 0;
-    string::String+100 mut part;
-    string::clear(&part);
-    while (string::split(&a, ':', &iterator, &part)) {
-        printf(">%.*s<\n", (int)part.len, part.mem);
-        string::clear(&part);
+    buffer::Buffer+100 mut part;
+    buffer::clear(&part);
+    while (buffer::split(&a, ':', &iterator, &part)) {
+        printf(">%.*s<\n", (int)part.at, part.mem);
+        buffer::clear(&part);
     }
 
     return 0;

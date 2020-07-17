@@ -3,8 +3,8 @@ using <string.h>::{memset, strncat, strlen};
 using <errno.h>::{errno, strerror};
 using <stdlib.h>::{abort as cabort};
 using <stdarg.h>::{va_list, va_start, va_end};
-using string::{String};
-using string;
+using buffer::{Buffer};
+using buffer;
 using log;
 using symbols;
 
@@ -18,15 +18,17 @@ export symbol NotImplemented;
 export struct Err+ {
     usize   mut error;
     int     mut system;
-    String+ mut trace;
+    Buffer+ mut trace;
 };
+
 
 /// create a new error
 export fn make(Err+tail mut new*self)
-    model checked(*self)
+    where   tail > 0
+    model   checked(*self)
 {
     memset(self, 0, sizeof(Err));
-    string::clear(&(self->trace));
+    buffer::clear(&self->trace);
     static_attest(checked(*self));
 }
 
@@ -39,7 +41,7 @@ export  fn check(
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
 ) -> bool
-model return == true || checked(*self)
+    model   return == true || checked(*self)
 {
     if (self->error != 0) {
         backtrace(self, file, scope, line);
@@ -51,7 +53,7 @@ model return == true || checked(*self)
 
 export fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line)
 {
-    static_attest((self->trace).len < tail);
+    static_attest(buffer::integrity(&self->trace, tail));
     self->trace.format("  - %s:%zu \t%s\n", file, line, scope);
 }
 
@@ -63,19 +65,21 @@ export fn fail_with_errno(
         char*  fmt,
         ...
 )
-    model checked(*self)
+    where   nullterm(fmt)
+    model   checked(*self)
 {
+    static_attest(buffer::integrity(&self->trace, tail));
     self->error  = SystemError;
     self->system = (int)errno;
 
-    if tail > 2 && self->trace.len > 0 {
+    if tail > 2 && self->trace.at > 0 {
         self->trace.push('\n');
     }
     self->trace.format("%s : ", strerror(errno));
 
     va_list mut vargs;
     va_start(vargs, fmt);
-    static_attest((self->trace).len < tail);
+    static_attest((self->trace).at < tail);
     self->trace.vformat(fmt, vargs);
     va_end(vargs);
 
@@ -93,14 +97,14 @@ export fn fail(
         char*  fmt,
         ...
 )
-    where symbol(e)
-    model checked(*self)
+    where   nullterm(fmt)
+    where   symbol(e)
+    model   checked(*self)
 {
-    static_attest((self->trace).len < tail);
-
+    static_attest(buffer::integrity(&self->trace, tail));
     self->error = e;
 
-    if tail > 2 && self->trace.len > 0 {
+    if tail > 2 && self->trace.at > 0 {
         self->trace.push('\n');
     }
     if symbols::nameof_checked(self->error) == 0 {
@@ -125,7 +129,7 @@ export fn abort(
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
 )
-model checked(*self)
+    model   checked(*self)
 {
     if (self->error != 0) {
         static_attest(checked(*self));
@@ -138,22 +142,25 @@ model checked(*self)
     static_attest(checked(*self));
 }
 
-export fn elog(Err+tail mut* self)
+export fn elog(Err+tail * self)
 {
+    static_attest(buffer::integrity(&self->trace, tail));
     log::error("%s\n", self->trace.cstr());
 }
 
-export fn eprintf(Err+tail mut* self, FILE mut * unsafe out)
+export fn eprintf(Err+tail * self, FILE mut * unsafe out)
 {
+    static_attest(buffer::integrity(&self->trace, tail));
     fprintf(out, "%s\n", self->trace.cstr());
 }
 
 export fn to_str(
-    Err * self,
+    Err+et * self,
     char mut *dest,
     usize dest_len,
 )
 {
+    static_attest(buffer::integrity(&self->trace, et));
     snprintf(dest, dest_len, "%s\n", self->trace.cstr());
 }
 

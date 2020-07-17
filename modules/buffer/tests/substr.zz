@@ -1,4 +1,4 @@
-using string;
+using buffer;
 using <stdio.h>::{printf, stdin};
 using <stdlib.h>::{free, atoi};
 inline using "native.h"::{getline};
@@ -41,8 +41,8 @@ test t7{
 
 
 export fn main() -> int {
-    string::String+20 mut sub;
-    string::clear(&sub);
+    buffer::Buffer+20 mut sub;
+    buffer::clear(&sub);
 
     char mut * mut line = 0;
     usize mut l = 0;
@@ -50,17 +50,17 @@ export fn main() -> int {
     if nread < 1 { return 1; }
     static_attest(safe(line));
     static_attest(len(line) >= (usize)nread);
-    string::append_bytes(&sub, (u8*)line, (usize)nread -1);
+    buffer::append_bytes(&sub, (u8*)line, (usize)nread -1);
 
 
-    string::String+20 mut s;
-    string::clear(&s);
+    buffer::Buffer+20 mut s;
+    buffer::clear(&s);
 
     nread = as<int>(getline(&line, &l, stdin));
     if nread < 1 { return 1; }
     static_attest(safe(line));
     static_attest(len(line) >= (usize)nread);
-    string::append_bytes(&s, (u8*)line, (usize)nread -1);
+    buffer::append_bytes(&s, (u8*)line, (usize)nread -1);
 
 
     nread = as<int>(getline(&line, &l, stdin));
@@ -81,9 +81,9 @@ export fn main() -> int {
     free(line);
 
 
-    string::substr(&s, (usize)start, (usize)size, &sub);
+    buffer::substr(&s, (usize)start, (usize)size, &sub);
 
 
-    printf("%.*s", sub.len, sub.mem);
+    printf("%.*s", sub.at, sub.mem);
     return 0;
 }

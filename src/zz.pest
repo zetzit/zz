@@ -104,8 +104,9 @@ ret_arg     = {"->" ~ anon_type }
 call_assert = {"where" ~ expr }
 call_effect = {"model" ~ expr }
 function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( macrocall | call_assert | call_effect)* ~ gblock }
-closure     = { ( exported | key_shared)? ~ fn_attr* ~ "closure" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
-theory      = { ( exported | key_shared)? ~ "theory" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";" }
+closure     = { ( exported | key_shared)? ~ fn_attr* ~ "closure" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ";"? }
+theory      = { ( exported | key_shared)? ~ "theory" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ theory_impl? ~ ";"? }
+theory_impl = { "(" ~ expr ~ ")" }
 
 
 enum_i      = { ident ~ ( "=" ~ int_literal)? }

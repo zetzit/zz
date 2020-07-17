@@ -1,9 +1,8 @@
 using <stdio.h>::{printf, fread, stdin, stderr};
 using <stdlib.h>::{atoi};
-using <string.h>::{strcmp, memset};
+using <buffer.h>::{strcmp, memset};
 using err;
-using string::{String};
-using string;
+using buffer;
 using json;
 
 
@@ -115,7 +114,7 @@ fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, 
             }
         }
         json::ValueType::String => {
-            printf("%s : %s\n", k, v.string);
+            printf("%s : %s\n", k, v.buffer);
         }
         json::ValueType::Integer => {
             printf("%s : %d\n", k, v.integer);

@@ -1,0 +1,9 @@
+using buffer;
+using slice;
+
+pub fn main() -> int{
+    new+10 mut b = buffer::make();
+    let mut sl = b.as_mut_slice();
+    sl.push(2);
+    return 0;
+}

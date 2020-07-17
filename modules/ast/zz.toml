@@ -14,4 +14,4 @@ default = []
 err     = "1"
 json    = "1"
 pool    = "1"
-string  = "1"
+buffer  = "1"

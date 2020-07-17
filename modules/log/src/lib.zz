@@ -1,5 +1,5 @@
 using <stdarg.h>::{va_list, va_start, va_end};
-using string;
+using buffer;
 
 inline using "os.h"::{
     os_zz_log_error,
@@ -30,17 +30,17 @@ fn log_level() -> LogLevel {
         if e != 0 {
             static_attest(safe(e));
             static_attest(nullterm(e));
-            if string::cstr_eq(e, "info") {
+            if buffer::cstr_eq(e, "info") {
                 s_log_level = LogLevel::Info;
-            } else if string::cstr_eq(e, "info") {
+            } else if buffer::cstr_eq(e, "info") {
                 s_log_level = LogLevel::Info;
-            } else if string::cstr_eq(e, "err") {
+            } else if buffer::cstr_eq(e, "err") {
                 s_log_level = LogLevel::Error;
-            } else if string::cstr_eq(e, "error") {
+            } else if buffer::cstr_eq(e, "error") {
                 s_log_level = LogLevel::Error;
-            } else if string::cstr_eq(e, "debug") {
+            } else if buffer::cstr_eq(e, "debug") {
                 s_log_level = LogLevel::Debug;
-            } else if string::cstr_eq(e, "none") {
+            } else if buffer::cstr_eq(e, "none") {
                 s_log_level = LogLevel::None;
             }
         }

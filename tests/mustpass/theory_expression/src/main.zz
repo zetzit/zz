@@ -1,0 +1,23 @@
+const int MAX = 10;
+
+pub theory small(int mut *a) -> bool
+(
+    *a < MAX && *a != 0
+)
+
+
+fn buh(int mut *x)
+    where small(x)
+{
+    static_assert(*x < 999);
+}
+
+export fn main() -> int {
+
+    int mut a = 3;
+    static_assert(small(&a));
+
+    buh(&a);
+
+    return 0;
+}

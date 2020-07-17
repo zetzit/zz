@@ -1,6 +1,6 @@
 [project]
 version = "0.1.0"
-name = "log"
+name = "integrity"
 cincludes = []
 cobjects = []
 pkgconfig = []
@@ -11,4 +11,5 @@ lflags = []
 default = []
 
 [dependencies]
-buffer = "1"
+
+[repos]

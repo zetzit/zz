@@ -1,0 +1,32 @@
+using buffer;
+using <stdio.h>::{printf, stdin};
+using <stdlib.h>::{free};
+inline using "native.h"::{getline};
+
+
+test from{
+    stdin  = "hello world\n"
+    stdout = "hello world\nhello world\nhello world\n"
+}
+
+export fn main() -> int {
+    char mut * mut line = 0;
+    usize mut l = 0;
+    int nread = as<int>(getline(&line, &l, stdin));
+    if nread < 1 {
+        free(line);
+    } else {
+        static_attest(safe(line));
+        static_attest(nullterm(line));
+        static_attest(len(line) == (usize) nread);
+        new+50 mut s         = buffer::copy_bytes((u8 *)line, (usize)nread);
+        new+50 mut copy      = buffer::copy_slice(s.as_slice());
+        new+50 mut cstr_copy = buffer::copy_cstr(copy.cstr());
+        free(line);
+        printf("%.*s", s.slen(), s.mem);
+        printf("%.*s", copy.slen(), copy.mem);
+        printf("%.*s", cstr_copy.slen(), cstr_copy.mem);
+    }
+
+    return 0;
+}

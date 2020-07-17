@@ -1,12 +1,14 @@
 using slice;
 
 export fn main() -> int {
+    usize mut at = 0;
     u8 mut buf[10] = {0};
-    new mut sl = slice::mut_slice::make(buf, 10);
-    static_assert(sl.at < 11);
+    new mut sl = slice::mut_slice::make(buf, static(len(buf)), &at);
+    static_assert(sl.size <= len(sl.mem));
+    static_assert(len(buf) == len(sl.mem));
+    static_assert(sl.size <= 10);
     sl.push(1);
-    static_assert(sl.slice.size == 10);
-    static_assert(sl.at < 11);
+    static_assert(sl.size <= 10);
     sl.push(1);
 
 

@@ -1,6 +1,6 @@
 [project]
 version = "0.1.0"
-name = "packages_from_git"
+name = "integrity"
 cincludes = []
 cobjects = []
 pkgconfig = []
@@ -11,7 +11,5 @@ lflags = []
 default = []
 
 [dependencies]
-io = "1"
 
 [repos]
-extra = "git://github.com/zetzit/modules.git"
