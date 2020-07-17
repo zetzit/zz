@@ -1,20 +1,19 @@
 using <string.h> as c_string;
-using mut_slice::{MutSlice};
 
 export struct Slice {
     u8 *    mem;
     usize   size;
 }
 
-export fn borrow(Slice *self) -> Slice *
-    where len(self->mem)    >= self->size
-    model safe(return)
-    model len(return->mem)  >= return->size
-{
-    return self;
-}
+pub theory integrity(Slice *self) -> bool
+(
+    safe(self->mem)
+    && len(self->mem) >= self->size
+)
 
 export fn eq(Slice *self, Slice *other) -> bool
+    where integrity(self)
+    where integrity(other)
 {
     if self->size != other->size {
         return false;
@@ -23,6 +22,7 @@ export fn eq(Slice *self, Slice *other) -> bool
 }
 
 export fn eq_cstr(Slice *self, char *other) -> bool
+    where integrity(self)
     where nullterm(other)
 {
     usize othersize = (usize)c_string::strlen(other);
@@ -31,6 +31,7 @@ export fn eq_cstr(Slice *self, char *other) -> bool
 }
 
 export fn eq_bytes(Slice *self, u8 *other, usize othersize) -> bool
+    where integrity(self)
     where len(other) >= othersize
 {
     if self->size != othersize {
@@ -43,6 +44,7 @@ export fn make(Slice mut new *self, u8 *mem, usize size)
     where len(mem) >= size
     model len(self->mem) == self->size
     model len(self->mem) == size
+    model integrity(self)
 {
     self->size  =  size;
     self->mem   =  mem;

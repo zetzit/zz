@@ -1,4 +1,4 @@
-using string;
+using buffer;
 using <stdio.h>::{printf, stdin};
 using <stdlib.h>::{free};
 inline using "native.h"::{getline};
@@ -15,8 +15,8 @@ test {
 }
 
 export fn main() -> int {
-    string::String+50 mut s = {0};
+    new+50 s = buffer::make();
     s.fgets(stdin);
-    printf("%u\n", string::strlen(s.cstr()));
+    printf("%u\n", buffer::strlen(s.cstr()));
     return 0;
 }

@@ -122,9 +122,10 @@ pub enum Def {
         callattests: Vec<Expression>,
     },
     Theory {
-        ret: Option<AnonArg>,
-        args: Vec<NamedArg>,
-        attr: HashMap<String, Location>,
+        ret:    Option<AnonArg>,
+        args:   Vec<NamedArg>,
+        attr:   HashMap<String, Location>,
+        body:   Option<Expression>,
     },
     Closure {
         nameloc: Location,

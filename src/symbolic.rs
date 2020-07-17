@@ -29,8 +29,9 @@ enum Value {
         op: ast::InfixOperator,
     },
     Theory {
-        args: Vec<ast::NamedArg>,
-        ret: ast::Typed,
+        args:   Vec<ast::NamedArg>,
+        ret:    ast::Typed,
+        body:   Option<ast::Expression>,
     },
     Function {
         loc: ast::Location,
@@ -171,6 +172,7 @@ impl Symbolic {
                 loc: ast::Location::builtin(),
                 tail: ast::Tail::None,
             },
+            body: None,
         };
         self.ssa.theory(
             sym,
@@ -213,6 +215,7 @@ impl Symbolic {
                 loc: ast::Location::builtin(),
                 tail: ast::Tail::None,
             },
+            body: None,
         };
         self.ssa
             .theory(sym, vec![smt::Type::Unsigned(64)], "safe", smt::Type::Bool);
@@ -251,6 +254,7 @@ impl Symbolic {
                 loc: ast::Location::builtin(),
                 tail: ast::Tail::None,
             },
+            body: None,
         };
         self.ssa.theory(
             sym,
@@ -293,6 +297,7 @@ impl Symbolic {
                 loc: ast::Location::builtin(),
                 tail: ast::Tail::None,
             },
+            body: None,
         };
         self.ssa.theory(
             sym,
@@ -321,7 +326,7 @@ impl Symbolic {
         for (d, complete) in &mut module.d {
             self.defs.insert(Name::from(&d.name), d.def.clone());
             match &mut d.def {
-                ast::Def::Theory { args, ret, .. } => {
+                ast::Def::Theory { args, ret, body, .. } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed {
@@ -361,8 +366,9 @@ impl Symbolic {
                     };
 
                     self.memory[sym].value = Value::Theory {
-                        args: args.clone(),
-                        ret: ret.clone(),
+                        args:   args.clone(),
+                        ret:    ret.clone(),
+                        body:   body.clone(),
                     };
 
                     let ssa_args = args
@@ -3039,7 +3045,8 @@ impl Symbolic {
                     vec![(loc.clone(), format!("use @macro() instead of macro()"))],
                 ));
             }
-            Value::Theory { args: fargs, ret } => {
+            Value::Theory { args: fargs, ret, body, ..} => {
+                let mut body = body.clone();
                 *emit = ast::EmitBehaviour::Error {
                     loc: loc.clone(),
                     message: format!(
@@ -3069,6 +3076,7 @@ impl Symbolic {
                 }
                 let mut syms = Vec::new();
                 let mut debug_arg_names = Vec::new();
+                self.ssa.debug("collecting theory invocation arguments");
                 for (i, arg) in args.into_iter().enumerate() {
                     let s = self.execute_expr(arg)?;
                     syms.push((s, self.memory[s].temporal));
@@ -3087,24 +3095,55 @@ impl Symbolic {
                         ));
                     }
                 }
+                self.ssa.debug("end of collecting theory invocation arguments");
 
-                let tmp = self.temporary(
-                    format!(
-                        "interpretation of theory {} over {}",
-                        self.memory[name_sym].name,
-                        debug_arg_names.join(" , ")
-                    ),
-                    ret.clone(),
-                    loc.clone(),
-                    Tags::new(),
-                )?;
-                let value = Value::Unconstrained("interpretation of theory".to_string());
-                self.memory[tmp].value = value;
 
-                self.ssa.invocation(name_sym, syms, (tmp, 0));
 
-                self.current_call.pop();
-                Ok(tmp)
+                if let Some(ref mut body) = body {
+
+                    let global_only = vec![self.stack[0].clone()];
+                    let stack_original = std::mem::replace(&mut self.stack, global_only);
+
+                    self.push("theory_expression".to_string());
+                    self.ssa.debug("theory_expression");
+                    //self.ssa.push("theory_expression");
+
+                    for (i, farg) in fargs.iter().enumerate() {
+                        self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
+                    }
+
+                    let in_model = self.in_model;
+                    self.in_model = true;
+                    let r = self.execute_expr(body)?;
+                    self.in_model = in_model;
+
+
+
+                    //self.ssa.pop("end of theory_expression");
+                    self.ssa.debug("end of theory_expression");
+                    self.pop();
+                    self.stack = stack_original;
+
+                    self.current_call.pop();
+                    Ok(r)
+
+                } else {
+                    let tmp = self.temporary(
+                        format!(
+                            "interpretation of theory {} over {}",
+                            self.memory[name_sym].name,
+                            debug_arg_names.join(" , ")
+                        ),
+                        ret.clone(),
+                        loc.clone(),
+                        Tags::new(),
+                    )?;
+                    let value = Value::Unconstrained("interpretation of theory".to_string());
+                    self.memory[tmp].value = value;
+                    self.ssa.invocation(name_sym, syms, (tmp, 0));
+                    self.current_call.pop();
+                    Ok(tmp)
+                }
             }
 
             Value::SelfCall { selfarg, name } => {
@@ -3452,7 +3491,7 @@ impl Symbolic {
         };
 
         let member = self.temporary(
-            format!("deref(S{}_{})", lhs_sym, self.memory[lhs_sym].name),
+            format!("deref(var{}_{})", lhs_sym, self.memory[lhs_sym].name),
             nutype,
             loc.clone(),
             popped_tags,
@@ -3468,14 +3507,13 @@ impl Symbolic {
             ));
         }
 
-        // this is because the optimization cheat in check check_function_model doesn't apply
-        // anything in between model calls
-        if self.in_model {
-            return Ok(member);
+
+        // only check with smt if we're not currently inside a theory
+        // the optimization cheat in check check_function_model doesn't apply anything in between model calls
+        // so the user has no way to assert safe to make the next theory pass
+        if !self.in_model {
+            self.assert_safe(lhs_sym, loc)?;
         }
-
-        self.assert_safe(lhs_sym, loc)?;
-
 
         match &self.memory[lhs_sym].value {
             // we're assuming this is ok because odf the above satefy checks

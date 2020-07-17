@@ -2,8 +2,7 @@ using <stdio.h>::{printf};
 using <stdlib.h>::{atoi};
 using <string.h>::{strcmp, memset};
 using err;
-using string::{String};
-using string;
+using buffer;
 
 const usize MAX_DEPTH = 64;
 
@@ -20,7 +19,7 @@ pub enum ValueType {
 
 export struct Value {
     ValueType t;
-    char*   string;
+    char*   buffer;
     int     integer;
     usize   index;
 }
@@ -53,7 +52,7 @@ export struct Parser+ {
     usize           depth;
 
     usize           keylen;
-    String+         mut capture;
+    buffer::Buffer+ mut capture;
 }
 
 export fn parser(Parser+tail mut new*self, err::Err+et mut *e, deserialize_t de, void mut * unsafe user)
@@ -63,7 +62,7 @@ export fn parser(Parser+tail mut new*self, err::Err+et mut *e, deserialize_t de,
 
 {
     memset(self, 0, sizeof(Parser));
-    string::clear(&self->capture);
+    buffer::clear(&self->capture);
 
     self->line  = 1;
 
@@ -98,6 +97,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
     where len(str) >= strlen
     where tail > 2
 {
+    static_attest(buffer::integrity(&self->capture, tail));
     for (usize mut at = 0; at < strlen; at++) {
         self->col += 1;
 
@@ -145,7 +145,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     self->col = 0;
                     /*
                     if state == ParserState::Key || state == ParserState::StringVal {
-                        if !string::push(&(self->capture), ch) {
+                        if !buffer::push(&(self->capture), ch) {
                             err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
                             return;
                         }
@@ -155,7 +155,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                 '\t' , '\r' , ' ' => {
                     /*
                     if state == ParserState::Key || state == ParserState::StringVal {
-                        if !string::push(&(self->capture), ch) {
+                        if !buffer::push(&(self->capture), ch) {
                             err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
                             return;
                         }
@@ -185,7 +185,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     static_attest(err::checked(*e));
 
                     if state == ParserState::IntVal {
-                        if !string::push(&(self->capture), ch) {
+                        if !buffer::push(&(self->capture), ch) {
                             err::fail(e, err::OutOfTail, "buffer overflow at %u:%u", self->line, self->col);
                             return;
                         }
@@ -219,7 +219,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
         ParserState::Object => {
             if token == '"' {
                 stack->state = ParserState::Key;
-                string::clear(&self->capture);
+                buffer::clear(&self->capture);
             } else if token == '}' {
                 if self->depth > 0 {
                     (self->depth) -=1;
@@ -242,8 +242,8 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
         ParserState::PostKey => {
             if token == ':' {
                 stack->state = ParserState::PreVal;
-                string::push(&(self->capture), 0);
-                self->keylen = (self->capture).len;
+                buffer::push(&(self->capture), 0);
+                self->keylen = (self->capture).at;
             } else {
                 err::fail(e, ParseError, "unexpected '%c', expected ':' at %u:%u", token, self->line, self->col);
                 return;
@@ -254,7 +254,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                 self->capture.clear();
                 self->capture.format("%d", self->state[self->depth].index);
                 self->capture.push(0);
-                self->keylen = self->capture.len;
+                self->keylen = self->capture.at;
             }
             if token == '"' {
                 stack->state = ParserState::StringVal;
@@ -332,7 +332,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     Value val = Value{
                         index:  stack->index,
                         t:      ValueType::String,
-                        string: ((self->capture).mem + self->keylen),
+                        buffer: ((self->capture).mem + self->keylen),
                     };
                     de(e, self, stack->user, (self->capture).mem, val);
                     if err::check(e) {

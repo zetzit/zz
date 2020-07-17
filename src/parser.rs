@@ -135,6 +135,7 @@ fn p(
                 let mut calleffect = Vec::new();
                 let mut vis = Visibility::Object;
                 let mut derives = Vec::new();
+                let mut theory_body = None;
 
                 for part in decl {
                     match part.as_rule() {
@@ -191,6 +192,10 @@ fn p(
                             let part = part.into_inner().next().unwrap();
                             calleffect.push(parse_expr(n, part));
                         }
+                        Rule::theory_impl => {
+                            let part = part.into_inner().next().unwrap();
+                            theory_body = Some(parse_expr(n, part));
+                        },
                         Rule::gblock => {
                             body.branches = Vec::new();
                             for branch in part.into_inner() {
@@ -255,7 +260,7 @@ fn p(
                             name,
                             vis,
                             loc,
-                            def: Def::Theory { ret, attr, args },
+                            def: Def::Theory { ret, attr, args, body: theory_body },
                         });
                     }
                     Rule::closure => {

@@ -1,6 +1,6 @@
 [project]
 version = "0.1.0"
-name = "log"
+name = "buffer"
 cincludes = []
 cobjects = []
 pkgconfig = []
@@ -11,4 +11,7 @@ lflags = []
 default = []
 
 [dependencies]
-buffer = "1"
+mem = "1"
+slice = "1"
+
+[repos]

@@ -1,14 +1,14 @@
-using string;
+using buffer;
 using <stdio.h>::{getline, printf, stdin};
 using <stdlib.h>::{free};
 
 
 export fn main() -> int {
-    string::String+50 mut s = {0};
-    string::clear(&s);
+    buffer::Buffer+50 mut s = {0};
+    buffer::clear(&s);
 
     for (uint mut i =0; i < 100; i++) {
-        string::push(&s, ' ');
+        buffer::push(&s, ' ');
     }
 
     return 0;

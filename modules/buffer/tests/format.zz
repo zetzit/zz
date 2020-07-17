@@ -1,0 +1,21 @@
+using buffer;
+using <stdio.h>::{getline, printf, stdin};
+using <stdlib.h>::{free};
+
+
+
+test blah {
+    stdout = "hello2366\n"
+}
+
+export fn main() -> int {
+    buffer::Buffer+10 mut s;
+    buffer::clear(&s);
+
+    buffer::append_cstr(&s, "hello");
+    buffer::format(&s, "%d%d%d%d", 2, 3, 66,9);
+    buffer::format(&s, "%s", "12345678901234567890");
+
+    printf("%s\n", s.mem);
+    return 0;
+}

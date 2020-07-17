@@ -1,0 +1,15 @@
+
+pub theory small(int a) -> bool
+(
+    a < MAX && a != 0
+)
+
+export fn main() -> int {
+
+
+    int MAX = 10;
+    int a = 3;
+    static_assert(small(a));
+
+    return 0;
+}

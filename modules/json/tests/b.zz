@@ -1,9 +1,8 @@
 using <stdio.h>::{printf};
 using <stdlib.h>::{atoi};
-using <string.h>::{strcmp, memset};
+using <buffer.h>::{strcmp, memset};
 using err;
-using string::{String};
-using string;
+using buffer;
 using json;
 
 enum Fuel {
@@ -27,25 +26,25 @@ symbol InvalidValue;
 fn deserialize_charge(err::Err+et mut *e, json::Parser+pt mut* p, void mut *user, char *k, json::Value v)
     where err::checked(*e)
 {
-    printf("charge.>%s< == >%s< %u, %d [%zu]\n", k, v.string, v.t, v.integer, v.index);
+    printf("charge.>%s< == >%s< %u, %d [%zu]\n", k, v.buffer, v.t, v.integer, v.index);
 }
 
 fn deserialize_engine(err::Err+et mut *e, json::Parser+pt mut* p, void mut *user, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
-    where nullterm(v.string)
+    where nullterm(v.buffer)
 {
     let into = (Engine mut*)user;
-    printf("engine.>%s< == >%s< %d\n", k, v.string, v.integer);
-    if string::cstr_eq("fuel", k) && v.t == json::ValueType::String {
-        if string::cstr_eq("dinosaurs", v.string) {
+    printf("engine.>%s< == >%s< %d\n", k, v.buffer, v.integer);
+    if buffer::cstr_eq("fuel", k) && v.t == json::ValueType::String{
+        if buffer::cstr_eq("dinosaurs", v.buffer) {
             into->fuel = Fuel::Dinosaurs;
-        } else if string::cstr_eq("electric", v.string)  {
+        } else if buffer::cstr_eq("electric", v.buffer)  {
             into->fuel = Fuel::Electric;
         } else {
             err::fail(e, InvalidValue , "invalid fuel value %s", v);
         }
-    } else if string::cstr_eq("charge", k) && v.t == json::ValueType::Array {
+    } else if buffer::cstr_eq("charge", k) && v.t == json::ValueType::Array {
         json::next(p, e, deserialize_charge, &(into->charge));
         if err::check(e) {
             return;
@@ -58,11 +57,11 @@ fn deserialize_vehicle(err::Err+et mut *e, json::Parser+pt mut* p, void mut *use
     where nullterm(k)
 {
     let into = (Vehicle mut*)user;
-    printf("vehicle.>%s< == >%s< %d\n", k, v.string, v.integer);
+    printf("vehicle.>%s< == >%s< %d\n", k, v.buffer, v.integer);
 
-    if string::cstr_eq("height", k) {
+    if buffer::cstr_eq("height", k) {
         into->height = v.integer;
-    } else if string::cstr_eq("engine", k) {
+    } else if buffer::cstr_eq("engine", k) {
         json::next(p, e, deserialize_engine, &(into->engine));
         if err::check(e) {
             return;

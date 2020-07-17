@@ -1,4 +1,4 @@
-using string;
+using buffer;
 using <stdio.h>::{printf, stdin};
 using <stdlib.h>::{free};
 inline using "native.h"::{getline};
@@ -15,8 +15,8 @@ test overflow{
 }
 
 export fn main() -> int {
-    string::String+50 mut s = {0};
-    string::clear(&s);
+    buffer::Buffer+50 mut s = {0};
+    buffer::clear(&s);
 
     for (;;) {
         char mut * mut line = 0;
@@ -28,10 +28,10 @@ export fn main() -> int {
         }
         static_attest(safe(line));
         static_attest(nullterm(line));
-        string::append_cstr(&s, line);
+        buffer::append_cstr(&s, line);
         free(line);
     }
 
-    printf("%.*s", s.len, s.mem);
+    printf("%.*s", s.at, s.mem);
     return 0;
 }

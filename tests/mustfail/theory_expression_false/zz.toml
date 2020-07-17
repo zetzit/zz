@@ -1,15 +1,15 @@
 [project]
 version = "0.1.0"
-name = "string"
+name = "integrity"
 cincludes = []
 cobjects = []
 pkgconfig = []
 cflags = []
 lflags = []
 
-[dependencies]
-slice = "1"
-mem   = "1"
-
 [variants]
 default = []
+
+[dependencies]
+
+[repos]

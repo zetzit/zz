@@ -2,142 +2,125 @@ using <string.h> as c_string;
 using slice::{Slice};
 
 export struct MutSlice {
-    Slice   slice;
-    usize   at;
+    u8 mut* mem;
+    usize   size;
+    usize   mut * at;
 }
 
-export fn borrow(MutSlice mut*self) -> MutSlice *
-    where self->slice.size >= len(self->slice.mem)
-    where self->at <= self->slice.size
-    model safe(return)
-    model return->slice.size == self->slice.size
-    model return->at == self->at
-    model return->slice.size >= len(return->slice.mem)
-    model return->at <= return->slice.size
-{
-    let r = self;
-    static_attest(r->slice.size == self->slice.size);
-    static_attest(r->at == self->at);
-    return r;
-}
+pub theory integrity(MutSlice mut*self) -> bool (
+        safe(self->at)
+    &&  len(self->mem) >= self->size
+    &&  *self->at <= self->size
+    &&  *self->at <= len(self->mem)
+)
 
-export fn make(MutSlice new mut*self, u8 mut*mem, usize size)
-    @solver("yices2")
+export fn make(MutSlice new mut*self, u8 mut*mem, usize size, usize mut *at)
     where len(mem) >= size
-    model self->slice.size == size
-    model self->slice.size == len(self->slice.mem)
-    model self->at == 0
+    where safe(at)
+    where *at < size
+    model integrity(self)
+    model len(mem) == len(self->mem)
+    model *at == *self->at
+    model at == self->at
 {
-    self->slice.size = size;
-    self->slice.mem  = mem;
-    self->at = 0;
-    static_attest(self->slice.size == len(self->slice.mem));
-}
-
-
-export fn mem(MutSlice mut * self) -> u8 mut*
-    @solver("yices2")
-    model len(return) >= self->slice.size
-    model len(return) >= self->at
-    model safe(return)
-{
-    u8 mut* m = (u8 mut *)self->slice.mem;
-    static_attest(len(m) >= self->slice.size);
-    static_attest(safe(m));
-    return m;
+    self->size = size;
+    self->mem  = mem;
+    self->at   = at;
+    static_attest(self->size == len(self->mem));
 }
 
 export fn append_slice(MutSlice mut * self, Slice *other) -> bool
-    model self->at <= self->slice.size
+    where   integrity(self)
+    model   integrity(self)
 {
-    if self->at >= self->slice.size || other->size >  self->slice.size || self->at  > self->slice.size - other->size {
+    if *self->at >= self->size || other->size >  self->size || *self->at  > self->size - other->size {
         return false;
     }
 
-    c_string::memcpy(self->mem() + self->at, other->mem, other->size);
-    self->at += other->size;
+    c_string::memcpy(self->mem + *self->at, other->mem, other->size);
+    *self->at += other->size;
+    static_attest(*self->at < len(self->mem));
     return true;
 }
 
 export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
-    @solver("yices2")
-    where len(b) >= l
-    model self->at <= self->slice.size
+    where   len(b) >= l
+    where   integrity(self)
+    model   integrity(self)
 {
-    if self->at >= self->slice.size || l >  self->slice.size || self->at  > self->slice.size - l {
+    if *self->at >= self->size || l >  self->size || *self->at  > self->size - l {
         return false;
     }
 
-    c_string::memcpy(self->mem() + self->at, b, l);
-    self->at += l;
+    c_string::memcpy(self->mem + *self->at, b, l);
+    *self->at += l;
+    static_attest(*self->at < len(self->mem));
     return true;
 }
 
 export fn append_cstr(MutSlice mut * self, char *b) -> bool
-    where nullterm(b)
-    model self->at <= self->slice.size
+    where   integrity(self)
+    where   nullterm(b)
+    model   integrity(self)
 {
     let l = unsafe<usize>(c_string::strlen(b));
     static_attest(len(b) >= l);
     return append_bytes(self, (u8*)b, l);
 }
 
+/// push a single character
 export fn push(MutSlice mut * self, u8 b) -> bool
-    @solver("yices2")
-    where self->slice.size >= 1
-    model self->at <= self->slice.size
+    where   integrity(self)
+    model   integrity(self)
 {
-    if self->at > self->slice.size - 1 {
+    if self->size < 1 || *self->at > self->size - 1 {
         return false;
     }
 
-    self->mem()[self->at] = b;
-    self->at += 1;
+    self->mem[*self->at] = b;
+    *self->at += 1;
 
     return true;
 }
 
 export fn push16(MutSlice mut * self, u16 b) -> bool
-    @solver("yices2")
-    where self->slice.size >= 2
-    model self->at <= self->slice.size
+    where   integrity(self)
+    model   integrity(self)
 {
-    if self->at > self->slice.size - 2 {
+    if self->size < 2 || *self->at > self->size - 2 {
         return false;
     }
 
-    c_string::memcpy(self->mem() + self->at, &b, 2);
-    self->at += 2;
+    c_string::memcpy(self->mem + *self->at, &b, 2);
+    *self->at += 2;
 
     return true;
 }
 
 export fn push32(MutSlice mut * self, u32 b) -> bool
-    @solver("yices2")
-    where self->slice.size >= 4
-    model self->at <= self->slice.size
+    where   integrity(self)
+    model   integrity(self)
 {
-    if self->at > self->slice.size - 4 {
+    if self->size < 4 || *self->at > self->size - 4 {
         return false;
     }
 
-    c_string::memcpy(self->mem() + self->at, &b, 4);
-    self->at += 4;
+    c_string::memcpy(self->mem + *self->at, &b, 4);
+    *self->at += 4;
 
     return true;
 }
 
 export fn push64(MutSlice mut * self, u64 b) -> bool
-    @solver("yices2")
-    where self->slice.size > 8
+    where   integrity(self)
+    model   integrity(self)
 {
-    if self->at > self->slice.size - 8 {
+    if self->size < 8 || *self->at > self->size - 8 {
         return false;
     }
 
-    c_string::memcpy(self->mem() + self->at, &b, 8);
-    self->at += 8;
+    c_string::memcpy(self->mem + *self->at, &b, 8);
+    *self->at += 8;
 
     return true;
 }
-

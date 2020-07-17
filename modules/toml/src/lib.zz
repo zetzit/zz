@@ -2,8 +2,7 @@ using <stdio.h>::{printf};
 using <stdlib.h>::{atoi};
 using <string.h>::{strcmp, memset};
 using err;
-using string::{String};
-using string;
+using buffer;
 
 const usize MAX_DEPTH = 64;
 
@@ -64,7 +63,7 @@ export struct Parser+ {
     usize           depth;
 
     usize           keylen;
-    String+         mut capture;
+    buffer::Buffer+ mut capture;
 }
 
 export fn parser(Parser+tail mut new *self, err::Err+et mut *e, U u)
@@ -74,7 +73,7 @@ export fn parser(Parser+tail mut new *self, err::Err+et mut *e, U u)
 
 {
     memset(self, 0, sizeof(Parser));
-    string::clear(&self->capture);
+    buffer::clear(&self->capture);
 
     self->line  = 1;
 
@@ -195,7 +194,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     // we will simply emit the same object key multiple times, is this OK?
                 } else if ch == ']' {
                     self->capture.push(0);
-                    self->keylen = self->capture.len;
+                    self->keylen = self->capture.at;
 
                     stack->state = ParserState::Document;
                     if self->depth >= MAX_DEPTH - 1 {
@@ -233,7 +232,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                 } else if ch == '=' {
                     stack->state = ParserState::PreVal;
                     self->capture.push(0);
-                    self->keylen = self->capture.len;
+                    self->keylen = self->capture.at;
                 } else {
                      stack->state = ParserState::PostKey;
                 }
@@ -243,7 +242,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                 } else if ch == '=' {
                     stack->state = ParserState::PreVal;
                     self->capture.push(0);
-                    self->keylen = self->capture.len;
+                    self->keylen = self->capture.at;
                 } else {
                     err::fail(e, ParseError, "unexpected '%c', expected = at %u:%u", ch , self->line, self->col);
                     return;
@@ -254,7 +253,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     self->capture.clear();
                     self->capture.format("%d", self->state[self->depth].index);
                     self->capture.push(0);
-                    self->keylen = self->capture.len;
+                    self->keylen = self->capture.at;
                 }
                 if ch  == ' ' || ch == '\t' || ch == '\n' {
                 } else if ch == '"' {

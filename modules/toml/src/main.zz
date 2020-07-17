@@ -2,8 +2,7 @@ using <stdio.h>::{printf, fread, stdin, stderr};
 using <stdlib.h>::{atoi};
 using <string.h>::{strcmp, memset};
 using err;
-using string::{String};
-using string;
+using buffer;
 using toml;
 
 

@@ -3,6 +3,6 @@ version = "0.1.0"
 name = "err"
 
 [dependencies]
-string = "1"
-log  = "1"
+buffer  = "1"
+log     = "1"
 symbols = "1"

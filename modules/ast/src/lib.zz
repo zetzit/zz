@@ -1,6 +1,6 @@
 using err;
 using json;
-using string;
+using buffer;
 using pool;
 
 using <stdio.h>::{stdin, stderr, fprintf, printf};
@@ -19,14 +19,14 @@ fn parse_v(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k,
 {
     let arg = (ExpressionS mut*)user;
 
-    if string::cstr_eq(k, "v") {
+    if buffer::cstr_eq(k, "v") {
         switch v.t {
             json::ValueType::String => {
                 static_attest(safe(arg->pool));
-                static_attest(safe(v.string));
-                static_attest(nullterm(v.string));
-                char mut * dup = arg->pool->malloc(string::strlen(v.string));
-                memcpy(dup, v.string, string::strlen(v.string) + 1);
+                static_attest(safe(v.buffer));
+                static_attest(nullterm(v.buffer));
+                char mut * dup = arg->pool->malloc(buffer::strlen(v.buffer));
+                memcpy(dup, v.buffer, buffer::strlen(v.buffer) + 1);
                 arg->v.string = dup;
             }
             default => {
@@ -41,7 +41,7 @@ fn parse_t(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k,
 {
     let arg = (ExpressionS mut*)user;
 
-    if string::cstr_eq(k, "t") {
+    if buffer::cstr_eq(k, "t") {
         switch v.t {
             json::ValueType::Object => {
               json::next(p,  e, parse_t_other, (void mut*)arg);
@@ -61,7 +61,7 @@ fn parse_t_other(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, ch
 {
     let arg = (ExpressionS mut*)user;
 
-    if string::cstr_eq(k, "Other") {
+    if buffer::cstr_eq(k, "Other") {
         switch v.t {
             json::ValueType::Array => {
               json::next(p,  e, parse_t_other_value, (void mut*)arg);
@@ -84,10 +84,10 @@ fn parse_t_other_value(err::Err+et mut *e, json::Parser+pt mut* p, void mut * us
   switch v.t {
     json::ValueType::String => {
       static_attest(safe(arg->pool));
-      static_attest(safe(v.string));
-      static_attest(nullterm(v.string));
-      char mut * dup = arg->pool->malloc(string::strlen(v.string));
-      memcpy(dup, v.string, string::strlen(v.string) + 1);
+      static_attest(safe(v.buffer));
+      static_attest(nullterm(v.buffer));
+      char mut * dup = arg->pool->malloc(buffer::strlen(v.buffer));
+      memcpy(dup, v.buffer, buffer::strlen(v.buffer) + 1);
       arg->v.string = dup;
     }
     default => {
@@ -103,25 +103,25 @@ fn parse_arg(err::Err+et mut *e, json::Parser+pt mut* p, void mut*user, char *k,
 
     switch v.t {
         json::ValueType::Object => {
-            if string::cstr_eq(k, "Literal") {
+            if buffer::cstr_eq(k, "Literal") {
                 arg->t = Expression::Literal;
                 json::next(p,  e, parse_v, (void mut*)arg);
                 if err::check(e) {
                     return;
                 }
-            } else if string::cstr_eq(k, "LiteralString") {
+            } else if buffer::cstr_eq(k, "LiteralString") {
                 arg->t = Expression::LiteralString;
                 json::next(p,  e, parse_v, (void mut*)arg);
                 if err::check(e) {
                     return;
                 }
-            } else if string::cstr_eq(k, "Name") {
+            } else if buffer::cstr_eq(k, "Name") {
                 arg->t = Expression::Name;
                 json::next(p,  e, parse_t, (void mut*)arg);
                 if err::check(e) {
                     return;
                 }
-            } else if string::cstr_eq(k, "args") {
+            } else if buffer::cstr_eq(k, "args") {
                 json::next(p,  e, parse_arg, (void mut*)arg);
                 if err::check(e) {
                     return;
@@ -166,7 +166,7 @@ fn parse_doc(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *
 
     switch v.t {
         json::ValueType::Array => {
-            if string::cstr_eq(k, "args") {
+            if buffer::cstr_eq(k, "args") {
                 json::next(p,  e, parse_arglist, ast);
                 if err::check(e) {
                     return;
@@ -215,9 +215,9 @@ pub fn from_macro(Ast+t mut new *self)
     new+1000 parser = json::parser(&e, parse_doc, self);
     e.abort();
 
-    new+1000 s = string::make();
+    new+1000 s = buffer::make();
     for (; s.fgets(stdin) ; s.clear()) {
-        json::push(&parser, &e, s.mem, s.len);
+        json::push(&parser, &e, s.mem, s.at);
         e.abort();
     }
 }
