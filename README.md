@@ -22,6 +22,12 @@ at compile time.
 3. cargo run run
 
 
+## editor support
+
+- Emacs: [zetz-mode](https://github.com/damon-kwok/zetz-mode)
+- Vim: [zz.vim](https://github.com/zetzit/zz/tree/master/zz.vim)
+
+
 ### how it looks
 
 ZZ has strong rust aesthetics, but remains a C dialect at the core.
