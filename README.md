@@ -12,7 +12,6 @@ at compile time.
 
 [![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
 [![FAQ](https://img.shields.io/badge/FAQ-Wiki-blue)](https://github.com/aep/zz/wiki/FAQ)
-[![reddit](https://img.shields.io/reddit/subreddit-subscribers/zzlang?label=%2Fr%2Fzzlang&style=social)](https://www.reddit.com/r/zzlang/)
 
 ### quick quick start
 
