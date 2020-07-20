@@ -158,6 +158,9 @@ imacro          = { ( exported | key_shared)? ~ "macro" ~ ident ~ "(" ~ macro_ar
 gblock = { block | (if_stm | elseif_stm | else_stm )+ }
 
 
+flags  = {"flags" ~ gblock}
+
+
 // statements
 
 infix = _{
@@ -318,6 +321,7 @@ file        = { SOI ~ (struct_d
                         | theory
                         | ienum
                         | symbol
+                        | flags
                         | import
                         | constant
                         | testcase

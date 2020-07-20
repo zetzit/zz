@@ -15,11 +15,14 @@ use super::project;
 
 #[derive(Serialize, Deserialize)]
 pub struct CFile {
-    pub name: Name,
-    pub filepath: String,
-    pub sources: HashSet<PathBuf>,
-    pub deps: HashSet<Name>,
-    pub symbols: HashSet<Name>,
+    pub name:       Name,
+    pub filepath:   String,
+    pub sources:    HashSet<PathBuf>,
+    pub deps:       HashSet<Name>,
+    pub symbols:    HashSet<Name>,
+
+    pub cflags:     Vec<String>,
+    pub lflags:     Vec<String>,
 }
 
 pub struct Emitter {
@@ -61,9 +64,9 @@ pub fn outname(
                           ns.join("_")))
         )
     } else if cxx {
-        (cxx, format!("{}/{}.cpp", td.to_string_lossy(), ns.join("_")))
+        (cxx, format!("{}/zz/{}.cpp", td.to_string_lossy(), ns.join("_")))
     } else {
-        (cxx, format!("{}/{}.c", td.to_string_lossy(), ns.join("_")))
+        (cxx, format!("{}/zz/{}.c", td.to_string_lossy(), ns.join("_")))
     }
 }
 
@@ -288,6 +291,9 @@ impl Emitter {
                 ast::Def::Function { .. } => {
                     self.emit_decl(&d);
                 }
+                ast::Def::Flags { .. } => {
+                    self.emit_flags(&d);
+                }
                 ast::Def::Include { inline, .. } => {
                     if dup.insert(d.name.clone()) {
                         self.emit_include(&d);
@@ -353,6 +359,8 @@ impl Emitter {
             sources: module.sources,
             deps: module.deps,
             symbols: self.symbols,
+            cflags: Vec::new(),
+            lflags: Vec::new(),
         }
     }
 
@@ -1122,6 +1130,64 @@ impl Emitter {
         write!(self.f, "\n").unwrap();
     }
 
+    fn emit_flags(&mut self, ast: &ast::Local)
+    {
+        let (body) = match &ast.def {
+            ast::Def::Flags{
+                body,
+                ..
+            } => (body),
+            _ => unreachable!(),
+        };
+
+        write!(self.f, "#if 0\n").unwrap();
+
+        for (loc, expr, body) in &body.branches {
+            if let Some(expr) = &expr {
+                self.emit_loc(&expr.loc());
+                self.inside_macro = true;
+                write!(self.f, "#elif ").unwrap();
+                self.emit_cppexpr(expr);
+                write!(self.f, "\n").unwrap();
+                self.inside_macro = false;
+            } else {
+                write!(self.f, "#else\n").unwrap();
+            }
+
+            for stm in &body.statements {
+                if let ast::Statement::Expr{expr, loc} = stm.as_ref() {
+                    if let ast::Expression::Call{name, args, ..} = expr {
+                        if let ast::Expression::Name(name) = name.as_ref() {
+                            if let ast::Type::Other(name) = &name.t {
+                                if name.to_string() == "linker" {
+                                    if args.len() != 1 {
+                                        emit_error(format!("invalid flags statement"),
+                                            &[(loc.clone(), "link flag tage a single string arg")]);
+                                        std::process::exit(9);
+                                    }
+                                    if let ast::Expression::LiteralString{v,..} = args[0].as_ref() {
+                                        write!(self.f, "#pragma comment(linker, \"{}\")\n", v).unwrap();
+                                        continue;
+                                    } else {
+                                        emit_error(format!("invalid flags statement"),
+                                        &[(expr.loc().clone(), "literal string required")]);
+                                    }
+                                }
+                                emit_error(format!("invalid flags statement"),
+                                    &[(expr.loc().clone(), format!("unknown flag {}", name))]);
+                            }
+                        }
+                    }
+                    emit_error(format!("invalid flags statement"), &[(loc.clone(), "this expression does not add a flag")]);
+                    std::process::exit(9);
+                }
+            }
+        }
+
+        write!(self.f, "#endif\n").unwrap();
+
+    }
+
     fn emit_statement(&mut self, stm: &ast::Statement) -> bool /* ends with semicolon */ {
         match stm {
             ast::Statement::Mark { .. } => false,
@@ -1682,5 +1748,7 @@ pub fn builtin(
         sources: HashSet::new(),
         deps: HashSet::new(),
         symbols: HashSet::new(),
+        cflags: Vec::new(),
+        lflags: Vec::new(),
     }
 }

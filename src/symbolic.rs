@@ -588,6 +588,8 @@ impl Symbolic {
                         value += 1;
                     }
                 }
+                ast::Def::Flags { .. } => {
+                }
                 ast::Def::Macro { .. } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
