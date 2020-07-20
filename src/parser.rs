@@ -13,8 +13,8 @@ pub struct ZZParser;
 
 pub static ERRORS_AS_JSON: AtomicBool = AtomicBool::new(false);
 
-pub fn parse(n: &Path, features: &HashMap<String, bool>, stage: &Stage) -> Module {
-    match p(&n, features, stage) {
+pub fn parse(n: &Path, stage: &Stage) -> Module {
+    match p(&n, stage) {
         Err(e) => {
             let e = e.with_path(&n.to_string_lossy().to_string());
             if ERRORS_AS_JSON.load(Ordering::SeqCst) {
@@ -49,7 +49,6 @@ pub fn parse(n: &Path, features: &HashMap<String, bool>, stage: &Stage) -> Modul
 
 fn p(
     n: &Path,
-    features: &HashMap<String, bool>,
     stage: &Stage,
 ) -> Result<Module, pest::error::Error<Rule>> {
     let mut module = Module::default();
@@ -101,7 +100,7 @@ fn p(
                             }
                         }
                         Rule::block if body.is_none() => {
-                            body = Some(parse_block(&n, features, stage, part));
+                            body = Some(parse_block(&n, stage, part));
                         }
                         e => panic!("unexpected rule {:?} in macro ", e),
                     }
@@ -205,20 +204,20 @@ fn p(
                                         let part = stm.next().unwrap();
                                         let expr = parse_expr(n, part);
                                         let part = stm.next().unwrap();
-                                        let body2 = parse_block(n, features, stage, part);
+                                        let body2 = parse_block(n, stage, part);
                                         body.branches.push((loc.clone(), Some(expr), body2));
                                     }
                                     Rule::else_stm => {
                                         let mut stm = branch.into_inner();
                                         let part = stm.next().unwrap();
-                                        let body2 = parse_block(n, features, stage, part);
+                                        let body2 = parse_block(n, stage, part);
                                         body.branches.push((loc.clone(), None, body2));
                                     }
                                     Rule::block => {
                                         body.branches = vec![(
                                             loc.clone(),
                                             None,
-                                            parse_block(n, features, stage, branch),
+                                            parse_block(n, stage, branch),
                                         )];
                                     }
                                     e => panic!("unexpected rule {:?} in gblock", e),
@@ -657,20 +656,20 @@ fn p(
                                         let part = stm.next().unwrap();
                                         let expr = parse_expr(n, part);
                                         let part = stm.next().unwrap();
-                                        let body2 = parse_block(n, features, stage, part);
+                                        let body2 = parse_block(n, stage, part);
                                         body.branches.push((loc.clone(), Some(expr), body2));
                                     }
                                     Rule::else_stm => {
                                         let mut stm = branch.into_inner();
                                         let part = stm.next().unwrap();
-                                        let body2 = parse_block(n, features, stage, part);
+                                        let body2 = parse_block(n, stage, part);
                                         body.branches.push((loc.clone(), None, body2));
                                     }
                                     Rule::block => {
                                         body.branches = vec![(
                                             loc.clone(),
                                             None,
-                                            parse_block(n, features, stage, branch),
+                                            parse_block(n, stage, branch),
                                         )];
                                     }
                                     e => panic!("unexpected rule {:?} in gblock", e),
@@ -1102,7 +1101,6 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
 
 pub(crate) fn parse_statement(
     n: &str,
-    features: &HashMap<String, bool>,
     stage: &Stage,
     stm: pest::iterators::Pair<'static, Rule>,
     into: &mut Vec<Box<Statement>>,
@@ -1141,7 +1139,7 @@ pub(crate) fn parse_statement(
             into.push(Box::new(Statement::Break { loc }));
         }
         Rule::block => into.push(Box::new(Statement::Block(Box::new(parse_block(
-            n, features, stage, stm,
+            n, stage, stm,
         ))))),
         Rule::return_stm => {
             let mut stm = stm.into_inner();
@@ -1174,7 +1172,7 @@ pub(crate) fn parse_statement(
             let part = stm.next().unwrap();
             let expr = parse_expr(n, part);
             let part = stm.next().unwrap();
-            let body = parse_block(n, features, stage, part);
+            let body = parse_block(n, stage, part);
             into.push(Box::new(Statement::While { expr, body }));
         }
         Rule::if_stm => {
@@ -1182,7 +1180,7 @@ pub(crate) fn parse_statement(
             let part = stm.next().unwrap();
             let expr = parse_expr(n, part);
             let part = stm.next().unwrap();
-            let body = parse_block(n, features, stage, part);
+            let body = parse_block(n, stage, part);
             *current_if_statement = Some(into.len());
             into.push(Box::new(Statement::If {
                 branches: vec![(loc.clone(), Some(expr), body)],
@@ -1193,7 +1191,7 @@ pub(crate) fn parse_statement(
             let part = stm.next().unwrap();
             let expr = parse_expr(n, part);
             let part = stm.next().unwrap();
-            let body = parse_block(n, features, stage, part);
+            let body = parse_block(n, stage, part);
             match *current_if_statement {
                 None => {
                     emit_error(
@@ -1215,7 +1213,7 @@ pub(crate) fn parse_statement(
         Rule::else_stm => {
             let mut stm = stm.into_inner();
             let part = stm.next().unwrap();
-            let body = parse_block(n, features, stage, part);
+            let body = parse_block(n, stage, part);
             match *current_if_statement {
                 None => {
                     emit_error(
@@ -1251,18 +1249,18 @@ pub(crate) fn parse_statement(
                         cur += 1;
                     }
                     Rule::block if cur == 3 && block.is_none() => {
-                        block = Some(parse_block(n, features, stage, part));
+                        block = Some(parse_block(n, stage, part));
                     }
                     _ if cur == 1 => {
                         let mut cif = None;
-                        parse_statement(n, features, stage, part, &mut expr1, &mut cif);
+                        parse_statement(n, stage, part, &mut expr1, &mut cif);
                     }
                     _ if cur == 2 => {
                         expr2 = Some(parse_expr(n, part));
                     }
                     _ if cur == 3 => {
                         let mut cif = None;
-                        parse_statement(n, features, stage, part, &mut expr3, &mut cif);
+                        parse_statement(n, stage, part, &mut expr3, &mut cif);
                     }
                     e => panic!("unexpected rule {:?} in for ", e),
                 }
@@ -1367,7 +1365,7 @@ pub(crate) fn parse_statement(
                         emit_error("multiple default cases", &[(loc.clone(), "in this switch")]);
                         std::process::exit(9);
                     } else {
-                        default = Some(parse_block(n, features, stage, part.next().unwrap()));
+                        default = Some(parse_block(n, stage, part.next().unwrap()));
                     }
                 } else {
                     let mut case_cond = Vec::new();
@@ -1375,7 +1373,7 @@ pub(crate) fn parse_statement(
                         case_cond.push(parse_expr(n, case));
                     }
 
-                    let block = parse_block(n, features, stage, part.next().unwrap());
+                    let block = parse_block(n, stage, part.next().unwrap());
                     cases.push((case_cond, block));
                 }
             }
@@ -1390,7 +1388,6 @@ pub(crate) fn parse_statement(
         Rule::unsafe_block => {
             into.push(Box::new(Statement::Unsafe(Box::new(parse_block(
                 n,
-                features,
                 stage,
                 stm.into_inner().next().unwrap(),
             )))));
@@ -1423,7 +1420,6 @@ pub(crate) fn parse_statement(
 
 pub(crate) fn parse_block(
     n: &str,
-    features: &HashMap<String, bool>,
     stage: &Stage,
     decl: pest::iterators::Pair<'static, Rule>,
 ) -> Block {
@@ -1445,7 +1441,7 @@ pub(crate) fn parse_block(
     let mut statements = Vec::new();
     let mut cif_state = None;
     for stm in decl.into_inner() {
-        parse_statement(n, features, stage, stm, &mut statements, &mut cif_state)
+        parse_statement(n, stage, stm, &mut statements, &mut cif_state)
     }
     Block {
         statements,
