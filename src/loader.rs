@@ -22,7 +22,6 @@ pub fn load(
     project: &super::project::Project,
     artifact_name: &Name,
     src: &Path,
-    features: &HashMap<String, bool>,
     stage: &Stage,
 ) {
     let mut files = Vec::new();
@@ -93,7 +92,7 @@ pub fn load(
             if !silent {
                 pb.lock().unwrap().message(&format!("parsing {:?} ", path));
             }
-            let mut m = parser::parse(&path, features, stage);
+            let mut m = parser::parse(&path, stage);
             m.name = module_name;
 
             debug!("loaded {:?} as {}", path, m.name);

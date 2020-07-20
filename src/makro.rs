@@ -138,7 +138,7 @@ pub fn stm(
             None => break,
             Some(v) => v,
         };
-        for stm2 in parser::parse_block(&path, &HashMap::new(), &super::make::Stage::release(), pp)
+        for stm2 in parser::parse_block(&path, &super::make::Stage::release(), pp)
             .statements
         {
             statements.push(stm2);

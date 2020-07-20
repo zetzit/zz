@@ -81,18 +81,12 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
     ]);
 
     let mut modules = HashMap::new();
-    let features = project
-        .features(variant)
-        .into_iter()
-        .map(|(n, (e, _))| (n, e))
-        .collect();
     if root.join("src").exists() {
         loader::load(
             &mut modules,
             &project.project,
             &project_name,
             &root.join("src"),
-            &features,
             &stage,
         );
     }
@@ -102,7 +96,6 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
             &project.project,
             &project_tests_name,
             &root.join("tests").canonicalize().unwrap(),
-            &features,
             &stage,
         );
     }
@@ -197,17 +190,11 @@ fn getdep(
     let (root, project) = project::load(&found);
     let project_name = Name(vec![String::new(), project.project.name.clone()]);
     if found.join("src").exists() {
-        let features = project
-            .features("default")
-            .into_iter()
-            .map(|(n, (e, _))| (n, e))
-            .collect();
         loader::load(
             modules,
             &project.project,
             &project_name,
             &found.join("src"),
-            &features,
             &stage,
         );
     }
@@ -238,7 +225,6 @@ fn getdep(
         rootproj.pkgconfig.push(i.to_string_lossy().into());
     }
     rootproj.cflags.extend(project.project.cflags);
-    rootproj.lflags.extend(project.project.lflags);
 
     if let Some(deps) = &project.dependencies {
         for (name, dep) in deps {

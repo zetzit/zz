@@ -67,8 +67,6 @@ pub struct Feature {
     pub pkgconfig: Vec<String>,
     #[serde(default)]
     pub cflags: Vec<String>,
-    #[serde(default)]
-    pub lflags: Vec<String>,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -85,8 +83,6 @@ pub struct Project {
     pub pkgconfig: Vec<String>,
     #[serde(default)]
     pub cflags: Vec<String>,
-    #[serde(default)]
-    pub lflags: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -99,10 +95,6 @@ pub struct Config {
     pub project: Project,
     pub artifacts: Option<Vec<Artifact>>,
 
-    pub features: Option<HashMap<String, Feature>>,
-    #[serde(default)]
-    pub variants: HashMap<String, Vec<String>>,
-
     pub dependencies: Option<HashMap<String, Value>>,
 
     #[serde(default)]
@@ -114,7 +106,7 @@ pub fn init() {
     dependencies.insert("log".into(), "1".into());
     dependencies.insert("mem".into(), "1".into());
 
-    let mut c = Config {
+    let c = Config {
         artifacts: None,
         project: Project {
             name: std::env::current_dir()
@@ -127,11 +119,8 @@ pub fn init() {
             ..Default::default()
         },
         dependencies: Some(dependencies),
-        features: None,
-        variants: HashMap::new(),
         repos: HashMap::new(),
     };
-    c.variants.insert("default".to_string(), Vec::new());
 
     if !std::env::current_dir().unwrap().join("zz.toml").exists() {
         let s = toml::to_string(&c).unwrap();
@@ -253,24 +242,6 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
         }
     }
 
-    // implicit features
-    if !c.variants.contains_key("default") {
-        c.variants.insert("default".to_string(), Default::default());
-    }
-    for (_, features) in &c.variants {
-        for f in features {
-            if c.features.is_none() {
-                c.features = Some(HashMap::new());
-            }
-            if !c.features.as_mut().unwrap().contains_key(f) {
-                c.features
-                    .as_mut()
-                    .unwrap()
-                    .insert(f.to_string(), Default::default());
-            }
-        }
-    }
-
     if c.artifacts.is_none() {
         let mut a = Vec::new();
         if search.join("./src/main.zz").exists() {
@@ -318,27 +289,4 @@ pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
     }
 
     (search.into(), c)
-}
-
-impl Config {
-    pub fn features(&self, variant: &str) -> HashMap<String, (bool, Feature)> {
-        match self.variants.get(variant) {
-            None => {
-                error!("variant {} not defined", variant);
-                std::process::exit(9);
-            }
-            Some(v) => {
-                let mut r = HashMap::new();
-                if let Some(features) = &self.features {
-                    for (n, feature) in features {
-                        r.insert(n.to_string(), (false, feature.clone()));
-                    }
-                }
-                for v in v {
-                    r.get_mut(v).unwrap().0 = true;
-                }
-                r
-            }
-        }
-    }
 }

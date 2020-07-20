@@ -129,8 +129,6 @@ pub struct Make {
 
 impl Make {
     pub fn new(mut config: Config, variant: &str, stage: Stage, artifact: Artifact) -> Self {
-        let features = config.features(variant);
-
         let mut cflags: Vec<String> =
             match std::env::var("TARGET_CFLAGS").or(std::env::var("CFLAGS")) {
                 Err(_) => Vec::new(),
@@ -170,22 +168,10 @@ impl Make {
             cxx = "afl-clang++".to_string();
         }
 
-        let mut cincludes = config.project.cincludes.clone();
-        let mut pkgconfig = config.project.pkgconfig.clone();
-        let mut cobjects = std::mem::replace(&mut config.project.cobjects, Vec::new());
-        let mut user_cflags = config.project.cflags.clone();
-        let mut user_lflags = config.project.lflags.clone();
-
-        for (_, (enabled, feature)) in &features {
-            if !enabled {
-                continue;
-            }
-            cincludes.extend(feature.cincludes.clone());
-            pkgconfig.extend(feature.pkgconfig.clone());
-            cobjects.extend(feature.cobjects.clone());
-            user_cflags.extend(feature.cflags.clone());
-            user_lflags.extend(feature.lflags.clone());
-        }
+        let cincludes = config.project.cincludes.clone();
+        let pkgconfig = config.project.pkgconfig.clone();
+        let cobjects = std::mem::replace(&mut config.project.cobjects, Vec::new());
+        let user_cflags = config.project.cflags.clone();
 
         for cinc in &cincludes {
             cflags.push("-I".into());
@@ -223,7 +209,6 @@ impl Make {
         cflags.push("-fvisibility=hidden".to_string());
 
         cflags.extend(user_cflags);
-        lflags.extend(user_lflags);
 
         let mut stage = stage.clone();
         if let Ok(_) = std::env::var("ZZ_BUILD_NO_PIC") {
