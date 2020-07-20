@@ -106,6 +106,9 @@ pub struct Step {
 
     pub deps: HashSet<PathBuf>,
     pub outp: String,
+
+    pub cflags: Vec<String>,
+    pub lflags: Vec<String>,
 }
 
 pub struct Make {
@@ -324,9 +327,60 @@ impl Make {
             args,
             deps: sources,
             outp: outp.clone(),
+            lflags : Vec::new(),
+            cflags : Vec::new(),
         });
 
         self.lobjs.push(outp);
+    }
+
+
+    pub fn getflags(&self, cf: &mut super::emitter::CFile) {
+        cf.lflags.clear();
+
+        let prk = Command::new(&self.cc)
+            .arg("-E")
+            .arg(&cf.filepath)
+            .output()
+            .expect("failed to execute cc -E");
+        for line in String::from_utf8_lossy(&prk.stdout).lines() {
+            if line.starts_with("#pragma comment") {
+                let mut line = line.split(")");
+                let line = match line.next() {
+                    None => continue,
+                    Some(l) => l,
+                };
+                let mut line = line.split("(");
+                match line.next() {
+                    None => continue,
+                    Some(l) => l,
+                };
+                let     line = match line.next() {
+                    None => continue,
+                    Some(l) => l,
+                };
+                println!(">>{}<<", line);
+                let mut line = line.split(",");
+                let     key = match line.next() {
+                    None => continue,
+                    Some(l) => l,
+                };
+                let mut val = match line.next() {
+                    None => continue,
+                    Some(l) => l.trim().to_string(),
+                };
+                if val.starts_with("\"") {
+                    val.remove(0);
+                }
+                if val.ends_with("\"") {
+                    val.remove(val.len() - 1);
+                }
+                if key == "linker" {
+                    println!(">>{}<<", val);
+                    cf.lflags.push(val.to_string());
+                }
+            }
+        }
     }
 
     pub fn build(&mut self, cf: &super::emitter::CFile) {
@@ -373,17 +427,22 @@ impl Make {
         ;
         args.push(outp.clone());
 
+        self.lflags.append(&mut cf.lflags.clone());
+        self.cflags.append(&mut cf.cflags.clone());
+
         self.steps.push(Step {
             cxx: false,
             source: Path::new(&cf.filepath).into(),
             args,
-            deps: cf.sources.clone(),
-            outp: outp.clone(),
+            deps:   cf.sources.clone(),
+            outp:   outp.clone(),
+            lflags: cf.lflags.clone(),
+            cflags: cf.cflags.clone(),
         });
         self.lobjs.push(outp);
     }
 
-    pub fn link(self) {
+    pub fn link(mut self) {
         use rayon::prelude::*;
         use std::sync::{Arc, Mutex};
 
@@ -403,18 +462,28 @@ impl Make {
         pb.lock().unwrap().show_speed = false;
 
         if needs_objects {
-            self.steps.par_iter().for_each(|step| {
+            let cc  = self.cc.clone();
+            let cxx = self.cxx.clone();
+
+            for step in &self.steps {
+                self.lflags.append(&mut step.lflags.clone());
+            }
+
+
+            self.steps.par_iter_mut().for_each(|step| {
                 if ABORT.load(Ordering::Relaxed) {
                     return;
                 };
-                let mut cmd = self.cc.clone();
+                let mut cmd = cc.clone();
                 if step.cxx {
-                    cmd = self.cxx.clone();
+                    cmd = cxx.clone();
                     has_used_cxx.store(true, Ordering::Relaxed);
                 }
+
                 pb.lock()
                     .unwrap()
-                    .message(&format!("{} {:?} ", self.cc, step.source));
+                    .message(&format!("{} {:?} ", cmd, step.source));
+
 
                 if step.is_dirty() {
                     debug!("{} {:?}", cmd, step.args);

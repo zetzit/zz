@@ -1014,7 +1014,10 @@ pub fn abs(
                 for callassert in callassert {
                     abs_expr(callassert, &scope, true, all_modules, &md.name);
                 }
-                for (_,_,block) in &mut body.branches {
+                for (_,expr,block) in &mut body.branches {
+                    if let Some(expr) = expr {
+                        abs_expr(expr, &scope, false, all_modules, &md.name);
+                    }
                     abs_block(block, &scope, all_modules, &md.name);
                 }
                 scope.pop();
@@ -1089,6 +1092,14 @@ pub fn abs(
             ast::Def::Enum { .. } => {}
             ast::Def::Macro { body, .. } => {
                 abs_block(body, &scope, all_modules, &md.name);
+            }
+            ast::Def::Flags { body, .. } => {
+                for (_,expr,block) in &mut body.branches {
+                    if let Some(expr) = expr {
+                        abs_expr(expr, &scope, false, all_modules, &md.name);
+                    }
+                    abs_block(block, &scope, all_modules, &md.name);
+                }
             }
             ast::Def::Testcase { fields, .. } => {
                 for (_, expr) in fields {

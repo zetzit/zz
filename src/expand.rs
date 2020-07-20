@@ -340,6 +340,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                 }
                 */
             }
+            ast::Def::Flags { .. } => {
+            }
             ast::Def::Macro { .. } => {
                 stack.alloc(
                     Name::from(&d.name),

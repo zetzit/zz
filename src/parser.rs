@@ -638,6 +638,60 @@ fn p(
                     _ => unreachable!(),
                 }
             }
+            Rule::flags => {
+                let loc = Location::from_span(n.into(), &decl.as_span());
+                let decl = decl.into_inner();
+                let vis = Visibility::Object;
+                let name = format!("flags at {}", loc.line);
+                let mut body = ConditionalBlock{
+                    branches: Vec::new(),
+                };
+                for part in decl {
+                    match part.as_rule() {
+                        Rule::gblock => {
+                            body.branches = Vec::new();
+                            for branch in part.into_inner() {
+                                match branch.as_rule() {
+                                    Rule::if_stm | Rule::elseif_stm => {
+                                        let mut stm = branch.into_inner();
+                                        let part = stm.next().unwrap();
+                                        let expr = parse_expr(n, part);
+                                        let part = stm.next().unwrap();
+                                        let body2 = parse_block(n, features, stage, part);
+                                        body.branches.push((loc.clone(), Some(expr), body2));
+                                    }
+                                    Rule::else_stm => {
+                                        let mut stm = branch.into_inner();
+                                        let part = stm.next().unwrap();
+                                        let body2 = parse_block(n, features, stage, part);
+                                        body.branches.push((loc.clone(), None, body2));
+                                    }
+                                    Rule::block => {
+                                        body.branches = vec![(
+                                            loc.clone(),
+                                            None,
+                                            parse_block(n, features, stage, branch),
+                                        )];
+                                    }
+                                    e => panic!("unexpected rule {:?} in gblock", e),
+                                }
+                            }
+
+                        }
+                        e => panic!("unexpected rule {:?} in enum", e),
+                    }
+                }
+
+                module.locals.push(Local {
+                    doc: std::mem::replace(&mut doccomments, String::new()),
+                    name,
+                    vis,
+                    loc,
+                    def: Def::Flags {
+                        body,
+                    },
+                });
+            }
             e => panic!("unexpected rule {:?} in file", e),
         }
     }

@@ -148,6 +148,9 @@ pub enum Def {
         args: Vec<String>,
         body: Block,
     },
+    Flags {
+        body: ConditionalBlock,
+    },
     Testcase {
         fields: Vec<(String, Expression)>,
     },

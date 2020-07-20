@@ -281,6 +281,7 @@ static inline void * pyFATGetPtr(PyObject * obj , char * expected_type) {{
 
             self.emit_loc(&d.loc);
             match d.def {
+                ast::Def::Flags { .. } => {}
                 ast::Def::Macro { .. } => {}
                 ast::Def::Const { .. } => self.emit_const(&d),
                 ast::Def::Static { .. } => self.emit_static(&d),

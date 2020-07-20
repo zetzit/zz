@@ -148,7 +148,7 @@ impl Pipeline {
         }
     }
 
-    fn do_emit(&self, ast: &mut ast::Module) -> Result<emitter::CFile, Option<super::Error>> {
+    fn do_emit(&self, ast: &mut ast::Module, make: &make::Make) -> Result<emitter::CFile, Option<super::Error>> {
         if let Some(v) = self.from_buildcache(&ast.name) {
             return Ok(v);
         }
@@ -198,7 +198,9 @@ impl Pipeline {
 
         let em =
             super::emitter::Emitter::new(&self.project.project, self.stage.clone(), module, false);
-        let cf = em.emit();
+        let mut cf = em.emit();
+
+        make.getflags(&mut cf);
 
         if complete {
             self.to_buildcache(&cf);
@@ -211,6 +213,13 @@ impl Pipeline {
         self.do_abs();
 
         self.pb_reset();
+
+        let mut make = make::Make::new(
+            self.project.clone(),
+            &self.variant,
+            self.stage.clone(),
+            artifact.clone(),
+        );
 
         let cfiles = self
             .modules
@@ -232,12 +241,14 @@ impl Pipeline {
                                 sources: HashSet::new(),
                                 deps: HashSet::new(),
                                 symbols: HashSet::new(),
+                                cflags: Vec::new(),
+                                lflags: Vec::new(),
                             },
                         ))
                     }
                     loader::Module::ZZ(ast) => {
                         self.pb_doing("comp", hn.clone());
-                        let r = self.do_emit(ast);
+                        let r = self.do_emit(ast, &make);
                         self.pb_done("comp", hn);
                         match r {
                             Err(None) => {
@@ -267,13 +278,6 @@ impl Pipeline {
         let mut need = vec![main];
         let mut used: HashSet<Name> = HashSet::new();
         let mut symbols: HashSet<Name> = HashSet::new();
-
-        let mut make = make::Make::new(
-            self.project.clone(),
-            &self.variant,
-            self.stage.clone(),
-            artifact.clone(),
-        );
 
         while need.len() > 0 {
             for n in std::mem::replace(&mut need, Vec::new()) {

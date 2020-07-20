@@ -584,6 +584,15 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     decl_deps.extend(block_deps(cr, body));
                     forceinline.insert(name.clone());
                 }
+                ast::Def::Flags { body, .. } => {
+                    for (_, branch_expr, body) in &body.branches {
+                        if let Some(expr) = branch_expr {
+                            impl_deps.extend(expr_deps(cr, expr));
+                        }
+                        impl_deps.extend(block_deps(cr, body));
+                    }
+                    forceinline.insert(name.clone());
+                }
                 ast::Def::Testcase { fields, .. } => {
                     for (_, expr) in fields {
                         decl_deps.extend(expr_deps(cr, expr));
