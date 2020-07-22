@@ -114,7 +114,7 @@ fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, 
             }
         }
         json::ValueType::String => {
-            printf("%s : %s\n", k, v.buffer);
+            printf("%s : %s\n", k, v.string);
         }
         json::ValueType::Integer => {
             printf("%s : %d\n", k, v.integer);

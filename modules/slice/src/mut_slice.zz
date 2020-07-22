@@ -1,5 +1,6 @@
 using <string.h> as c_string;
 using slice::{Slice};
+using slice as roslice;
 
 export struct MutSlice {
     u8 mut* mem;
@@ -9,6 +10,7 @@ export struct MutSlice {
 
 pub theory integrity(MutSlice mut*self) -> bool (
         safe(self->at)
+    &&  safe(self->mem)
     &&  len(self->mem) >= self->size
     &&  *self->at <= self->size
     &&  *self->at <= len(self->mem)
@@ -28,6 +30,19 @@ export fn make(MutSlice new mut*self, u8 mut*mem, usize size, usize mut *at)
     self->at   = at;
     static_attest(self->size == len(self->mem));
 }
+
+export fn as_slice(MutSlice * self) -> Slice
+    where   integrity(self)
+    model   roslice::integrity(&return)
+{
+    let r = Slice {
+        mem:    self->mem,
+        size:   *self->at,
+    };
+    static_attest(roslice::integrity(&r));
+    return r;
+}
+
 
 export fn append_slice(MutSlice mut * self, Slice *other) -> bool
     where   integrity(self)

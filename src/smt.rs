@@ -209,7 +209,7 @@ impl Solver {
         self.solver
             .borrow_mut()
             .assert(&format!("(= {} ({} {}) )", tmp_debug, theory, debug_args))
-            .unwrap();
+            .expect(&format!("invocation failed: (= {} ({} {}) )", tmp_debug, theory, debug_args));
         self.checkpoint();
     }
 

@@ -15,6 +15,7 @@ pub mod emitter_js;
 pub mod emitter_py;
 pub mod emitter_rs;
 pub mod emitter_go;
+pub mod emitter_common;
 pub mod expand;
 pub mod export_make;
 pub mod export_cmake;
@@ -46,11 +47,11 @@ impl Error {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum BuildSet {
     Tests,
     Run,
-    Check,
+    Check(Option<std::path::PathBuf>),
     All,
     Export,
     Named(String),

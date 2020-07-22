@@ -247,6 +247,13 @@ impl Pipeline {
                         ))
                     }
                     loader::Module::ZZ(ast) => {
+
+                        if let super::BuildSet::Check(Some(s)) = &buildset {
+                            if &ast.source != s {
+                                return None;
+                            }
+                        }
+
                         self.pb_doing("comp", hn.clone());
                         let r = self.do_emit(ast, &make);
                         self.pb_done("comp", hn);
@@ -269,6 +276,9 @@ impl Pipeline {
 
         if ABORT.load(Ordering::Relaxed) {
             std::process::exit(1);
+        }
+        if let super::BuildSet::Check(_) = &buildset {
+            return;
         }
 
         let mut main = Name::from(&artifact.main);
@@ -295,6 +305,7 @@ impl Pipeline {
             }
         }
 
+
         for entry in std::fs::read_dir("./src").unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
@@ -314,6 +325,7 @@ impl Pipeline {
             }
         }
 
+
         make.build(&emitter::builtin(
             &self.project.project,
             &self.stage,
@@ -321,9 +333,7 @@ impl Pipeline {
             symbols,
         ));
 
-        if buildset != &super::BuildSet::Check {
-            make.link();
-        }
+        make.link();
     }
 
     fn to_buildcache(&self, cf: &emitter::CFile) {

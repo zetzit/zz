@@ -60,7 +60,13 @@ fn main() {
                         .takes_value(false)
                         .required(false)
                         .long("debug"),
-                ),
+                )
+                .arg(
+                    Arg::with_name("sourcefile")
+                        .takes_value(true)
+                        .required(false)
+                        .index(1),
+                )
         )
         .subcommand(
             SubCommand::with_name("build")
@@ -479,9 +485,15 @@ fn main() {
             return;
         }
         ("check", Some(submatches)) => {
+
+            let mut src = None;
+            if let Some(v) = submatches.value_of("sourcefile") {
+               src = Some(std::path::PathBuf::from(v).canonicalize().expect("sourcefile"));
+            }
+
             zz::parser::ERRORS_AS_JSON.store(true, Ordering::SeqCst);
             zz::build(
-                zz::BuildSet::Check,
+                zz::BuildSet::Check(src),
                 submatches.value_of("variant").unwrap_or("default"),
                 zz::make::Stage::test(),
                 false,

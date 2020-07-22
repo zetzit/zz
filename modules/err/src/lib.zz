@@ -24,9 +24,9 @@ export struct Err+ {
 
 /// create a new error
 export fn make(Err+tail mut new*self)
-    where   tail > 0
     model   checked(*self)
 {
+    assert(tail > 0);
     memset(self, 0, sizeof(Err));
     buffer::clear(&(self->trace));
     static_attest(checked(*self));
@@ -34,9 +34,9 @@ export fn make(Err+tail mut new*self)
 
 /// ignore any previous errors and reset error state
 export fn ignore(Err+tail mut *self)
-    where   tail > 0
     model checked(*self)
 {
+    assert(tail > 0);
     memset(self, 0, sizeof(Err));
     buffer::clear(&self->trace);
     static_attest(checked(*self));

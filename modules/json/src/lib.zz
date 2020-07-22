@@ -19,7 +19,7 @@ pub enum ValueType {
 
 export struct Value {
     ValueType t;
-    char*   buffer;
+    char*   string;
     int     integer;
     usize   index;
 }
@@ -332,7 +332,7 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                     Value val = Value{
                         index:  stack->index,
                         t:      ValueType::String,
-                        buffer: ((self->capture).mem + self->keylen),
+                        string: ((self->capture).mem + self->keylen),
                     };
                     de(e, self, stack->user, (self->capture).mem, val);
                     if err::check(e) {

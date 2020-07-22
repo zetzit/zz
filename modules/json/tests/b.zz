@@ -26,20 +26,20 @@ symbol InvalidValue;
 fn deserialize_charge(err::Err+et mut *e, json::Parser+pt mut* p, void mut *user, char *k, json::Value v)
     where err::checked(*e)
 {
-    printf("charge.>%s< == >%s< %u, %d [%zu]\n", k, v.buffer, v.t, v.integer, v.index);
+    printf("charge.>%s< == >%s< %u, %d [%zu]\n", k, v.string, v.t, v.integer, v.index);
 }
 
 fn deserialize_engine(err::Err+et mut *e, json::Parser+pt mut* p, void mut *user, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
-    where nullterm(v.buffer)
+    where nullterm(v.string)
 {
     let into = (Engine mut*)user;
-    printf("engine.>%s< == >%s< %d\n", k, v.buffer, v.integer);
+    printf("engine.>%s< == >%s< %d\n", k, v.string, v.integer);
     if buffer::cstr_eq("fuel", k) && v.t == json::ValueType::String{
-        if buffer::cstr_eq("dinosaurs", v.buffer) {
+        if buffer::cstr_eq("dinosaurs", v.string) {
             into->fuel = Fuel::Dinosaurs;
-        } else if buffer::cstr_eq("electric", v.buffer)  {
+        } else if buffer::cstr_eq("electric", v.string)  {
             into->fuel = Fuel::Electric;
         } else {
             err::fail(e, InvalidValue , "invalid fuel value %s", v);
@@ -57,7 +57,7 @@ fn deserialize_vehicle(err::Err+et mut *e, json::Parser+pt mut* p, void mut *use
     where nullterm(k)
 {
     let into = (Vehicle mut*)user;
-    printf("vehicle.>%s< == >%s< %d\n", k, v.buffer, v.integer);
+    printf("vehicle.>%s< == >%s< %d\n", k, v.string, v.integer);
 
     if buffer::cstr_eq("height", k) {
         into->height = v.integer;

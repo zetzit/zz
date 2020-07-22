@@ -3,9 +3,11 @@
 use super::ast;
 use super::flatten;
 use super::make;
+use super::emitter_common;
 use super::name::Name;
 use super::parser::{self, emit_error};
 use super::project::Project;
+use super::project;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
@@ -21,12 +23,14 @@ pub struct Emitter {
 }
 
 pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
-    format!("target/rust/{}.rs", module.name.0[1..].join("_"))
+    let td = project::target_dir();
+    td.join("rust").join(format!("{}.rs", module.name.0[1..].join("_"))).to_string_lossy().to_string()
 }
 
 pub fn make_module(make: &super::make::Make) {
-    let pdir_ = format!("target/rust/{}/", make.artifact.name);
-    let pdir = std::path::Path::new(&pdir_);
+    let td      = project::target_dir();
+    let pdir_   = td.join("rust").join(&make.artifact.name);
+    let pdir    = std::path::Path::new(&pdir_);
     std::fs::create_dir_all(&pdir).unwrap();
 
 
@@ -39,7 +43,14 @@ pub fn make_module(make: &super::make::Make) {
     write!(f, "    cc::Build::new()\n").unwrap();
 
     for step in &make.steps {
-        write!(f,"      .file(\"../../../{}\")\n", step.source.to_string_lossy()).unwrap();
+        write!(f,"      .file(\"{}\")\n",
+            emitter_common::path_rel(&pdir, &step.source).to_string_lossy().to_string()
+        ).unwrap();
+    }
+    for flag in &make.cincludes {
+        write!(f,"      .include(\"{}\")\n",
+            emitter_common::path_rel(&pdir, flag).to_string_lossy().to_string()
+        ).unwrap();
     }
     write!(f, "    .compile(\"{}\");\n", make.artifact.name).unwrap();
     write!(f, "}}\n").unwrap();
@@ -365,6 +376,7 @@ impl Emitter {
             _ => unreachable!(),
         };
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
+        write!(self.f, "#[derive(Clone)]\n").unwrap();
         write!(self.f, "#[repr(C)]\n").unwrap();
         write!(self.f, "pub enum {} {{\n", shortname).unwrap();
         for (name, literal) in names {
@@ -580,7 +592,7 @@ impl {name} {{
             }
         }
 
-        write!(self.f, "\n\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
+        write!(self.f, "\n#[derive(Clone)]\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
         for i in 0..fields.len() {
             let field = &fields[i];
 
@@ -666,7 +678,7 @@ impl {name} {{
 
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
 
-        write!(self.f, "#[repr(C)]\npub struct {sn} {{\n    pub ctx: *mut std::ffi::c_void,\n",
+        write!(self.f, "#[derive(Clone)]\n#[repr(C)]\npub struct {sn} {{\n    pub ctx: *mut std::ffi::c_void,\n",
                sn = shortname,
         ).unwrap();
 
