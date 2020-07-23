@@ -10,9 +10,6 @@ Zetz plays nice with others and does not require rewriting everything in zetz to
 A major innovative feature is that all code is formally verified by symbolic execution in a virtual machine,
 at compile time.
 
-[![Build Status](https://travis-ci.org/aep/zz.svg?branch=master)](https://travis-ci.org/aep/zz)
-[![FAQ](https://img.shields.io/badge/FAQ-Wiki-blue)](https://github.com/aep/zz/wiki/FAQ)
-
 ### quick quick start
 
 1. [install rust](https://www.rust-lang.org/tools/install) for bootstrapping
