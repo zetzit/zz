@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: macos
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install z3
+        ./ci.sh
+
+    - name: ubuntu
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get install -y z3
+        ./ci.sh
+
+    - name: windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        curl -fsSL "https://github.com/Z3Prover/z3/releases/download/z3-4.8.8/z3-4.8.8-x64-win.zip" -o "z3-4.8.8-x64-win.zip"
+        rm -rf /c/z3_downloaded/z3 ## this is an empty directory
+        export "PATH=/c/z3_downloaded:/c/msys64/mingw64/bin/:$PATH"
+        clang --version
+        export "ZZ_ASAN=false"
+        ./ci.sh
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: zz-${{ matrix.os }}
+        path: |
+          target/release/zz*
+          modules/
+          !modules/**/target
+
+

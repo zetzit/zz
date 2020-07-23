@@ -36,7 +36,7 @@
         if (!ticksPerSec.QuadPart) {
             QueryPerformanceFrequency(&ticksPerSec);
             if (!ticksPerSec.QuadPart) {
-                errno = ENOTSUP;
+                errno = 252; // ENOTSUP
                 return -1;
             }
         }
@@ -81,7 +81,7 @@
             return zz__clock_gettime_realtime(tp);
         }
 
-        errno = ENOTSUP;
+        errno = 252; // ENOTSUP
         return -1;
     }
 
