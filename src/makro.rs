@@ -6,6 +6,7 @@ use pest::Parser;
 use std::collections::HashMap;
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::path;
 
 use serde::Serialize;
 
@@ -19,12 +20,14 @@ pub fn expr(
     loc: &ast::Location,
     args: &Vec<Box<ast::Expression>>,
 ) -> Result<ast::Expression, Error> {
-    let mp = format!(
-        "target/macro/{}{}",
-        name.0[1..].join("_"),
-        super::make::EXE_EXT
-    );
-    let mp = std::path::Path::new(&mp);
+
+    let cwd = path::Path::new(&loc.file)
+        .parent().expect(&format!("macro cwd for {}", loc.file));
+
+    let mp = super::project::target_dir()
+        .join("macro")
+        .join(format!("{}{}", name.0[1..].join("_"), super::make::EXE_EXT))
+    ;
     if !mp.exists() {
         return Err(Error::new(
             format!("macro {} is unavailable", name),
@@ -34,10 +37,12 @@ pub fn expr(
             )],
         ));
     }
+    let mp = mp.canonicalize().expect(&format!("macro path for {:?}", mp));
 
     let input = MacroStdin { args: args.clone() };
 
     let mut cmd = Command::new(mp)
+        .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -85,12 +90,14 @@ pub fn stm(
     loc: &ast::Location,
     args: &Vec<Box<ast::Expression>>,
 ) -> Result<Vec<Box<ast::Statement>>, Error> {
-    let mp = format!(
-        "target/macro/{}{}",
-        name.0[1..].join("_"),
-        super::make::EXE_EXT
-    );
-    let mp = std::path::Path::new(&mp);
+
+    let cwd = path::Path::new(&loc.file)
+        .parent().expect(&format!("macro cwd for {}", loc.file));
+
+    let mp = super::project::target_dir()
+        .join("macro")
+        .join(format!("{}{}", name.0[1..].join("_"), super::make::EXE_EXT))
+    ;
     if !mp.exists() {
         return Err(Error::new(
             format!("macro {} is unavailable", name),
@@ -100,10 +107,12 @@ pub fn stm(
             )],
         ));
     }
+    let mp = mp.canonicalize().expect(&format!("macro path for {:?}", mp));
 
     let input = MacroStdin { args: args.clone() };
 
     let mut cmd = Command::new(mp)
+        .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
