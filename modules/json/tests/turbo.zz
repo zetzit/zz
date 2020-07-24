@@ -11,19 +11,25 @@ test test123  {
 }
 
 
-fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn pretty(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
 {
-    let depth = (usize mut *)user;
+    let depth = (usize)u->user2;
     switch v.t {
         json::ValueType::Object => {
-            json::next(p,  e, pretty, (void mut*)((usize)depth + 1));
+            json::next(p,  e, json::U{
+                it:     pretty,
+                user2:  depth + 1,
+            });
             if err::check(e) {
                 return;
             }
         }
         json::ValueType::Array => {
-            json::next(p,  e, pretty, (void mut*)((usize)depth + 1));
+            json::next(p,  e, json::U{
+                it:     pretty,
+                user2:  depth + 1,
+            });
             if err::check(e) {
                 return;
             }
@@ -55,8 +61,7 @@ export fn main() -> int {
     }"#;
 
     for(usize mut i = 0;i<30000;i++) {
-        usize depth = 0;
-        new+100 parser = json::parser(&e, pretty, (void mut*)depth);
+        new+100 parser = json::parser(&e, json::U{ it: pretty, user2: 0} );
         if err::check(&e) {
             err::eprintf(&e, stderr);
             return 2;

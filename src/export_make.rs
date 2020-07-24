@@ -1,9 +1,11 @@
 use super::make::Make;
 use std::fs;
 use std::io::Write;
+use super::emitter_common;
 
 pub fn export(make: Make) {
-    let pdir_ = format!("target/make/{}/", make.artifact.name);
+    let td      = super::project::target_dir();
+    let pdir_   = td.join("make").join(&make.artifact.name);
     let pdir = std::path::Path::new(&pdir_);
     std::fs::create_dir_all(&pdir).unwrap();
 
@@ -18,7 +20,7 @@ pub fn export(make: Make) {
         f,
         r#"
 
-{an}_SOURCE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))/../../..
+{an}_TARGET_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
 {an}_SOURCES=\
 "#,
@@ -29,9 +31,9 @@ pub fn export(make: Make) {
     for step in &make.steps {
         write!(
             f,
-            "     ${{{an}_SOURCE_DIR}}/{ss}\\\n",
+            "     ${{{an}_TARGET_DIR}}/{ss}\\\n",
             an = make.artifact.name,
-            ss = step.source.to_string_lossy(),
+            ss = emitter_common::path_rel(&pdir, &step.source).to_string_lossy().to_string(),
         )
         .unwrap();
     }
@@ -39,9 +41,11 @@ pub fn export(make: Make) {
     write!(f, "\n").unwrap();
 
 
-    write!(f, "{an}_CINCLUDES += ${{{an}_SOURCE_DIR}} \\\n", an = make.artifact.name).unwrap();
+    write!(f, "{an}_CINCLUDES += ${{{an}_TARGET_DIR}} \\\n", an = make.artifact.name).unwrap();
     for ss in &make.cincludes{
-        write!(f, "  ${{{an}_SOURCE_DIR}}/{ss}\\\n", an = make.artifact.name, ss = ss).unwrap();
+        write!(f, "  ${{{an}_TARGET_DIR}}/{ss}\\\n", an = make.artifact.name,
+               ss = emitter_common::path_rel(&pdir,  ss).to_string_lossy().to_string(),
+        ).unwrap();
     }
     write!(f, "\n").unwrap();
 

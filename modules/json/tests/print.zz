@@ -1,5 +1,6 @@
 using <stdio.h>::{printf, fread, stdin, stderr};
-using <stdlib.h>::{atoi};
+using <stdlib.h>::{atoi, free};
+using <string.h>::{strdup};
 using <buffer.h>::{strcmp, memset};
 using err;
 using buffer;
@@ -9,7 +10,7 @@ using json;
 
 test backspace {
     stdin = r#"{"developers": "C:\\developers\\developers"}"#
-    stdout = "developers : C:\\developers\\developers\n"
+    stdout = "<json>\n  <developers>C:\\developers\\developers</developers>\n</json>\n"
 }
 
 
@@ -26,35 +27,50 @@ test test123  {
         },
         "deep": "nah"
     }"#
-    stdout = r#"height : 12
-add : "[{123123}\:b
-v:
-  0 : 23
-engine:
-  rolling : hard
-  fuel : electric
-  charge:
-    0 : 9229
-    1 : 1
-    2 : -399888
-deep : nah
+    stdout = r#"<json>
+  <height>12</height>
+  <add>"[{123123}\:b</add>
+  <v>
+    <0>23</0>
+  <engine>
+    <rolling>hard</rolling>
+    <fuel>electric</fuel>
+    <charge>
+      <0>9229</0>
+      <1>1</1>
+      <2>-399888</2>
+  </engine>
+  <deep>nah</deep>
+</json>
 "#
 }
 
 test test_uint {
     stdin   = "{\"a\":19}"
-    stdout  = "a : 19\n"
+    stdout  = "<json>\n  <a>19</a>\n</json>\n"
 }
 
 test test_sint {
     stdin   = "{\"a\":-19}"
-    stdout  = "a : -19\n"
+    stdout  = "<json>\n  <a>-19</a>\n</json>\n"
+}
+
+test test_bool {
+    stdin   = "{\"a\": true, \"b\": false, \"c\": 2}"
+    stdout  = r#"<json>
+  <a true/>
+  <b false/>
+  <c>2</c>
+</json>
+"#
 }
 
 test test_escape {
     stdin   = r#"{"a": "\"yo\no\""}"#
-    stdout  = r#"a : "yo
-o"
+    stdout  = r#"<json>
+  <a>"yo
+o"</a>
+</json>
 "#
 }
 
@@ -63,61 +79,96 @@ test test_array {
     -3000, 1,
     "yep"
 ]}"#
-    stdout  = r#"a:
-  0 : -3000
-  1 : 1
-  2 : yep
+    stdout  = r#"<json>
+  <a>
+    <0>-3000</0>
+    <1>1</1>
+    <2>yep</2>
+</json>
 "#
 }
 
 
 test _object_in_array {
     stdin = r#"{"args":[{"LiteralString":{"loc":{"file":"/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"world"}},{"Literal":{"loc":{"file":"/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"32"}}]}"#
-    stdout = r#"args:
-  0:
-    LiteralString:
-      loc:
-        file : /home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz
-      v : world
-  1:
-    Literal:
-      loc:
-        file : /home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz
-      v : 32
+    stdout = r#"<json>
+  <args>
+    <0>
+      <LiteralString>
+        <loc>
+          <file>/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz</file>
+        </loc>
+        <v>world</v>
+      </LiteralString>
+    </0>
+    <1>
+      <Literal>
+        <loc>
+          <file>/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz</file>
+        </loc>
+        <v>32</v>
+      </Literal>
+    </1>
+</json>
 "#
 }
 
 
 
-fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn pop(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p)
     where err::checked(*e)
 {
-    let depth = (usize mut*)user;
-
-    for (usize mut i = 0; i < (usize)depth * 2; i++) {
+    char mut *k = u->user1;
+    usize depth = u->user2;
+    for (usize mut i = 2; i < depth * 2; i++) {
+        printf(" ");
+    }
+    printf("</%s>\n", k);
+    free(k);
+}
+fn pretty(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+    where err::checked(*e)
+{
+    usize depth = u->user2;
+    for (usize mut i = 0; i < depth * 2; i++) {
         printf(" ");
     }
 
     switch v.t {
         json::ValueType::Object => {
-            printf("%s:\n", k);
-            json::next(p,  e, pretty, (void mut*)((usize)depth + 1));
+            printf("<%s>\n", k);
+            json::next(p,  e, json::U{
+                it:     pretty,
+                user1:  strdup(k),
+                user2:  depth + 1,
+                pop:    pop,
+            });
             if err::check(e) {
                 return;
             }
         }
         json::ValueType::Array => {
-            printf("%s:\n", k);
-            json::next(p,  e, pretty, (void mut*)((usize)depth + 1));
+            printf("<%s>\n", k);
+            json::next(p,  e, json::U{
+                it:     pretty,
+                user2:  depth + 1,
+            });
             if err::check(e) {
                 return;
             }
         }
         json::ValueType::String => {
-            printf("%s : %s\n", k, v.string);
+            printf("<%s>%s</%s>\n", k, v.string, k);
         }
         json::ValueType::Integer => {
-            printf("%s : %d\n", k, v.integer);
+            printf("<%s>%d</%s>\n", k, v.integer, k);
+        }
+        json::ValueType::Boolean => {
+            if v.integer > 0 {
+                printf("<%s true/>\n", k);
+            } else {
+                printf("<%s false/>\n", k);
+            }
         }
     }
 }
@@ -127,9 +178,10 @@ fn pretty(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, 
 export fn main() -> int {
     new+1000 e = err::make();
 
-    usize depth = 0;
-
-    new+100 parser = json::parser(&e, pretty, (void mut*)depth);
+    new+100 parser = json::parser(&e, json::U{
+        it:     pretty,
+        user2:  1,
+    });
 
     if err::check(&e) {
         err::eprintf(&e, stderr);
@@ -140,6 +192,7 @@ export fn main() -> int {
 
     char mut buf[10];
 
+    printf("<json>\n");
     for(;;) {
         usize bin = as<usize>(fread(buf, sizeof(char), static(len(buf)), stdin));
         if bin == 0 {
@@ -152,6 +205,8 @@ export fn main() -> int {
             return 2;
         }
     }
+    printf("</json>\n");
+
 
 
     return 0;

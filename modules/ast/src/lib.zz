@@ -13,11 +13,12 @@ export symbol ParseError;
 
 
 
-fn parse_v(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn parse_v(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)user;
+    let arg = (ExpressionS mut*)u->user1;
+    static_attest(safe(arg));
 
     if buffer::cstr_eq(k, "v") {
         switch v.t {
@@ -35,16 +36,17 @@ fn parse_v(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k,
     }
 }
 
-fn parse_t(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn parse_t(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)user;
+    let arg = (ExpressionS mut*)u->user1;
+    static_attest(safe(arg));
 
     if buffer::cstr_eq(k, "t") {
         switch v.t {
             json::ValueType::Object => {
-              json::next(p,  e, parse_t_other, (void mut*)arg);
+              json::next(p,  e, json::U{ it: parse_t_other, user1: (void mut*)arg} );
               if err::check(e) {
                 return;
               }
@@ -55,16 +57,17 @@ fn parse_t(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k,
     }
 }
 
-fn parse_t_other(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn parse_t_other(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)user;
+    let arg = (ExpressionS mut*)u->user1;
+    static_attest(safe(arg));
 
     if buffer::cstr_eq(k, "Other") {
         switch v.t {
             json::ValueType::Array => {
-              json::next(p,  e, parse_t_other_value, (void mut*)arg);
+              json::next(p,  e, json::U{ it: parse_t_other_value, user1: (void mut*)arg} );
               if err::check(e) {
                 return;
               }
@@ -75,11 +78,12 @@ fn parse_t_other(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, ch
     }
 }
 
-fn parse_t_other_value(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn parse_t_other_value(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-  let arg = (ExpressionS mut*)user;
+  let arg = (ExpressionS mut*)u->user1;
+  static_attest(safe(arg));
 
   switch v.t {
     json::ValueType::String => {
@@ -95,34 +99,35 @@ fn parse_t_other_value(err::Err+et mut *e, json::Parser+pt mut* p, void mut * us
   }
 }
 
-fn parse_arg(err::Err+et mut *e, json::Parser+pt mut* p, void mut*user, char *k, json::Value v)
+fn parse_arg(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)user;
+    let arg = (ExpressionS mut*)u->user1;
+    static_attest(safe(arg));
 
     switch v.t {
         json::ValueType::Object => {
             if buffer::cstr_eq(k, "Literal") {
                 arg->t = Expression::Literal;
-                json::next(p,  e, parse_v, (void mut*)arg);
+                json::next(p,  e, json::U{it:parse_v, user1: (void mut*)arg} );
                 if err::check(e) {
                     return;
                 }
             } else if buffer::cstr_eq(k, "LiteralString") {
                 arg->t = Expression::LiteralString;
-                json::next(p,  e, parse_v, (void mut*)arg);
+                json::next(p,  e, json::U{it:parse_v, user1: (void mut*)arg} );
                 if err::check(e) {
                     return;
                 }
             } else if buffer::cstr_eq(k, "Name") {
                 arg->t = Expression::Name;
-                json::next(p,  e, parse_t, (void mut*)arg);
+                json::next(p,  e, json::U{it:parse_t, user1: (void mut*)arg} );
                 if err::check(e) {
                     return;
                 }
             } else if buffer::cstr_eq(k, "args") {
-                json::next(p,  e, parse_arg, (void mut*)arg);
+                json::next(p,  e, json::U{it:parse_arg, user1: (void mut*)arg} );
                 if err::check(e) {
                     return;
                 }
@@ -137,17 +142,18 @@ fn parse_arg(err::Err+et mut *e, json::Parser+pt mut* p, void mut*user, char *k,
 }
 
 
-fn parse_arglist(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn parse_arglist(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let ast = (Ast mut*)user;
+    let ast = (Ast mut*)u->user1;
+    static_attest(safe(ast));
 
     switch v.t {
         json::ValueType::Object => {
             err::assert(v.index < static(len(ast->args)));
             ast->args[v.index].pool = &ast->pool;
-            json::next(p,  e, parse_arg, (void mut*)&ast->args[v.index]);
+            json::next(p,  e, json::U { it: parse_arg, user1: (void mut*)&ast->args[v.index]} );
             if err::check(e) {
                 return;
             }
@@ -158,16 +164,17 @@ fn parse_arglist(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, ch
     }
 }
 
-fn parse_doc(err::Err+et mut *e, json::Parser+pt mut* p, void mut * user, char *k, json::Value v)
+fn parse_doc(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let ast = (Ast mut*)user;
+    let ast = (Ast mut*)u->user1;
+    static_attest(safe(ast));
 
     switch v.t {
         json::ValueType::Array => {
             if buffer::cstr_eq(k, "args") {
-                json::next(p,  e, parse_arglist, ast);
+                json::next(p,  e, json::U{ it: parse_arglist, user1: ast} );
                 if err::check(e) {
                     return;
                 }
@@ -212,7 +219,7 @@ pub fn from_macro(Ast+t mut new *self)
 {
     self->pool.make(64);
     new+1000 e = err::make();
-    new+1000 parser = json::parser(&e, parse_doc, self);
+    new+1000 parser = json::parser(&e, json::U{ it: parse_doc, user1: self} );
     e.abort();
 
     new+1000 s = buffer::make();
