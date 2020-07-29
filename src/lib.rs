@@ -31,6 +31,7 @@ pub mod project;
 pub mod repos;
 pub mod smt;
 pub mod symbolic;
+pub mod mergecc;
 
 use name::Name;
 use std::collections::HashMap;
@@ -67,9 +68,11 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
     let td = project::target_dir();
     std::fs::create_dir_all(td.join(stage.to_string()).join("c"))
         .expect("create target dir");
-    std::fs::create_dir_all(td.join(stage.to_string()).join("gen"))
-        .expect("create target dir");
     std::fs::create_dir_all(td.join(stage.to_string()).join("zz"))
+        .expect("create target dir");
+    std::fs::create_dir_all(td.join("gen"))
+        .expect("create target dir");
+    std::fs::create_dir_all(td.join("c"))
         .expect("create target dir");
     std::fs::create_dir_all(td.join("include").join("zz"))
         .expect("create target dir");

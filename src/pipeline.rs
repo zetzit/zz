@@ -232,6 +232,8 @@ impl Pipeline {
                 let mut module = self.modules.get(&name).unwrap().clone();
                 match &mut module {
                     loader::Module::C(c) => {
+                        //TODO Module::C is actually a header?
+
                         self.pb_done("comp", hn);
                         Some((
                             name.clone(),

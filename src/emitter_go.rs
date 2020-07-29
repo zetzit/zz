@@ -3,6 +3,7 @@
 use super::ast;
 use super::flatten;
 use super::make;
+use super::emitter_common;
 use super::name::Name;
 use super::parser::{self, emit_error};
 use super::project::Project;
@@ -31,19 +32,15 @@ pub fn make_module(make: &super::make::Make) {
     for step in &make.steps {
         let s = step.source.parent().unwrap();
         if s.file_name().unwrap() == "zz" || s.file_name().unwrap() == "gen"{
-            let s = s
-                .parent()
-                .unwrap()
-                .join("js")
-                .join(step.source.file_name().unwrap());
-
             let c = fs::read_to_string(&step.source).unwrap();
             f.write(c.as_bytes());
         } else {
-            let f = step.source.to_string_lossy().replace("/", "_");
+            let ie = emitter_common::path_rel(&pdir, &step.source);
+
+            let f = ie.to_string_lossy().replace("/", "_").replace("..", "_");
             let p = pdir.join(f);
             let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
-            write!(f, "#include \"../../../{}\"\n", step.source.to_string_lossy()).unwrap();
+            write!(f, "#include {:?}", ie);
         }
     }
 
