@@ -6,6 +6,7 @@ use crate::emitter_rs;
 use crate::export_make;
 use crate::export_cmake;
 use crate::export_esp;
+use crate::mergecc;
 use metrohash::MetroHash128;
 use pbr;
 use std::collections::HashSet;
@@ -240,6 +241,14 @@ impl Make {
     }
 
     pub fn cobject(&mut self, inp: &Path) {
+
+        let outbase = super::project::target_dir()
+            .join("c");
+        let merged = mergecc::mergecc(&self.cincludes, &outbase, inp);
+
+
+
+
         let mut args = self.cflags.clone();
 
         if self.stage.pic {
@@ -274,14 +283,14 @@ impl Make {
         }
 
         args.push("-c".to_string());
-        args.push(inp.to_string_lossy().to_string());
+        args.push(merged.to_string_lossy().to_string());
         args.push("-o".to_string());
 
         let mut hasher: MetroHash128 = MetroHash128::default();
         hasher.write(args.join(" ").as_bytes());
         let hash = hasher.finish128();
 
-        let outp = inp
+        let outp = merged
             .to_string_lossy()
             .replace(|c: char| !c.is_alphanumeric(), "_");
         let outp = format!("{}_{:x}{:x}", outp, hash.0, hash.1);
@@ -296,8 +305,9 @@ impl Make {
 
         let mut sources = HashSet::new();
         sources.insert(inp.into());
+        sources.insert(merged.clone());
 
-        let cxx = if let Some("cpp") = inp
+        let cxx = if let Some("cpp") = merged
             .extension()
             .map(|v| v.to_str().expect("invalid file name"))
         {
@@ -308,7 +318,7 @@ impl Make {
 
         self.steps.push(Step {
             cxx,
-            source: inp.into(),
+            source: merged.into(),
             args,
             deps: sources,
             outp: outp.clone(),

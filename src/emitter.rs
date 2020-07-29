@@ -12,6 +12,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use super::project;
+use super::mergecc;
 
 #[derive(Serialize, Deserialize)]
 pub struct CFile {
@@ -30,6 +31,7 @@ pub struct Emitter {
     p: String,
     f: fs::File,
     module: flatten::Module,
+    cincludes: Vec<String>,
     header: bool,
     inside_macro: bool,
     cur_loc: Option<ast::Location>,
@@ -92,6 +94,7 @@ impl Emitter {
         write!(f, "#include <stdbool.h>\n").unwrap();
 
         Emitter {
+            cincludes: project.cincludes.clone(),
             cxx,
             p,
             f,
@@ -383,9 +386,26 @@ impl Emitter {
             return;
         }
 
+
+
         trace!("    emit include {} (inline? {})", fqn, inline);
         if *inline {
-            let mut f = match fs::File::open(&expr) {
+
+            let thisdir = std::env::current_dir().expect("PWD broke somehow");
+            let path = pathdiff::diff_paths(
+                std::path::Path::new(&expr),
+                std::path::Path::new(&thisdir),
+            ).expect(&format!("include path {} broke somehow", expr));
+
+            let outbase = super::project::target_dir()
+                .join("c");
+            let fi = mergecc::mergecc(
+                &self.cincludes,
+                &outbase,
+                &path,
+                );
+
+            let mut f = match fs::File::open(&fi) {
                 Err(e) => {
                     parser::emit_error(
                         format!("cannot inline {:?}", expr),
@@ -418,11 +438,26 @@ impl Emitter {
             expr.remove(0);
             expr.remove(expr.len() -1);
 
-            let thispath = std::fs::canonicalize(&self.p).expect("PWD broke somehow");
-            let thisdir  = thispath.parent().expect("PWD broke somehow");
-
+            let thisdir = std::env::current_dir().expect("PWD broke somehow");
             let path = pathdiff::diff_paths(
                 std::path::Path::new(&expr),
+                std::path::Path::new(&thisdir),
+            ).expect(&format!("include path {} broke somehow", expr));
+
+            println!("{:?}", expr);
+
+            let outbase = super::project::target_dir()
+                .join("c");
+            let fi = mergecc::mergecc(
+                &self.cincludes,
+                &outbase,
+                &path,
+                );
+
+            let thispath = std::fs::canonicalize(&self.p).expect("PWD broke somehow");
+            let thisdir  = thispath.parent().expect("PWD broke somehow");
+            let path = pathdiff::diff_paths(
+                std::path::Path::new(&fi),
                 std::path::Path::new(&thisdir),
             ).expect(&format!("include path {} broke somehow", expr));
             write!(self.f, "#include \"{}\"\n", path.to_string_lossy()).unwrap();
@@ -1700,8 +1735,8 @@ pub fn builtin(
     symbols: HashSet<Name>,
 ) -> CFile {
     let p = format!(
-        "target/{}/gen/zz_builtins_{}_{}_{:?}.c",
-        stage, project.name, artifact.name, artifact.typ
+        "target/gen/zz_builtins_{}_{}_{:?}.c",
+        project.name, artifact.name, artifact.typ
     );
     let mut f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
