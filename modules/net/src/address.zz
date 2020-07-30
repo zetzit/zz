@@ -13,10 +13,15 @@ export enum Type {
     Ipv6,
 }
 
+export union OsAddress {
+    os::sockaddr_in4_t ipv4;
+    os::sockaddr_in6_t ipv6;
+};
+
 /// a network address
 export struct Address {
     Type                    typ;
-    os::zz_os_net_Address   os;
+    OsAddress               os;
 }
 
 /// make an invalid network address
@@ -248,7 +253,7 @@ export fn ip_to_buffer(Address * self, buffer::Buffer+st mut*to)
         Type::Invalid => {
         }
         Type::Ipv4 => {
-            u8 * ip = os::os_net_address_ipv4_get_ip(&self->os);
+            u8 * ip = (u8*)unsafe<u8*>(&self->os.ipv4.sin_addr.s_addr);
             static_attest(len(ip) == 4);
 
             buffer::format(to, "%u.%u.%u.%u",
@@ -259,7 +264,7 @@ export fn ip_to_buffer(Address * self, buffer::Buffer+st mut*to)
             );
         }
         Type::Ipv6 => {
-            u8 * ip = os::os_net_address_ipv6_get_ip(&self->os);
+            u8 * ip = unsafe<u8*>(self->os.ipv6.sin6_addr.s6_addr);
             static_attest(len(ip) == 16);
 
             // find the largest skippable section
@@ -324,13 +329,13 @@ export fn to_buffer(Address * self, buffer::Buffer+st mut*to)
     switch self->typ {
         Type::Invalid => {}
         Type::Ipv4 => {
-            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv4_get_port(&self->os));
+            u16 port = byteorder::from_be16(unsafe<u16>(self->os.ipv4.sin_port));
 
             ip_to_buffer(self, to);
             buffer::format(to, ":%u",port);
         }
         Type::Ipv6 => {
-            u16 port = byteorder::from_be16((u16)os::os_net_address_ipv6_get_port(&self->os));
+            u16 port = byteorder::from_be16(unsafe<u16>(self->os.ipv6.sin6_port));
 
             if port != 0 {
                 buffer::push(to, '[');
@@ -350,10 +355,14 @@ export fn to_buffer(Address * self, buffer::Buffer+st mut*to)
 export fn set_port(Address mut*self, u16 port) {
     switch self->typ {
         Type::Ipv4 => {
-            os::os_net_address_ipv4_set_port(&self->os, byteorder::to_be16(port));
+            unsafe{
+                self->os.ipv4.sin_port =  byteorder::to_be16(port);
+            }
         }
         Type::Ipv6 => {
-            os::os_net_address_ipv6_set_port(&self->os, byteorder::to_be16(port));
+            unsafe{
+                self->os.ipv6.sin6_port =  byteorder::to_be16(port);
+            }
         }
         Type::Invalid => {
         }
@@ -366,10 +375,10 @@ export fn set_port(Address mut*self, u16 port) {
 export fn get_port(Address *self) -> u16 {
     switch self->typ {
         Type::Ipv4 => {
-            return (u16)byteorder::from_be16(os::os_net_address_ipv4_get_port(&self->os));
+            return byteorder::from_be16(unsafe<u16>(self->os.ipv4.sin_port));
         }
         Type::Ipv6 => {
-            return (u16)byteorder::from_be16(os::os_net_address_ipv6_get_port(&self->os));
+            return byteorder::from_be16(unsafe<u16>(self->os.ipv6.sin6_port));
         }
         Type::Invalid => {
             return 0;
@@ -391,12 +400,12 @@ export fn get_ip(Address *self) -> u8*
 {
     switch self->typ {
         Type::Ipv6 => {
-            let m = (u8*)os::os_net_address_ipv6_get_ip(&self->os);
+            u8 * m = unsafe<u8*>(self->os.ipv6.sin6_addr.s6_addr);
             static_attest(len(m) == 16);
             return m;
         }
         default => {
-            let m = (u8*)os::os_net_address_ipv4_get_ip(&self->os);
+            u8 * m = (u8*)unsafe<u8*>(&self->os.ipv4.sin_addr.s_addr);
             static_attest(len(m) == 4);
             return m;
         }
@@ -420,10 +429,16 @@ export fn set_ip(Address mut *self, Type t, u8*b)
     self->typ = t;
     switch self->typ {
         Type::Ipv4=> {
-            os::os_net_address_ipv4_set_ip(&self->os, b);
+            unsafe{
+                self->os.ipv4.sin_family = AF_INET;
+                memcpy(&(self->os.ipv4.sin_addr.s_addr), b, 4);
+            }
         }
         Type::Ipv6 => {
-            os::os_net_address_ipv6_set_ip(&self->os, b);
+            unsafe{
+                self->os.ipv6.sin6_family = AF_INET6;
+                memcpy(&(self->os.ipv6.sin6_addr.s6_addr), b, 16);
+            }
         }
         Type::Invalid => {
 

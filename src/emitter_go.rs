@@ -37,7 +37,7 @@ pub fn make_module(make: &super::make::Make) {
         } else {
             let ie = emitter_common::path_rel(&pdir, &step.source);
 
-            let f = ie.to_string_lossy().replace("/", "_").replace("..", "_");
+            let f = "c_".to_string() + &ie.to_string_lossy().replace("/", "_").replace("..", "_");
             let p = pdir.join(f);
             let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
             write!(f, "#include {:?}", ie);
