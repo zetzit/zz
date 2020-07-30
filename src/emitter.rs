@@ -380,11 +380,14 @@ impl Emitter {
             _ => unreachable!(),
         };
 
-        // TODO this is wrong. flatten should run a separate dependency tree for the header than
-        // for the c file
-        if *inline && self.header {
-            return;
-        }
+        //// TODO this is always going to be subtily broken
+        //// flatten should run a separate dependency tree for the header
+        //// some inlines are unessesary in headers, as no exported type needs them,
+        //// but we have no idea which ones here.
+        ////
+        //if *inline && self.header {
+        //    return;
+        //}
 
 
 
@@ -443,8 +446,6 @@ impl Emitter {
                 std::path::Path::new(&expr),
                 std::path::Path::new(&thisdir),
             ).expect(&format!("include path {} broke somehow", expr));
-
-            println!("{:?}", expr);
 
             let outbase = super::project::target_dir()
                 .join("c");

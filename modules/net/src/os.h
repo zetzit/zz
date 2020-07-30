@@ -23,44 +23,5 @@
 #include <lwip/netdb.h>
 #endif
 
-
-
-typedef union {
-    struct sockaddr_in  ipv4;
-    struct sockaddr_in6 ipv6;
-} zz_os_net_Address;
-
-static inline void os_net_address_ipv4_set_port(zz_os_net_Address *self, short port_be16) {
-    self->ipv4.sin_port = port_be16;
-}
-
-static inline void os_net_address_ipv6_set_port(zz_os_net_Address *self, short port_be16) {
-    self->ipv6.sin6_port = port_be16;
-}
-
-static inline short os_net_address_ipv4_get_port(zz_os_net_Address const *self) {
-    return self->ipv4.sin_port;
-}
-
-static inline short os_net_address_ipv6_get_port(zz_os_net_Address const *self) {
-    return self->ipv6.sin6_port;
-}
-
-static inline void os_net_address_ipv4_set_ip(zz_os_net_Address *self, uint8_t const *ip) {
-    self->ipv4.sin_family = AF_INET;
-    memcpy(&(self->ipv4.sin_addr.s_addr), ip, 4);
-}
-
-static inline void os_net_address_ipv6_set_ip(zz_os_net_Address *self, uint8_t const *ip) {
-    self->ipv6.sin6_family = AF_INET6;
-    memcpy(&(self->ipv6.sin6_addr.s6_addr), ip, 16);
-}
-
-static inline uint8_t const* os_net_address_ipv6_get_ip(zz_os_net_Address const *self) {
-    return self->ipv6.sin6_addr.s6_addr;
-}
-
-static inline uint8_t const* os_net_address_ipv4_get_ip(zz_os_net_Address const *self) {
-    return (uint8_t const*)&(self->ipv4.sin_addr.s_addr);
-}
-
+typedef struct sockaddr_in  sockaddr_in4_t;
+typedef struct sockaddr_in6 sockaddr_in6_t;
