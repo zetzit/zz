@@ -17,14 +17,16 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
 
-
-
     defaults:
       run:
         shell: bash
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: Prepare Artifact
+      run: |
+        7z a artifact.zip modules/
 
     - name: macos
       if: matrix.os == 'macos-latest'
@@ -48,12 +50,24 @@ jobs:
         export "ZZ_ASAN=false"
         ./ci.sh
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: zz-${{ matrix.os }}
-        path: |
-          target/release/zz*
-          modules/
-          !modules/**/target
+    - name: Upload Release Asset
+      if: github.ref == 'refs/heads/master'
+      env:
+       FILE: ./.zip
+       AWS_REGION: 'eu-west-1'
+       S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+       GITHUB_OS: ${{matrix.os}}
+      run: |
+        mkdir -p ~/.aws
+        echo "[default]" > ~/.aws/credentials
+        echo "aws_access_key_id = ${AWS_ACCESS_KEY_ID}" >> ~/.aws/credentials
+        echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}" >> ~/.aws/credentials
+
+        7z a artifact.zip target/release/zz*
+        aws s3 cp artifact.zip s3://${S3_BUCKET}/zz-${GITHUB_SHA}-${GITHUB_OS}.zip --region ${AWS_REGION} --acl public-read
+        aws s3 cp artifact.zip s3://${S3_BUCKET}/zz-latest-${GITHUB_OS}.zip --region ${AWS_REGION} --acl public-read
+
 
 
