@@ -14,14 +14,15 @@ export enum Type {
 }
 
 export union OsAddress {
-    os::sockaddr_in4_t ipv4;
-    os::sockaddr_in6_t ipv6;
+    os::sockaddr_in4_t  ipv4;
+    os::sockaddr_in6_t  ipv6;
+    u8                  b[32];
 };
 
 /// a network address
 export struct Address {
     Type                    typ;
-    OsAddress               os;
+    u8                      os[32];
 }
 
 /// make an invalid network address
@@ -249,11 +250,13 @@ export fn ip_to_buffer(Address * self, buffer::Buffer+st mut*to)
     model   buffer::integrity(to,st)
     where   st>2
 {
+    OsAddress mut *osa = (OsAddress mut *)self->os;
+
     switch self->typ {
         Type::Invalid => {
         }
         Type::Ipv4 => {
-            u8 * ip = (u8*)unsafe<u8*>(&self->os.ipv4.sin_addr.s_addr);
+            u8 * ip = (u8*)unsafe<u8*>(&osa->ipv4.sin_addr.s_addr);
             static_attest(len(ip) == 4);
 
             buffer::format(to, "%u.%u.%u.%u",
@@ -264,7 +267,7 @@ export fn ip_to_buffer(Address * self, buffer::Buffer+st mut*to)
             );
         }
         Type::Ipv6 => {
-            u8 * ip = unsafe<u8*>(self->os.ipv6.sin6_addr.s6_addr);
+            u8 * ip = unsafe<u8*>(osa->ipv6.sin6_addr.s6_addr);
             static_attest(len(ip) == 16);
 
             // find the largest skippable section
@@ -325,17 +328,18 @@ export fn to_buffer(Address * self, buffer::Buffer+st mut*to)
     model   buffer::integrity(to,st)
     where   st>2
 {
+    OsAddress mut *osa = (OsAddress mut *)self->os;
 
     switch self->typ {
         Type::Invalid => {}
         Type::Ipv4 => {
-            u16 port = byteorder::from_be16(unsafe<u16>(self->os.ipv4.sin_port));
+            u16 port = byteorder::from_be16(unsafe<u16>(osa->ipv4.sin_port));
 
             ip_to_buffer(self, to);
             buffer::format(to, ":%u",port);
         }
         Type::Ipv6 => {
-            u16 port = byteorder::from_be16(unsafe<u16>(self->os.ipv6.sin6_port));
+            u16 port = byteorder::from_be16(unsafe<u16>(osa->ipv6.sin6_port));
 
             if port != 0 {
                 buffer::push(to, '[');
@@ -353,15 +357,17 @@ export fn to_buffer(Address * self, buffer::Buffer+st mut*to)
 
 /// set port number
 export fn set_port(Address mut*self, u16 port) {
+    OsAddress mut *osa = (OsAddress mut *)self->os;
+
     switch self->typ {
         Type::Ipv4 => {
             unsafe{
-                self->os.ipv4.sin_port =  byteorder::to_be16(port);
+                osa->ipv4.sin_port =  byteorder::to_be16(port);
             }
         }
         Type::Ipv6 => {
             unsafe{
-                self->os.ipv6.sin6_port =  byteorder::to_be16(port);
+                osa->ipv6.sin6_port =  byteorder::to_be16(port);
             }
         }
         Type::Invalid => {
@@ -373,12 +379,14 @@ export fn set_port(Address mut*self, u16 port) {
 ///
 /// returns 0 if address does not have a port
 export fn get_port(Address *self) -> u16 {
+    OsAddress *osa = (OsAddress *)self->os;
+
     switch self->typ {
         Type::Ipv4 => {
-            return byteorder::from_be16(unsafe<u16>(self->os.ipv4.sin_port));
+            return byteorder::from_be16(unsafe<u16>(osa->ipv4.sin_port));
         }
         Type::Ipv6 => {
-            return byteorder::from_be16(unsafe<u16>(self->os.ipv6.sin6_port));
+            return byteorder::from_be16(unsafe<u16>(osa->ipv6.sin6_port));
         }
         Type::Invalid => {
             return 0;
@@ -398,14 +406,16 @@ export fn get_port(Address *self) -> u16 {
 export fn get_ip(Address *self) -> u8*
     model len(return) == 16 || len(return) == 4
 {
+    OsAddress *osa = (OsAddress *)self->os;
+
     switch self->typ {
         Type::Ipv6 => {
-            u8 * m = unsafe<u8*>(self->os.ipv6.sin6_addr.s6_addr);
+            u8 * m = unsafe<u8*>(osa->ipv6.sin6_addr.s6_addr);
             static_attest(len(m) == 16);
             return m;
         }
         default => {
-            u8 * m = (u8*)unsafe<u8*>(&self->os.ipv4.sin_addr.s_addr);
+            u8 * m = (u8*)unsafe<u8*>(&osa->ipv4.sin_addr.s_addr);
             static_attest(len(m) == 4);
             return m;
         }
@@ -426,18 +436,20 @@ export fn get_ip(Address *self) -> u8*
 export fn set_ip(Address mut *self, Type t, u8*b)
     where (t == Type::Ipv4 && len(b) >= 4) || (t == Type::Ipv6 && len(b) >= 16)
 {
+    OsAddress mut *osa = (OsAddress mut *)self->os;
+
     self->typ = t;
     switch self->typ {
         Type::Ipv4=> {
             unsafe{
-                self->os.ipv4.sin_family = AF_INET;
-                memcpy(&(self->os.ipv4.sin_addr.s_addr), b, 4);
+                osa->ipv4.sin_family = AF_INET;
+                memcpy(&(osa->ipv4.sin_addr.s_addr), b, 4);
             }
         }
         Type::Ipv6 => {
             unsafe{
-                self->os.ipv6.sin6_family = AF_INET6;
-                memcpy(&(self->os.ipv6.sin6_addr.s6_addr), b, 16);
+                osa->ipv6.sin6_family = AF_INET6;
+                memcpy(&(osa->ipv6.sin6_addr.s6_addr), b, 16);
             }
         }
         Type::Invalid => {
