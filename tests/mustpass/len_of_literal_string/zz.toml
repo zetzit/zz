@@ -1,13 +1,13 @@
 [project]
 version = "0.1.0"
-name = "borrow_attestation"
+name = "len_of_literal_string"
 cincludes = []
 cobjects = []
 pkgconfig = []
 cflags = []
-lflags = []
-
-[variants]
-default = []
 
 [dependencies]
+mem = "1"
+log = "1"
+
+[repos]

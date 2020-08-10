@@ -1,0 +1,8 @@
+using log;
+
+export fn main() -> int {
+
+    static_assert(len("1") == 2);
+
+    return 0;
+}

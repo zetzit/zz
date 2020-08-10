@@ -161,7 +161,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     }
                     */
                 }
-                '\t' , '\r' , ' ' => {
+                '\t' , '\r' , ' ', 0 => {
                     /*
                     if state == ParserState::Key || state == ParserState::StringVal {
                         if !buffer::push(&(self->capture), ch) {

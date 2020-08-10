@@ -98,7 +98,7 @@ export fn free_bytes(Pool *self) -> usize
     return c;
 }
 
-/// alloc a block
+/// alloc a zeroed block
 /// returns null if the pool is full
 export fn alloc(Pool mut *self) -> void mut*
     where continuous(*self)
@@ -112,7 +112,7 @@ export fn alloc(Pool mut *self) -> void mut*
     return r;
 }
 
-/// malloc a continuous memory block of any size
+/// malloc a zeroed continuous memory block of any size
 /// returns null if the pool is full
 /// this is alot less efficient than alloc()
 /// as alignment requirements can lead to more blocks being allocated than you expect

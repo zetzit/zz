@@ -35,8 +35,10 @@ export fn main() -> int {
     dump(b, 4);
 
 
-    dump("literal string", 14);
+    dump("literal string", 15);
 
+    u8 mem[19];
+    dump(mem, 19);
 
     X+100 x;
     ftail(&x);

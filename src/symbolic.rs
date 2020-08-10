@@ -1797,60 +1797,7 @@ impl Symbolic {
             } else {
                 if callargs.len() > 0 {
                     let mut calledarg = callargs.remove(0);
-
                     let mut callptr = self.autocast(&mut calledarg, &defined[i].typed)?;
-
-                    if self.memory[callptr].typed.ptr.len() > 0 {
-                        // if there's a borrow impl, call it
-                        // unless the arg is uninitialized
-                        // or we're calling a theory
-
-                        let stags = match defined[i].typed.ptr.first() {
-                            Some(v) => v.tags.clone(),
-                            None => {
-                                return Err(self.trace(
-                                    format!("pointer depth mismatch"),
-                                    vec![(
-                                        calledarg.loc().clone(),
-                                        format!(
-                                            "expected type {} got {}",
-                                            defined[i].typed, self.memory[callptr].typed
-                                        ),
-                                    )],
-                                ));
-                            }
-                        };
-
-                        if !for_a_theory
-                            && stags.get("uninitialized").is_none()
-                            && stags.get("new").is_none()
-                            && defined[i].tags.get("no-borrow-expand").is_none()
-                        {
-                            if let ast::Type::Other(name) = &self.memory[callptr].typed.t {
-                                if let Some(ast::Def::Struct { impls, .. }) = self.defs.get(name) {
-                                    if let Some((fnname, _)) = impls.get("borrow") {
-                                        *calledarg = ast::Expression::Cast {
-                                            into: self.memory[callptr].typed.clone(),
-                                            loc: calledarg.loc().clone(),
-                                            expr: Box::new(ast::Expression::Call {
-                                                loc: calledarg.loc().clone(),
-                                                name: Box::new(ast::Expression::Name(ast::Typed {
-                                                    t: ast::Type::Other(fnname.clone()),
-                                                    loc: calledarg.loc().clone(),
-                                                    ptr: Vec::new(),
-                                                    tail: ast::Tail::None,
-                                                })),
-                                                args: vec![calledarg.clone()],
-                                                expanded: false,
-                                                emit: ast::EmitBehaviour::Default,
-                                            }),
-                                        };
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     called.push(calledarg);
                 }
             }
@@ -2386,7 +2333,7 @@ impl Symbolic {
                 )?;
                 self.memory[tmp].value = Value::Array {
                     array: HashMap::new(),
-                    len: v.len(),
+                    len: v.len() + 1 /* \0 counts as well */,
                 };
                 self.ssa_mark_safe(tmp, loc)?;
                 self.ssa_mark_nullterm(tmp, loc)?;
