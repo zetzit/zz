@@ -708,6 +708,33 @@ impl Symbolic {
                 let field_name = match &self.memory[prev].typed.t {
                     /// tail of void * equals its len
                     ast::Type::Other(o) if o.human_name() == "ext::<stddef.h>::void" && self.memory[prev].typed.ptr.len() == 1 => {
+
+                        let tmp = self.temporary(
+                            format!("len({})", self.memory[prev].name),
+                            ast::Typed {
+                                t: ast::Type::USize,
+                                ptr: Vec::new(),
+                                loc: args[i].loc.clone(),
+                                tail: ast::Tail::None,
+                            },
+                            args[i].loc.clone(),
+                            Tags::new(),
+                        )?;
+                        let lensym = self
+                            .builtin
+                            .get("len")
+                            .expect("ICE: len theory not built in");
+                        self.ssa.invocation(
+                            *lensym,
+                            vec![(prev, self.memory[prev].temporal)],
+                            (tmp, 0),
+                        );
+                        self.ssa.assign(
+                            (tmp, self.memory[tmp].temporal),
+                            (sym, self.memory[sym].temporal),
+                            self.memory[tmp].t.clone(),
+                        );
+
                         continue;
                     }
                     ast::Type::Other(n) => match self.defs.get(&n) {
@@ -1656,6 +1683,8 @@ impl Symbolic {
                 if into_type.tail != ast::Tail::None {
                     into_type.tail = ast::Tail::Dynamic(None);
                 }
+
+                let prevprev = prev.clone();
                 *prev = Box::new(ast::Expression::Cast {
                     into: into_type,
                     expr: prev.clone(),
@@ -1670,44 +1699,73 @@ impl Symbolic {
                         if let ast::Type::Other(o) = &self.memory[callptr].typed.t {
 
                             if self.memory[callptr].typed.ptr.len() != 1 {
-                                return Err(self.trace(
-                                    format!("tail size of {} bound to wrong pointer", self.memory[callptr].name),
-                                    vec![
-                                        (prev_loc.clone(), format!("void tail requires a pointer of depth 1")),
-                                        (
-                                            defined[i].loc.clone(),
-                                            format!("required by this tail binding"),
-                                            ),
-                                        ],
-                                ));
+
+                                if o.human_name() == "slice::slice::Slice" {
+                                    let nusizecall = Box::new(ast::Expression::MemberAccess{
+                                        loc:    prev.loc().clone(),
+                                        lhs:    prevprev.clone(),
+                                        op:     ".".to_string(),
+                                        rhs:    "size".to_string(),
+                                    });
+
+                                    *prev = Box::new(ast::Expression::MemberAccess{
+                                        loc:    prev.loc().clone(),
+                                        lhs:    prevprev.clone(),
+                                        op:     ".".to_string(),
+                                        rhs:    "mem".to_string(),
+                                    });
+                                    called.push(nusizecall);
+                                    continue;
+                                } else {
+                                    return Err(self.trace(
+                                        format!("tail size of {} bound to wrong pointer", self.memory[callptr].name),
+                                        vec![
+                                            (prev_loc.clone(), format!("void tail requires a pointer of depth 1")),
+                                            (
+                                                defined[i].loc.clone(),
+                                                format!("required by this tail binding"),
+                                                ),
+                                            ],
+                                    ));
+                                }
                             }
 
-                            let mut genarg = Box::new(ast::Expression::Unsafe{
-                                loc: prev.loc().clone(),
-                                into: ast::Typed{
-                                    t: ast::Type::USize,
-                                    loc:    prev.loc().clone(),
-                                    ptr:    Vec::new(),
-                                    tail:   ast::Tail::None,
-                                },
-                                expr: Box::new(ast::Expression::Call {
+                            let mut genarg = if o.human_name() == "ext::<stddef.h>::void" {
+                                Box::new(ast::Expression::Literal {
                                     loc: prev.loc().clone(),
-                                    name: Box::new(ast::Expression::Name(ast::Typed {
-                                        t:      ast::Type::Other(Name::from("::ext::<stddef.h>::sizeof")),
+                                    v: "0".to_string(),
+                                })
+                            } else {
+                                Box::new(ast::Expression::Unsafe{
+                                    loc: prev.loc().clone(),
+                                    into: ast::Typed{
+                                        t: ast::Type::USize,
                                         loc:    prev.loc().clone(),
                                         ptr:    Vec::new(),
                                         tail:   ast::Tail::None,
-                                    })),
-                                    args:       vec![Box::new(ast::Expression::Name(ast::Typed {
-                                        t:      ast::Type::Other(o.clone()),
-                                        loc:    self.memory[callptr].typed.loc.clone(),
-                                        ptr:    Vec::new(),
-                                        tail:   ast::Tail::None,
-                                    }))],
-                                    expanded:   false,
-                                    emit:       ast::EmitBehaviour::Default,
+                                    },
+                                    expr: Box::new(ast::Expression::Call {
+                                        loc: prev.loc().clone(),
+                                        name: Box::new(ast::Expression::Name(ast::Typed {
+                                            t:      ast::Type::Other(Name::from("::ext::<stddef.h>::sizeof")),
+                                            loc:    prev.loc().clone(),
+                                            ptr:    Vec::new(),
+                                            tail:   ast::Tail::None,
+                                        })),
+                                        args:       vec![Box::new(ast::Expression::Name(ast::Typed {
+                                            t:      ast::Type::Other(o.clone()),
+                                            loc:    self.memory[callptr].typed.loc.clone(),
+                                            ptr:    Vec::new(),
+                                            tail:   ast::Tail::None,
+                                        }))],
+                                        expanded:   false,
+                                        emit:       ast::EmitBehaviour::Default,
+                                    })
                                 })
-                            });
+                            };
+
+
+
                             match &self.memory[callptr].typed.tail.clone() {
                                 ast::Tail::Bind(name, loc) => {
                                     let genarg2 = Box::new(ast::Expression::Name(ast::Typed {
