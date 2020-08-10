@@ -1,0 +1,46 @@
+using log;
+using slice;
+using err;
+
+fn dump(void+vt * obj, usize expect) {
+    log::info("dumping object of size %d", vt);
+
+    err::assert(expect == vt);
+}
+
+struct A {
+    u16  x;
+    u16  y;
+};
+
+
+struct X+ {
+    u32 forp;
+    u32 dummy;
+    u32 x[];
+};
+
+fn ftail(X+xt * obj) {
+    dump(obj, 108);
+}
+
+export fn main() -> int {
+
+    A a;
+
+    dump(&a, 4);
+    dump(&A{x:1}, 4);
+
+    A *b = &a;
+    dump(b, 4);
+
+
+    dump("literal string", 14);
+
+
+    X+100 x;
+    ftail(&x);
+    dump(&x, 108);
+
+    return 0;
+}
