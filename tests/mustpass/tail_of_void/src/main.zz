@@ -24,6 +24,11 @@ fn ftail(X+xt * obj) {
     dump(obj, 108);
 }
 
+
+fn wrap(void+vt mut *val, usize expect) {
+    dump(val, expect);
+}
+
 export fn main() -> int {
 
     A a;
@@ -40,9 +45,14 @@ export fn main() -> int {
     u8 mem[19];
     dump(mem, 19);
 
-    X+100 x;
+    X+100 mut x;
     ftail(&x);
     dump(&x, 108);
+
+    dump(slice::slice::Slice{mem: (u8*)"abc", size: 3}, 3);
+
+
+    wrap(&x, 108);
 
     return 0;
 }

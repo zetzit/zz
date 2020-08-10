@@ -1,0 +1,68 @@
+using map;
+using err;
+using log;
+using slice;
+using buffer;
+
+
+struct A+ {
+    buffer::Buffer+ mut b;
+}
+
+
+pub fn main() -> int {
+
+    new+1000 t = map::make();
+    err::assert(t.insert_oo("bob", "uncle"));
+    err::assert(t.count() == 1);
+    err::assert(t.insert_oo("bob", "uncle"));
+    err::assert(t.insert_oo("doop", "helooooooooo world blabla hurp durp lirum larum ipsum derpum"));
+    err::assert(t.count() == 2);
+
+    let vv = (char*)t.borrow("doop");
+    log::info("%s", vv);
+
+    err::assert(t.count() == 2);
+    err::assert(t.remove("doop"));
+    err::assert(!t.remove("doop"));
+    err::assert(t.count() == 1);
+
+    err::assert(t.insert_oo("bob", "uncle"));
+    err::assert(t.insert_oo("bob", slice::slice::Slice{mem: (u8*)"uncle sam", size: 6}));
+    err::assert(t.insert_bb("bob", slice::slice::Slice{mem: (u8*)"uncle sam", size: 6}));
+    err::assert(t.count() == 1);
+
+    let vv2 = (char*)t.borrow("bob");
+    log::info("%s", vv2);
+
+    A+1000 mut a;
+    a.b.make();
+    a.b.append_cstr("blargh");
+    a.b.append_cstr(" borp");
+
+    // too large to own
+    err::assert(!t.insert_oo("bob", &a));
+    // ok to borrow
+    err::assert(t.insert_ob("bob", &a));
+
+    err::assert(t.count() == 1);
+
+    A+1000 mut ac;
+    err::assert(t.copy("bob", &ac));
+
+    log::info("%s", ac.b.mem);
+
+    err::assert(t.insert_oo("bob",  "uncle"));
+    err::assert(t.insert_oo("boba", "unclina"));
+    err::assert(t.insert_oo("derp", "ughlinor"));
+    err::assert(t.insert_oo("foo", "baz bar biggest borp"));
+    err::assert(t.remove("boba"));
+    err::assert(t.count() == 3);
+
+    for(let mut it = t.keys(); map::next(&it);) {
+        let vv2 = (char*)t.borrow(it.key);
+        log::info(" - %s = %s", (char*)it.key.mem, vv2);
+    }
+
+    return 0;
+}

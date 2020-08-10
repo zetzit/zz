@@ -347,8 +347,11 @@ export fn substr(Buffer+tail *self, usize from, usize mut size, Buffer+tail2 mut
     }
 
 
-    if size == 0 {
-        return;
+    // TODO: ssa claims this never happens. should probably check if thats true
+    unsafe {
+        if size == 0 {
+            return;
+        }
     }
 
     //TODO i'm not sure what ssa is confused about

@@ -1,0 +1,441 @@
+using pool;
+using err;
+using slice;
+using log;
+using mem;
+
+using <string.h>::{memset};
+using <stdio.h>::{printf};
+using <assert.h>::{assert};
+
+inline using "siphash.h" as  siphash;
+
+
+//TODO should not export?
+export struct Node {
+    u64     hash;
+    Node    mut * mut next;
+
+    bool key_owned;
+    bool val_owned;
+    slice::Slice key;
+    slice::Slice val;
+}
+
+export struct Bucket {
+    Node mut * mut root;
+}
+
+/// string table with owned key and borrowed value
+export struct Map+ {
+    usize item_count;
+    usize buckets_reserved;
+    Bucket mut * mut buckets;
+    pool::Pool+ mut p;
+}
+
+/// create a new map
+export fn make(Map+tt mut new* self) {
+    memset(self, 0, sizeof(Map));
+
+    self->p.make(sizeof(Bucket));
+    self->buckets_reserved = tt/unsafe<usize>(sizeof(Bucket))/10;
+    log::info("free_bytes: %zu", self->p.free_bytes());
+    log::info("buckets: %zu", self->buckets_reserved);
+    self->buckets = self->p.malloc(unsafe<usize>(sizeof(Bucket)) * self->buckets_reserved);
+    log::info("free_bytes: %zu", self->p.free_bytes());
+    err::assert_safe(self->buckets);
+}
+
+
+/// count number of items
+export fn count(Map * self) -> usize
+{
+    return self->item_count;
+}
+
+/// insert borrowed key and borrowed value
+///
+/// the borrowed references must be valid for the lifetime of the map
+///
+/// returns false if there's not enough memory to store the key
+export fn insert_bb(Map mut* self, void+kt * key, void+vt * val) -> bool
+{
+    Node mut * nn = self->p.malloc(unsafe<usize>(sizeof(Node)));
+    if nn == 0 {
+        return false;
+    }
+    static_attest(safe(nn));
+    nn->key = slice::slice::Slice{mem: key, size: kt};
+    nn->key_owned = false;
+    nn->val = slice::slice::Slice{mem: val, size: vt};
+    nn->val_owned = false;
+    nn->hash = hash(nn->key);
+
+    return self->i_insert(nn);
+}
+
+/// insert owned key and borrowed value
+///
+/// the borrowed value reference must be valid for the lifetime of the map
+///
+/// returns false if there's not enough memory to store the key
+export fn insert_ob(Map mut* self, void+kt * key, void+vt * val) -> bool
+{
+    void mut * owned_key = self->p.malloc(kt);
+    if owned_key == 0 {
+        return false;
+    }
+    static_attest(safe(owned_key));
+    static_attest(len(key) == kt);
+    static_attest(len(owned_key) == kt);
+    mem::copy(key, owned_key, kt);
+
+    Node mut * nn = self->p.malloc(unsafe<usize>(sizeof(Node)));
+    if nn == 0 {
+        self->p.free(owned_key);
+        return false;
+    }
+    static_attest(safe(nn));
+    nn->key = slice::slice::Slice{mem: owned_key, size: kt};
+    nn->key_owned = true;
+    nn->val = slice::slice::Slice{mem: val, size: vt};
+    nn->val_owned = false;
+    nn->hash = hash(nn->key);
+
+    return self->i_insert(nn);
+}
+
+/// insert owned key and owned value
+///
+/// both key and value are memcpy'd into the maps pool.
+/// note that if the objects hold circular refferences, they are now invalid.
+///
+/// returns false if there's not enough memory to store the kv
+export fn insert_oo(Map mut* self, void+kt * key, void+vt * val) -> bool {
+
+    void mut * owned_key = self->p.malloc(kt);
+    if owned_key == 0 {
+        return false;
+    }
+    static_attest(safe(owned_key));
+    static_attest(len(key) == kt);
+    static_attest(len(owned_key) == kt);
+    mem::copy(key, owned_key, kt);
+
+    void mut * owned_val = self->p.malloc(vt);
+    if owned_val == 0 {
+        return false;
+    }
+    static_attest(safe(owned_val));
+    static_attest(len(val) == vt);
+    static_attest(len(owned_val) == vt);
+    mem::copy(val, owned_val, vt);
+
+    Node mut * nn = self->p.malloc(unsafe<usize>(sizeof(Node)));
+    if nn == 0 {
+        self->p.free(owned_key);
+        self->p.free(owned_val);
+        return false;
+    }
+    static_attest(safe(nn));
+    nn->key = slice::slice::Slice{mem: owned_key, size: kt};
+    nn->key_owned = true;
+    nn->val = slice::slice::Slice{mem: owned_val, size: vt};
+    nn->val_owned = true;
+
+    nn->hash = hash(nn->key);
+
+    return self->i_insert(nn);
+}
+
+
+fn i_insert(Map mut* self, Node mut *node) -> bool
+    where slice::slice::integrity(&node->key)
+    where slice::slice::integrity(&node->val)
+{
+    self->remove_slk(node->key, node->hash);
+
+    usize index = (usize)node->hash % self->buckets_reserved;
+    static_attest(index < len(self->buckets));
+    Bucket mut* bucket = self->buckets + index;
+
+    if bucket->root == 0 {
+        bucket->root = node;
+        self->item_count += 1;
+        return true;
+    } else {
+        Node mut * mut no = bucket->root;
+        for (;;) {
+            if no->next == 0 {
+                no->next = node;
+                self->item_count += 1;
+                return true;
+            } else {
+                no = no->next;
+            }
+        }
+    }
+
+    return false;
+}
+
+
+
+/// copy out a value for the key
+///
+/// returns true if found and the stored value fits exactly into the copy target
+/// otherwise returns falseS
+///
+/// example:
+///     MyThing x = {0};
+///     if !map.copy("bob", &x) { err::panic("no such key"); }
+///
+export fn copy(Map mut* self, void+kt * key, void+vt mut *val) -> bool
+{
+    return copy_sl(self, slice::slice::Slice{mem:key, size: kt}, val);
+}
+
+fn copy_sl(Map mut* self, slice::slice::Slice key, void+vt mut *val) -> bool
+    where slice::slice::integrity(&key)
+{
+    let hk = hash(key);
+
+    usize index = (usize)hk % self->buckets_reserved;
+    static_attest(index < len(self->buckets));
+    Bucket mut* bucket = self->buckets + index;
+
+    if bucket->root == 0 {
+        return 0;
+    }
+
+    Node mut * mut no = bucket->root;
+    for (;;) {
+        static_attest(safe(no));
+        static_attest(slice::slice::integrity(&no->key));
+        static_attest(slice::slice::integrity(&no->val));
+
+        if no->hash == hk && no->key.eq(key) {
+            if no->val.size != vt {
+                return false;
+            }
+            mem::copy(no->val.mem, val, vt);
+            return true;
+        }
+
+        if no->next == 0 {
+            return 0;
+        }
+        no = no->next;
+    }
+
+    return 0;
+}
+
+
+
+/// returns a pointer to a borrowed value for the key
+/// or 0 if no such key exists
+///
+/// example:
+///     let x = (MyThing *x)map.borrow("bob");
+///     if x == 0 { err::panic("no such key"); }
+///
+export fn borrow(Map mut* self, void+kt * key) -> void mut *
+{
+    return (void mut*)(borrow_slice(self, key).mem);
+}
+
+/// returns a slice to a borrowed value for the key
+/// or an invalid slice if no such key exists
+///
+/// example:
+///     let x = map.borrow_slice("bob");
+///     if x.mem == 0 { err::panic("no such key"); }
+///
+export fn borrow_slice(Map mut* self, void+kt * key_) -> slice::slice::Slice
+{
+    let keyx = slice::slice::Slice{mem:key_, size: kt};
+    let hk = hash(keyx);
+
+    usize index = (usize)hk % self->buckets_reserved;
+    static_attest(index < len(self->buckets));
+    Bucket mut* bucket = self->buckets + index;
+
+    if bucket->root == 0 {
+        return slice::slice::Slice{mem:0};
+    }
+
+    Node mut * mut no = bucket->root;
+    for (;;) {
+        static_attest(safe(no));
+        static_attest(slice::slice::integrity(&no->key));
+
+        if no->hash == hk && no->key.eq(keyx) {
+            return no->val;
+        }
+
+        if no->next == 0 {
+            return slice::slice::Slice{mem:0};
+        }
+        no = no->next;
+    }
+
+    return slice::slice::Slice{mem:0};
+}
+
+/// remove an entry by object key
+///
+/// returns true if entry was found, false otherwise
+export fn remove(Map mut* self, void+kt * key) -> bool
+{
+    static_attest(len(key) == kt);
+    return remove_sl(self, slice::slice::Slice{mem:key, size: kt});
+}
+
+fn remove_sl(Map mut* self, slice::slice::Slice key) -> bool
+    where slice::slice::integrity(&key)
+{
+    let hk = hash(key);
+    return remove_slk(self, key, hk);
+}
+
+/// remove entry by prehashed slice key
+///
+/// returns true if entry was found, false otherwise
+fn remove_slk(Map mut* self, slice::slice::Slice key, u64 ha) -> bool
+    where slice::slice::integrity(&key)
+{
+    usize index = (usize)ha % self->buckets_reserved;
+    static_attest(index < len(self->buckets));
+    Bucket mut* bucket = self->buckets + index;
+
+    if bucket->root == 0 {
+        return false;
+    }
+
+    Node mut * mut no = bucket->root;
+    static_attest(safe(no));
+    static_attest(slice::slice::integrity(&no->key));
+    static_attest(slice::slice::integrity(&no->val));
+    if no->hash == ha && no->key.eq(key) {
+        self->i_dealloc(no);
+        self->item_count -= 1;
+        bucket->root = 0;
+        return true;
+    }
+
+    for (;;) {
+        static_attest(safe(no));
+        if no->next == 0 {
+            return false;
+        }
+        static_attest(safe(no->next));
+        static_attest(slice::slice::integrity(&no->next->key));
+        static_attest(slice::slice::integrity(&no->next->val));
+        if no->next->hash == ha && no->next->key.eq(key) {
+
+            let tt = no->next;
+            no->next = tt->next;
+            self->i_dealloc(tt);
+            self->item_count -= 1;
+
+            return true;
+        }
+        no = no->next;
+    }
+    return false;
+}
+
+/// iterator
+export struct Keys{
+    Map mut* m;
+    usize bucket;
+    Node *next;
+    slice::Slice mut key;
+}
+
+/// iterate over all keys
+///
+/// example:
+///     for (let it = map.keys(); it.next(); ) {
+///         println("%.*s", it.key.size, it.key.mem);
+///     }
+///
+export fn keys(Map mut* self) -> Keys
+{
+    return Keys {
+        m:      self,
+        bucket: 0,
+    };
+}
+
+/// moves iterator forward
+/// returns false if there are no more keys
+export fn next(Keys mut* self) -> bool
+    model slice::slice::integrity(&self->key)
+{
+    static_attest(safe(self->m));
+    if self->next != 0 {
+        static_attest(safe(self->next));
+        self->next = self->next->next;
+        if self->next != 0 {
+            static_attest(safe(self->next));
+            self->key  = self->next->key;
+            static_attest(slice::slice::integrity(&self->key));
+            return true;
+        } else {
+            self->bucket += 1;
+        }
+    }
+
+
+    for (;;) {
+
+        if self->bucket >= self->m->buckets_reserved {
+            return false;
+        }
+
+        static_attest(len(self->m->buckets) > self->bucket);
+        self->next = self->m->buckets[self->bucket].root;
+
+        if self->next != 0 {
+            static_attest(safe(self->next));
+            self->key  = self->next->key;
+            return true;
+        }
+        self->bucket += 1;
+    }
+
+
+    return false;
+}
+
+
+
+
+static u8 siphashk[] = {1,2,3,4,6,7,8,9,0,1,2,3,4,5,6};
+fn hash(slice::Slice sl) -> u64
+{
+    u64 mut out = 0;
+    siphash::siphash(
+        sl.mem, sl.size,
+        siphashk,
+        (u8 mut*)&out, 8
+    );
+    return out;
+}
+
+fn i_dealloc(Map mut* self, Node mut *node)
+    where slice::slice::integrity(&node->key)
+    where slice::slice::integrity(&node->val)
+{
+    if node->key_owned {
+        static_attest(pool::member(node->key.mem, &self->p));
+        self->p.free(node->key.mem);
+    }
+    if node->val_owned {
+        static_attest(pool::member(node->val.mem, &self->p));
+        self->p.free(node->val.mem);
+    }
+}
