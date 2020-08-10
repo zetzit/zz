@@ -704,7 +704,12 @@ impl Symbolic {
 
                 self.ssa.debug_loc(&args[i].loc);
 
+
                 let field_name = match &self.memory[prev].typed.t {
+                    /// tail of void * equals its len
+                    ast::Type::Other(o) if o.human_name() == "ext::<stddef.h>::void" && self.memory[prev].typed.ptr.len() == 1 => {
+                        continue;
+                    }
                     ast::Type::Other(n) => match self.defs.get(&n) {
                         Some(ast::Def::Struct { fields, .. }) => {
                             if fields.len() < 1 {
@@ -720,10 +725,10 @@ impl Symbolic {
                         }
                         o => {
                             return Err(self.trace(
-                                format!("tail value on non struct {:?}", o),
+                                format!("tail value on non struct {:?} ({})", o, n.human_name()),
                                 vec![(
                                     self.memory[prev].declared.clone(),
-                                    format!("cannot use tail binding"),
+                                    format!("cannot use tail binding in call"),
                                 )],
                             ));
                         }
@@ -733,7 +738,7 @@ impl Symbolic {
                             format!("tail value on non struct {:?}", o),
                             vec![(
                                 self.memory[prev].declared.clone(),
-                                format!("cannot use tail binding"),
+                                format!("cannot use tail binding in call"),
                             )],
                         ));
                     }
@@ -1657,34 +1662,136 @@ impl Symbolic {
                     loc: prev.loc().clone(),
                 });
 
-                match &self.memory[callptr].typed.tail.clone() {
-                    ast::Tail::Bind(name, loc) => {
-                        let genarg = Box::new(ast::Expression::Name(ast::Typed {
-                            t: ast::Type::Other(Name::from(name)),
-                            ptr: Vec::new(),
-                            loc: loc.clone(),
-                            tail: ast::Tail::None,
-                        }));
-                        called.push(genarg);
-                    }
-                    ast::Tail::Dynamic(_) | ast::Tail::None => {
-                        return Err(self.trace(
-                            format!("tail size of {} not bound", self.memory[callptr].name),
-                            vec![
-                                (prev_loc.clone(), format!("tail len required here")),
-                                (
-                                    defined[i].loc.clone(),
-                                    format!("required by this tail binding"),
-                                ),
-                            ],
-                        ));
-                    }
-                    ast::Tail::Static(v, loc) => {
-                        let genarg = Box::new(ast::Expression::Literal {
-                            loc: loc.clone(),
-                            v: format!("{}", v),
-                        });
-                        called.push(genarg);
+                match &defined[i-1].typed.t {
+                    // tail of void *
+                    ast::Type::Other(o) if o.human_name() == "ext::<stddef.h>::void" && defined[i-1].typed.ptr.len() == 1 => {
+
+                        // a pointer to a complex type
+                        if let ast::Type::Other(o) = &self.memory[callptr].typed.t {
+
+                            if self.memory[callptr].typed.ptr.len() != 1 {
+                                return Err(self.trace(
+                                    format!("tail size of {} bound to wrong pointer", self.memory[callptr].name),
+                                    vec![
+                                        (prev_loc.clone(), format!("void tail requires a pointer of depth 1")),
+                                        (
+                                            defined[i].loc.clone(),
+                                            format!("required by this tail binding"),
+                                            ),
+                                        ],
+                                ));
+                            }
+
+                            let mut genarg = Box::new(ast::Expression::Unsafe{
+                                loc: prev.loc().clone(),
+                                into: ast::Typed{
+                                    t: ast::Type::USize,
+                                    loc:    prev.loc().clone(),
+                                    ptr:    Vec::new(),
+                                    tail:   ast::Tail::None,
+                                },
+                                expr: Box::new(ast::Expression::Call {
+                                    loc: prev.loc().clone(),
+                                    name: Box::new(ast::Expression::Name(ast::Typed {
+                                        t:      ast::Type::Other(Name::from("::ext::<stddef.h>::sizeof")),
+                                        loc:    prev.loc().clone(),
+                                        ptr:    Vec::new(),
+                                        tail:   ast::Tail::None,
+                                    })),
+                                    args:       vec![Box::new(ast::Expression::Name(ast::Typed {
+                                        t:      ast::Type::Other(o.clone()),
+                                        loc:    self.memory[callptr].typed.loc.clone(),
+                                        ptr:    Vec::new(),
+                                        tail:   ast::Tail::None,
+                                    }))],
+                                    expanded:   false,
+                                    emit:       ast::EmitBehaviour::Default,
+                                })
+                            });
+                            match &self.memory[callptr].typed.tail.clone() {
+                                ast::Tail::Bind(name, loc) => {
+                                    let genarg2 = Box::new(ast::Expression::Name(ast::Typed {
+                                        t: ast::Type::Other(Name::from(name)),
+                                        ptr: Vec::new(),
+                                        loc: loc.clone(),
+                                        tail: ast::Tail::None,
+                                    }));
+                                    genarg = Box::new(ast::Expression::Infix {
+                                        loc: self.memory[callptr].typed.loc.clone(),
+                                        lhs: genarg,
+                                        rhs: genarg2,
+                                        op:  ast::InfixOperator::Add,
+                                    });
+                                }
+                                ast::Tail::Dynamic(_) => {
+                                    return Err(self.trace(
+                                        format!("tail size of {} not bound", self.memory[callptr].name),
+                                        vec![
+                                        (prev_loc.clone(), format!("tail len required here")),
+                                        (
+                                            defined[i].loc.clone(),
+                                            format!("required by this tail binding"),
+                                            ),
+                                        ],
+                                    ));
+                                }
+                                ast::Tail::Static(v, loc) => {
+                                    let genarg2 = Box::new(ast::Expression::Literal {
+                                        loc: loc.clone(),
+                                        v: format!("{}", v),
+                                    });
+                                    genarg = Box::new(ast::Expression::Infix {
+                                        loc: self.memory[callptr].typed.loc.clone(),
+                                        lhs: genarg,
+                                        rhs: genarg2,
+                                        op:  ast::InfixOperator::Add,
+                                    });
+                                }
+                                ast::Tail::None => {},
+                            }
+
+                            called.push(genarg);
+
+                        // an array
+                        } else if let Value::Array{len, .. } = self.memory[callptr].value {
+                            let genarg = Box::new(ast::Expression::Literal {
+                                loc: prev.loc().clone(),
+                                v: format!("{}", len),
+                            });
+                            called.push(genarg);
+                        }
+                    },
+                    _ => {
+                        match &self.memory[callptr].typed.tail.clone() {
+                            ast::Tail::Bind(name, loc) => {
+                                let genarg = Box::new(ast::Expression::Name(ast::Typed {
+                                    t: ast::Type::Other(Name::from(name)),
+                                    ptr: Vec::new(),
+                                    loc: loc.clone(),
+                                    tail: ast::Tail::None,
+                                }));
+                                called.push(genarg);
+                            }
+                            ast::Tail::Dynamic(_) | ast::Tail::None => {
+                                return Err(self.trace(
+                                        format!("tail size of {} not bound", self.memory[callptr].name),
+                                        vec![
+                                        (prev_loc.clone(), format!("tail len required here")),
+                                        (
+                                            defined[i].loc.clone(),
+                                            format!("required by this tail binding"),
+                                            ),
+                                        ],
+                                ));
+                            }
+                            ast::Tail::Static(v, loc) => {
+                                let genarg = Box::new(ast::Expression::Literal {
+                                    loc: loc.clone(),
+                                    v: format!("{}", v),
+                                });
+                                called.push(genarg);
+                            }
+                        }
                     }
                 }
             } else {
@@ -3656,7 +3763,11 @@ impl Symbolic {
 
         self.ssa.debug_loc(loc);
 
-        let field_name = match &self.memory[sym].typed.t {
+        let sized_sym = match &self.memory[sym].typed.t {
+            /// tail of void * equals its len
+            ast::Type::Other(o) if o.human_name() == "void" && self.memory[sym].typed.ptr.len() == 1 => {
+                sym
+            }
             ast::Type::Other(n) => match self.defs.get(n) {
                 Some(ast::Def::Struct { fields, .. }) => {
                     if fields.len() < 1 {
@@ -3665,24 +3776,24 @@ impl Symbolic {
                             vec![(loc.clone(), format!("this struct must have members"))],
                         ));
                     }
-                    fields.last().unwrap().name.clone()
+                    let field_name = fields.last().unwrap().name.clone();
+                    self.member_access(sym, &field_name, loc)?
                 }
                 o => {
                     return Err(self.trace(
                         format!("tail value on non struct {:?}", o),
-                        vec![(loc.clone(), format!("cannot use tail binding"))],
+                        vec![(loc.clone(), format!("cannot emit tail binding to ssa"))],
                     ));
                 }
             },
             o => {
                 return Err(self.trace(
                     format!("tail value on non struct {:?}", o),
-                    vec![(loc.clone(), format!("cannot use tail binding"))],
+                    vec![(loc.clone(), format!("cannot emit tail binding to ssa"))],
                 ));
             }
         };
 
-        let member_sym = self.member_access(sym, &field_name, loc)?;
 
         let lensym = self
             .builtin
@@ -3690,7 +3801,7 @@ impl Symbolic {
             .expect("ICE: len theory not built in");
         self.ssa.invocation(
             *lensym,
-            vec![(member_sym, self.memory[member_sym].temporal)],
+            vec![(sized_sym, self.memory[sized_sym].temporal)],
             (tailsym, self.memory[tailsym].temporal),
         );
         Ok(())
