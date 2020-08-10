@@ -8,6 +8,6 @@ export fn main() -> int {
     char c3 = '\'';
 
     char *str = "abc123 \' \" \? \\ \a \b \f \n \r \t \v \x12 \x12 abc1923u123    {} 23[123 ";
-    assert(static(len(str)) == strlen(str));
+    assert(static(len(str)) == strlen(str) + 1);
     return 0;
 }

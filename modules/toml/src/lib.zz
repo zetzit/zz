@@ -156,7 +156,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
 
         switch stack->state {
             ParserState::Document, ParserState::Object => {
-                if ch  == ' ' || ch == '\t' || ch == '\n' {
+                if ch  == ' ' || ch == '\t' || ch == '\n' || ch == 0 {
                 } else if ch  == '[' {
                     if self->depth > 0 {
                         if stack->user.pop.fn != 0 {

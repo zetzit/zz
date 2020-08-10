@@ -11,14 +11,14 @@ pub theory integrity(Slice *self) -> bool
     && len(self->mem) >= self->size
 )
 
-export fn eq(Slice *self, Slice *other) -> bool
+export fn eq(Slice *self, Slice other) -> bool
     where integrity(self)
-    where integrity(other)
+    where integrity(&other)
 {
-    if self->size != other->size {
+    if self->size != other.size {
         return false;
     }
-    return (c_string::memcmp(self->mem, other->mem, self->size) == 0);
+    return (c_string::memcmp(self->mem, other.mem, self->size) == 0);
 }
 
 export fn eq_cstr(Slice *self, char *other) -> bool
