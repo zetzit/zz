@@ -7,7 +7,6 @@ pkgconfig = []
 cflags = []
 
 [dependencies]
-log     = "1"
 mem     = "1"
 buffer  = "1"
 pool    = "1"

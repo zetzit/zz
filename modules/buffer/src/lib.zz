@@ -110,13 +110,13 @@ export fn pop(Buffer+t mut * self) -> bool
     return true;
 }
 
-/// length of a null terminated c buffer
+/// length of a null terminated c buffer, excluding the null terminator
 export fn strlen(char * mut s) -> usize
     where nullterm(s)
-    model return == len(s)
+    model return < len(s)
 {
     if s == 0 {
-        static_attest(len(s) == 0);
+        static_attest(len(s) > 0);
         return 0;
     }
     usize mut l = 0;
@@ -124,7 +124,7 @@ export fn strlen(char * mut s) -> usize
         l++;
     }
 
-    static_attest(l == len(s));
+    static_attest(l < len(s));
     return l;
 }
 

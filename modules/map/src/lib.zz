@@ -1,7 +1,6 @@
 using pool;
 using err;
 using slice;
-using log;
 using mem;
 
 using <string.h>::{memset};
@@ -26,7 +25,6 @@ export struct Bucket {
     Node mut * mut root;
 }
 
-/// string table with owned key and borrowed value
 export struct Map+ {
     usize item_count;
     usize buckets_reserved;
@@ -40,10 +38,7 @@ export fn make(Map+tt mut new* self) {
 
     self->p.make(sizeof(Bucket));
     self->buckets_reserved = tt/unsafe<usize>(sizeof(Bucket))/10;
-    log::info("free_bytes: %zu", self->p.free_bytes());
-    log::info("buckets: %zu", self->buckets_reserved);
     self->buckets = self->p.malloc(unsafe<usize>(sizeof(Bucket)) * self->buckets_reserved);
-    log::info("free_bytes: %zu", self->p.free_bytes());
     err::assert_safe(self->buckets);
 }
 
