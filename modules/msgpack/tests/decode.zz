@@ -1,0 +1,199 @@
+using err;
+using buffer;
+using slice;
+using msgpack;
+using hex;
+
+using <stdio.h>::{printf, fread, stdin};
+
+
+
+test {
+    stdin = {0x0, 0x01, 0x02, 0x7d, 0x7e, 0x7f, 0x80, 0xff, 0xfe, 0xfd, 0xe0}
+    stdout = "uint 0
+uint 1
+uint 2
+uint 125
+uint 126
+uint 127
+map 0
+sint -1
+sint -2
+sint -3
+sint -32
+"
+}
+
+test {
+    stdin = {0xcc, 0xff}
+    stdout = "uint 255\n"
+}
+
+test {
+    stdin = {0xcd, 0xff, 0xff}
+    stdout = "uint 65535\n"
+}
+
+test {
+    stdin = {0xce, 0xff, 0xff, 0xff, 0xff}
+    stdout = "uint 4294967295\n"
+}
+
+test {
+    stdin = {0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+    stdout = "uint 18446744073709551615\n"
+}
+
+test {
+    stdin = {0xd0, 0x80, 0xd0, 0, 0xd0, 0xff}
+    stdout = "sint -128\nsint 0\nsint -1\n"
+}
+
+test {
+    stdin = {0xd1, 0x80, 0x00}
+    stdout = "sint -32768\n"
+}
+
+test {
+    stdin = {0xd2, 0x80, 0x00, 0x00, 0x00}
+    stdout = "sint -2147483648\n"
+}
+
+test {
+    stdin = {0xd3, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+    stdout = "sint -9223372036854775808\n"
+}
+
+test {
+    stdin = {0xd3, 0x80, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+    stdout = "sint -9151314442816847873\n"
+}
+
+test {
+    stdin = {0xd3, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+    stdout = "sint -1\n"
+}
+
+test {
+    stdin = {0xd3, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+    stdout = "sint -1\n"
+}
+
+test {
+    stdin = {0xca, 0x7f, 0x7f, 0xff, 0xff}
+    stdout = "float 3.40282e+38\n"
+}
+test {
+    stdin = {0xcb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+    stdout = "float 0.00000e+00\n"
+}
+
+test {
+    stdin = {0xcb, 0x40, 0x45, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00}
+    stdout = "float 4.21250e+01\n"
+}
+
+test {
+    stdin = {0xaa, 0x6c, 0x65, 0x20, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65}
+    stdout = "string 10 'le message'\n"
+}
+
+test {
+    stdin = {0xc4, 0x0a, 0x6c, 0x65, 0x20, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65}
+    stdout = "bin 10 'le message'\n"
+}
+
+test {
+    stdin = {0x82, 0x92}
+    stdout = "map 2\narray 2\n"
+}
+
+test {
+    stdin = {0xde, 0x00, 0x02, 0xdc, 0x00, 0x02}
+    stdout = "map 2\narray 2\n"
+}
+
+test {
+    stdin = {0xdf, 0x00, 0x02, 0x00, 0x01, 0xdd, 0x00, 0x02, 0x00, 0x00}
+    stdout = "map 131073\narray 131072\n"
+}
+
+test {
+    stdin = {0xc0, 0xc3, 0xc2}
+    stdout = "nil\nbool 1\nbool 0\n"
+}
+
+
+export fn main() -> int {
+
+    new+1000 e = err::make();
+
+    //new+1000 b = buffer::make();
+    //let mut sl = b.as_mut_slice();
+
+
+    //msgpack::start_map(sl, 2);
+    //msgpack::start_string(sl, 5);
+    //sl.append_cstr("hello");
+    //msgpack::write_bool(sl, true);
+    //msgpack::write_u8(sl, 82);
+    //msgpack::start_bin(sl, 5);
+    //sl.append_cstr("hello");
+
+    //hex::dump_slice(b.as_slice());
+
+
+    new+1000 buf = buffer::make();
+    for(;;) {
+
+        usize l = (usize)fread(
+            buf.mem + buf.at,
+            1,
+            static(len(buf.mem)) - buf.at
+        , stdin);
+        if l == 0 {break;}
+        buf.at += l;
+    }
+    static_attest(buffer::integrity(&buf,  static(len(buf.mem))));
+
+
+    new dc = msgpack::decode(buf.as_slice());
+    for (;;) {
+        if !dc.next(&e) { e.abort(); break; }
+        e.abort();
+        switch dc.item {
+            msgpack::ItemType::Nil => {
+                printf("nil\n");
+            }
+            msgpack::ItemType::Bool  => {
+                printf("bool %d\n", dc.value.v_bool);
+            }
+            msgpack::ItemType::Uint  => {
+                printf("uint %llu\n", dc.value.v_uint);
+            }
+            msgpack::ItemType::Sint  => {
+                printf("sint %lld\n", dc.value.v_sint);
+            }
+            msgpack::ItemType::Float  => {
+                printf("float %10.5e\n", dc.value.v_float);
+            }
+            msgpack::ItemType::Bin  => {
+                printf("bin %d '%.*s'\n", dc.value.v_len, dc.value.v_len, unsafe<char*>(dc.sl.mem + dc.at));
+            }
+            msgpack::ItemType::Str  => {
+                printf("string %d '%.*s'\n", dc.value.v_len, dc.value.v_len, unsafe<char*>(dc.sl.mem + dc.at));
+            }
+            msgpack::ItemType::Map  => {
+                printf("map %d\n", dc.value.v_len);
+            }
+            msgpack::ItemType::Array  => {
+                printf("array %d\n", dc.value.v_len);
+            }
+        }
+
+    }
+
+
+
+    return 0;
+}

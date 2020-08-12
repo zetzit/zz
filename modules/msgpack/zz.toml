@@ -1,0 +1,16 @@
+[project]
+version = "0.1.0"
+name = "msgpack"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+
+[dependencies]
+mem = "1"
+hex = "1"
+log = "1"
+err = "1"
+byteorder = "1"
+
+[repos]
