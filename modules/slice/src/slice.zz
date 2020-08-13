@@ -50,3 +50,113 @@ export fn make(Slice mut new *self, u8 *mem, usize size)
     self->mem   =  mem;
     static_attest(len(self->mem) == self->size);
 }
+
+/// split this slice by a token
+export fn split(Slice *self, u8 token, usize mut *iterator,  Slice new mut *other) -> bool
+    where   integrity(self)
+    model   integrity(other)
+{
+    usize start = *iterator;
+
+    if *iterator >= self->size {
+        *other = Slice{mem:0, size:0};
+        static_attest(integrity(other));
+        return false;
+    }
+
+    for (; *iterator < self->size ; (*iterator)++) {
+        if (self->mem)[*iterator] == token {
+            break;
+        }
+    }
+
+    usize size = *iterator - start;
+    *iterator += 1;
+
+    if size == 0 {
+        *other = Slice{mem:self->mem + start, size:0};
+        static_attest(integrity(other));
+        return true;
+    }
+
+    *other = sub(self, start, size);
+    return true;
+}
+
+/// retruns a subslice of a slice
+export fn sub(Slice *self, usize from, usize mut size) -> Slice
+    where   integrity(self)
+    model   integrity(&return)
+{
+    if self->size == 0 {
+        return *self;
+    }
+    if from >= self->size {
+        let r = Slice{mem:0, size:0};
+        static_attest(integrity(&r));
+        return r;
+    }
+    if size == 0 {
+        size = self->size;
+    }
+    if from + size >= self->size {
+        size = self->size - from;
+    }
+
+    let r = Slice{
+        mem: self->mem + from,
+        size,
+    };
+
+    //TODO why?
+    static_attest(integrity(&r));
+    return r;
+}
+
+
+
+fn isspace(char c) -> bool {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
+}
+fn isdigit(char c) -> bool {
+    return c >= 48 && c <= 57;
+}
+
+/// parse slice as a number string
+///
+export fn atoi(Slice *self, usize base) -> i64
+    where integrity(self)
+    where base == 10
+{
+    bool mut neg = false;
+    i64 mut num = 0;
+    usize mut i = 0;
+    for (; i < self->size; i++) {
+        if isspace((char)self->mem[i]) {
+            continue;
+        } else {
+            if (char)self->mem[i] == '-' {
+                neg = true;
+                i++;
+            }
+            for (; i < self->size; i++) {
+                if !isdigit((char)self->mem[i]) {
+                    if neg {
+                        return num;
+                    } else {
+                        return 0-num;
+                    }
+                }
+
+                /* Compute n as a negative number to avoid overflow on INT_MIN */
+                num = 10 * num - (i64)((char)self->mem[i] - '0');
+            }
+        }
+    }
+    if neg {
+        return num;
+    } else {
+        return 0-num;
+    }
+}
+
