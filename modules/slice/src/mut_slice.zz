@@ -16,6 +16,7 @@ pub theory integrity(MutSlice mut*self) -> bool (
     &&  *self->at <= len(self->mem)
 )
 
+/// create new mutable slice from its components
 export fn make(MutSlice new mut*self, u8 mut*mem, usize size, usize mut *at)
     where len(mem) >= size
     where safe(at)
@@ -31,6 +32,7 @@ export fn make(MutSlice new mut*self, u8 mut*mem, usize size, usize mut *at)
     static_attest(self->size == len(self->mem));
 }
 
+/// obtain the used memory as read only slice
 export fn as_slice(MutSlice * self) -> Slice
     where   integrity(self)
     model   roslice::integrity(&return)
@@ -43,21 +45,23 @@ export fn as_slice(MutSlice * self) -> Slice
     return r;
 }
 
-
-export fn append_slice(MutSlice mut * self, Slice *other) -> bool
+/// append the contents of another slice
+export fn append_slice(MutSlice mut * self, Slice other) -> bool
     where   integrity(self)
+    where   roslice::integrity(&other)
     model   integrity(self)
 {
-    if *self->at >= self->size || other->size >  self->size || *self->at  > self->size - other->size {
+    if *self->at >= self->size || other.size >  self->size || *self->at  > self->size - other.size {
         return false;
     }
 
-    c_string::memcpy(self->mem + *self->at, other->mem, other->size);
-    *self->at += other->size;
+    c_string::memcpy(self->mem + *self->at, other.mem, other.size);
+    *self->at += other.size;
     static_attest(*self->at < len(self->mem));
     return true;
 }
 
+/// append raw bytes
 export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
     where   len(b) >= l
     where   integrity(self)
@@ -73,6 +77,7 @@ export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
     return true;
 }
 
+/// append a null terminated cstring, excluding its null terminator
 export fn append_cstr(MutSlice mut * self, char *b) -> bool
     where   integrity(self)
     where   nullterm(b)
@@ -98,6 +103,7 @@ export fn push(MutSlice mut * self, u8 b) -> bool
     return true;
 }
 
+/// append a 16 bit integer as 2 bytes
 export fn push16(MutSlice mut * self, u16 b) -> bool
     where   integrity(self)
     model   integrity(self)
@@ -112,6 +118,7 @@ export fn push16(MutSlice mut * self, u16 b) -> bool
     return true;
 }
 
+/// append a 32 bit integer as 4 bytes
 export fn push32(MutSlice mut * self, u32 b) -> bool
     where   integrity(self)
     model   integrity(self)
@@ -126,6 +133,7 @@ export fn push32(MutSlice mut * self, u32 b) -> bool
     return true;
 }
 
+/// append a 64 bit integer as 8 bytes
 export fn push64(MutSlice mut * self, u64 b) -> bool
     where   integrity(self)
     model   integrity(self)
@@ -136,6 +144,21 @@ export fn push64(MutSlice mut * self, u64 b) -> bool
 
     c_string::memcpy(self->mem + *self->at, &b, 8);
     *self->at += 8;
+
+    return true;
+}
+
+/// append any sized objects as raw bytes
+export fn append_obj(MutSlice mut * self, void+vt * b) -> bool
+    where   integrity(self)
+    model   integrity(self)
+{
+    if self->size < vt || *self->at >= self->size  || *self->at > self->size - vt {
+        return false;
+    }
+
+    c_string::memcpy(self->mem + *self->at, b, vt);
+    *self->at += vt;
 
     return true;
 }
