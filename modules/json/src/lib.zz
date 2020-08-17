@@ -6,8 +6,6 @@ using buffer;
 
 const usize MAX_DEPTH = 64;
 
-closure deserialize_t(err::Err+et mut *e, Parser+pt mut* p, void mut *user, char *k, Value v);
-
 export symbol ParseError;
 
 pub enum ValueType {

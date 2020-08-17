@@ -51,6 +51,9 @@ export fn append_slice(MutSlice mut * self, Slice other) -> bool
     where   roslice::integrity(&other)
     model   integrity(self)
 {
+    if other.size == 0 {
+        return true;
+    }
     if *self->at >= self->size || other.size >  self->size || *self->at  > self->size - other.size {
         return false;
     }
@@ -67,6 +70,9 @@ export fn append_bytes(MutSlice mut * self, u8 *b, usize l) -> bool
     where   integrity(self)
     model   integrity(self)
 {
+    if l == 0 {
+        return true;
+    }
     if *self->at >= self->size || l >  self->size || *self->at  > self->size - l {
         return false;
     }
@@ -83,6 +89,9 @@ export fn append_cstr(MutSlice mut * self, char *b) -> bool
     where   nullterm(b)
     model   integrity(self)
 {
+    if b == 0 {
+        return true;
+    }
     let l = unsafe<usize>(c_string::strlen(b));
     static_attest(len(b) >= l);
     return append_bytes(self, (u8*)b, l);
