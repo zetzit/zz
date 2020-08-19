@@ -41,8 +41,8 @@ export struct Driver+ {
 
 /// construct a default eventloop driver
 export fn system(Driver+maxq mut new * self, err::Err+et mut *e)
-    where err::checked(*e)
-    if #(os::ZZ_ASYNC_URING)
+where err::checked(*e)
+if #(os::ZZ_ASYNC_URING)
 {
     memset(self, 0, sizeof(Driver));
     int r = unsafe<int>(os::io_uring_queue_init(maxq, &self->os.ring, 0));
@@ -51,21 +51,26 @@ export fn system(Driver+maxq mut new * self, err::Err+et mut *e)
         return;
     }
 }
-    else if #(os::ZZ_ASYNC_WIN32)
+else if #(os::ZZ_ASYNC_WIN32)
 {
     memset(self, 0, sizeof(Driver));
+    int r = unsafe<int>(os::io_completion_port_init(&self->os));
+    if r < 0 {
+        e->fail_with_system_error((0-r), "io_completion_port_init(%d)", maxq);
+        return;
+    }
 }
 
 /// wait for futures to complete
 ///
 /// blocks the current thread until either a future completed or a deadline expired
 export fn wait(Driver mut * self, err::Err+et mut* e)
-    where err::checked(*e)
-    if #(os::ZZ_ASYNC_URING)
+where err::checked(*e)
+if #(os::ZZ_ASYNC_URING)
 {
 
     //TODO call here or in wait?
-    unsafe { os::io_uring_submit(&self->os.ring); }
+    unsafe{ os::io_uring_submit(&self->os.ring); }
 
     io_uring_cqe mut * mut cqe = 0;
     int r = unsafe<int>(os::io_uring_wait_cqe(&self->os.ring, &cqe));
@@ -81,17 +86,37 @@ export fn wait(Driver mut * self, err::Err+et mut* e)
     Future mut *fi = (Future mut*)os::io_uring_cqe_get_data(cqe);
     err::assert_safe(fi);
     fi->state = State::Ready;
-    unsafe { fi->os.cqe = cqe; }
+    unsafe{ fi->os.cqe = cqe; }
 
+}
+else if #(os::ZZ_ASYNC_WIN32) {
+    int r = unsafe<int>(os::io_completion_port_wait(&self->os));
+    if r < 0 {
+        e->fail_with_system_error((0-r), "io_completion_port_wait");
+        return;
+    }
+    int count = unsafe<int>(os::io_completion_get_entry_count(&self->os));
+    for(int mut i = 0; i < count; ++i){
+        Future mut *fu = (Future mut*)os::io_completion_get_entry_data(&self->os, i);
+        if fu != 0 {
+            err::assert_safe(fu);
+            unsafe{ fu->os.number_of_bytes_transfered = os::io_completion_get_entry_number_of_bytes_transfered(&self->os, i); }       
+            fu->state = State::Ready;
+        }
+    }
 }
 
 
 export fn take(Future mut *self, err::Err+et mut *e) -> int
-    if #(os::ZZ_ASYNC_URING)
+if #(os::ZZ_ASYNC_URING)
 {
     self->state = State::Invalid;
     int r = unsafe<int>(self->os.cqe->res);
-    unsafe { os::io_uring_cqe_seen(&self->driver->os.ring, self->os.cqe); }
+    unsafe{ os::io_uring_cqe_seen(&self->driver->os.ring, self->os.cqe); }
     return r;
+}
+else if #(os::ZZ_ASYNC_WIN32) {
+    self->state = State::Invalid;
+    return unsafe<int>(self->os.number_of_bytes_transfered);
 }
 
