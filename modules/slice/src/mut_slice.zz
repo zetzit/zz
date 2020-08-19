@@ -45,6 +45,13 @@ export fn as_slice(MutSlice * self) -> Slice
     return r;
 }
 
+/// return remaining free bytes
+export fn space(MutSlice mut * self) -> usize
+    where   integrity(self)
+{
+    return self->size - *self->at;
+}
+
 /// append the contents of another slice
 export fn append_slice(MutSlice mut * self, Slice other) -> bool
     where   integrity(self)

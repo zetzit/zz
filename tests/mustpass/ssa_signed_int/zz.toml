@@ -1,0 +1,11 @@
+[project]
+version = "0.1.0"
+name = "ssa_signed_int"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+
+[dependencies]
+
+[repos]

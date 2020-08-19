@@ -1890,14 +1890,24 @@ fn unescape(s: &str, loc: &Location) -> Vec<u8> {
     result
 }
 
-pub fn parse_u64(s: &str) -> Option<u64> {
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Integer {
+    Signed(i64),
+    Unsigned(u64),
+}
+
+pub fn parse_int(s: &str) -> Option<Integer> {
     if s.len() > 2 && s.chars().nth(0) == Some('0') && s.chars().nth(1) == Some('x') {
-        return u64::from_str_radix(&s[2..], 16).ok();
+        return u64::from_str_radix(&s[2..], 16).map(|v|Integer::Unsigned(v)).ok();
     }
 
     if let Ok(v) = s.parse::<u64>() {
-        return Some(v);
+        return Some(Integer::Unsigned(v));
+    } else  if let Ok(v) = s.parse::<i64>() {
+        return Some(Integer::Signed(v));
     }
 
     None
 }
+

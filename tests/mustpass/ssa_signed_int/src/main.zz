@@ -1,0 +1,12 @@
+const i8 THRESHOLD = 10;
+
+pub theory cold(i8 degrees) -> bool
+(
+    degrees < THRESHOLD
+)
+
+export fn main() -> int {
+    i8 temp = -3;
+    static_assert(cold(temp));
+    return 0;
+}

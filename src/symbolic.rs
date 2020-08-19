@@ -58,7 +58,7 @@ enum Value {
         array: HashMap<usize, Symbol>,
     },
     Unconstrained(String),
-    Integer(u64),
+    Integer(parser::Integer),
     Macro(Name),
 }
 
@@ -67,7 +67,7 @@ impl std::fmt::Display for Value {
         match self {
             Value::Void => write!(f, "void"),
             Value::Uninitialized => write!(f, "uninitialized"),
-            Value::Integer(s) => write!(f, "integer ({})", s),
+            Value::Integer(s) => write!(f, "integer ({:?})", s),
             Value::InfixOp { .. } => write!(f, "op"),
             Value::PrefixOp { .. } => write!(f, "op"),
             Value::PostfixOp { .. } => write!(f, "op"),
@@ -581,7 +581,7 @@ impl Symbolic {
                             tail: ast::Tail::None,
                         };
                         let sym = self.alloc(localname, t, d.loc.clone(), ast::Tags::new())?;
-                        self.memory[sym].value = Value::Integer(value);
+                        self.memory[sym].value = Value::Integer(parser::Integer::Unsigned(value));
 
                         self.ssa.literal(sym, value, self.memory[sym].t.clone());
 
@@ -2409,7 +2409,7 @@ impl Symbolic {
                     loc.clone(),
                     Tags::new(),
                 )?;
-                self.memory[tmp].value = Value::Integer(*v as u64);
+                self.memory[tmp].value = Value::Integer(parser::Integer::Unsigned(*v as u64));
                 Ok(tmp)
             }
 
@@ -2422,7 +2422,7 @@ impl Symbolic {
                         ptr: Vec::new(),
                         tail: ast::Tail::None,
                     };
-                    self.literal(loc, Value::Integer(0xffffffff), t)
+                    self.literal(loc, Value::Integer(parser::Integer::Unsigned(0xffffffff)), t)
                 } else if v == "false" {
                     let t = ast::Typed {
                         t: ast::Type::Bool,
@@ -2430,8 +2430,8 @@ impl Symbolic {
                         ptr: Vec::new(),
                         tail: ast::Tail::None,
                     };
-                    self.literal(loc, Value::Integer(0), t)
-                } else if let Some(v) = parser::parse_u64(&v) {
+                    self.literal(loc, Value::Integer(parser::Integer::Unsigned(0)), t)
+                } else if let Some(v) = parser::parse_int(&v) {
                     let t = ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
@@ -2948,7 +2948,7 @@ impl Symbolic {
 
                 let r = self.literal(
                     loc,
-                    Value::Integer(1),
+                    Value::Integer(parser::Integer::Unsigned(1)),
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
@@ -2980,7 +2980,7 @@ impl Symbolic {
                     if len > 0 {
                         let r = self.literal(
                             loc,
-                            Value::Integer(len as u64),
+                            Value::Integer(parser::Integer::Unsigned(len as u64)),
                             ast::Typed {
                                 t: ast::Type::ULiteral,
                                 loc: loc.clone(),
@@ -3026,7 +3026,7 @@ impl Symbolic {
 
                 let r = self.literal(
                     loc,
-                    Value::Integer(1),
+                    Value::Integer(parser::Integer::Unsigned(1)),
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
@@ -3076,7 +3076,7 @@ impl Symbolic {
 
                 let r = self.literal(
                     loc,
-                    Value::Integer(1),
+                    Value::Integer(parser::Integer::Unsigned(1)),
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
@@ -3121,7 +3121,7 @@ impl Symbolic {
 
                 let r = self.literal(
                     loc,
-                    Value::Integer(val),
+                    Value::Integer(parser::Integer::Unsigned(val)),
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
@@ -3751,7 +3751,7 @@ impl Symbolic {
             }
             ast::Tail::Static(val, _) => self.literal(
                 loc,
-                Value::Integer(val),
+                Value::Integer(parser::Integer::Unsigned(val)),
                 ast::Typed {
                     t: ast::Type::ULiteral,
                     loc: loc.clone(),
@@ -3962,7 +3962,7 @@ impl Symbolic {
                                     self.memory[lhs].declared.clone(),
                                     self.memory[lhs].tags.clone(),
                                 )?;
-                                self.memory[tmp].value = Value::Integer(0);
+                                self.memory[tmp].value = Value::Integer(parser::Integer::Unsigned(0));
                                 prev.insert(i, tmp);
                             }
                         }
@@ -4001,7 +4001,7 @@ impl Symbolic {
         if self.memory[lhs].typed.ptr.len() != self.memory[rhs].typed.ptr.len() {
             match self.memory[rhs].value {
                 Value::Unconstrained(_) => (),
-                Value::Integer(f) if f == 0 => (),
+                Value::Integer(parser::Integer::Unsigned(f)) if f == 0 => (),
                 _ => {
                     return Err(self.trace(
                         "assignment of incompatible pointer depth".to_string(),
@@ -4201,16 +4201,20 @@ impl Symbolic {
         t: ast::Typed,
     ) -> Result<Symbol, Error> {
         self.ssa.debug_loc(loc);
-        match value {
+        match value.clone() {
             Value::Integer(v) => {
                 let sym = self.temporary(
-                    format!("literal {}", v),
+                    format!("literal {:?}", v),
                     t.clone(),
                     loc.clone(),
                     Tags::new(),
                 )?;
                 self.memory[sym].value = value;
-                self.ssa.literal(sym, v as u64, self.memory[sym].t.clone());
+                let v = match v {
+                    parser::Integer::Signed(v) => v as u64,
+                    parser::Integer::Unsigned(v) => v as u64,
+                };
+                self.ssa.literal(sym, v, self.memory[sym].t.clone());
                 self.ssa_mark_valid(sym, loc)?;
                 Ok(sym)
             }

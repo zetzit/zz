@@ -626,8 +626,8 @@ impl Emitter {
                             ast::Expression::LiteralChar { v, .. } => {
                                 f.write(&[*v as u8]).unwrap();
                             }
-                            ast::Expression::Literal { v, loc } => match parser::parse_u64(v) {
-                                Some(v) if v <= 255 => {
+                            ast::Expression::Literal { v, loc } => match parser::parse_int(v) {
+                                Some(parser::Integer::Unsigned(v)) if v <= 255 => {
                                     f.write(&[v as u8]).unwrap();
                                 }
                                 _ => {
