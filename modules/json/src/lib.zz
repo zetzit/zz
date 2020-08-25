@@ -14,6 +14,7 @@ pub enum ValueType {
     Integer,
     Boolean,
     Array,
+    Null,
 }
 
 export struct Value {
@@ -32,6 +33,7 @@ enum ParserState {
     StringVal,
     IntVal,
     BoolVal,
+    NullVal,
     PostVal,
 }
 
@@ -169,7 +171,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     }
                     */
                     static_attest(err::checked(*e));
-                    if state == ParserState::IntVal || state == ParserState::BoolVal{
+                    if state == ParserState::IntVal || state == ParserState::BoolVal || state == ParserState::NullVal {
                         advance(self, e, ch);
                     }
                 }
@@ -181,7 +183,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     }
                 }
                 default => {
-                    if state == ParserState::PreVal && ((ch >= '0' && ch <= '9') || ch == '-' || ch == 't' || ch == 'f') {
+                    if state == ParserState::PreVal && ((ch >= '0' && ch <= '9') || ch == '-' || ch == 't' || ch == 'f' || ch == 'n') {
                         advance(self, e, ch);
                         static_attest(self->depth < len(self->state));
                         state = ((self->state)[self->depth]).state;
@@ -191,7 +193,7 @@ export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strle
                     }
                     static_attest(err::checked(*e));
 
-                    if state == ParserState::IntVal || state == ParserState::BoolVal {
+                    if state == ParserState::IntVal || state == ParserState::BoolVal || state == ParserState::NullVal{
                         if !buffer::push(&(self->capture), ch) {
                             err::fail(e, err::OutOfTail, "buffer overflow at %u:%u", self->line, self->col);
                             return;
@@ -272,6 +274,8 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
             }
             if token == '"' {
                 stack->state = ParserState::StringVal;
+            } else if (token == 'n') {
+                stack->state = ParserState::NullVal;
             } else if (token == 't' || token == 'f') {
                 stack->state = ParserState::BoolVal;
             } else if (token >= '0' && token <= '9') || token == '-' {
@@ -368,15 +372,20 @@ fn advance(Parser+tail mut *self, err::Err+et mut *e, char token)
                 return;
             }
         }
-        ParserState::BoolVal => {
+        ParserState::BoolVal , ParserState::NullVal => {
             if stack->user.it.fn != 0 {
                 Iter de = stack->user.it;
                 static_attest(safe(de));
                 static_attest(self->keylen < len((self->capture).mem));
 
+                ValueType mut t = ValueType::Boolean;
+                if stack->state == ParserState::NullVal {
+                    t = ValueType::Null;
+                }
+
                 Value val = Value{
                     index:      stack->index,
-                    t:          ValueType::Boolean,
+                    t:          t,
                     integer:    (self->capture.mem + self->keylen)[0] == 't',
                 };
                 de(&stack->user, e, self, (self->capture).mem, val);

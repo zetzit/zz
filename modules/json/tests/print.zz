@@ -88,6 +88,13 @@ test test_array {
 "#
 }
 
+test test_null {
+    stdin   = "{\"a\": null}"
+    stdout  = r#"<json>
+  <a null/>
+</json>
+"#
+}
 
 test _object_in_array {
     stdin = r#"{"args":[{"LiteralString":{"loc":{"file":"/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"world"}},{"Literal":{"loc":{"file":"/home/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"32"}}]}"#
@@ -162,6 +169,9 @@ fn pretty(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json:
         }
         json::ValueType::Integer => {
             printf("<%s>%d</%s>\n", k, v.integer, k);
+        }
+        json::ValueType::Null => {
+            printf("<%s null/>\n", k);
         }
         json::ValueType::Boolean => {
             if v.integer > 0 {
