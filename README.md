@@ -12,10 +12,7 @@ at compile time.
 
 ### quick quick start
 
-1. [install rust](https://www.rust-lang.org/tools/install) for bootstrapping
-1. install an SMT solver, either [yices2](https://github.com/SRI-CSL/yices2) or [z3](https://github.com/Z3Prover/z3)
-2. cd examples/hello
-3. cargo run run
+Get the latest binary from http://bin.zetz.it
 
 
 ## editor support
