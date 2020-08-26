@@ -545,14 +545,20 @@ impl Emitter {
         self.inside_macro = true;
         write!(
             self.f,
-            "#define {} ((",
+            "#define {} (",
             self.to_local_name(&Name::from(&ast.name))
         )
         .unwrap();
-        write!(self.f, "{} ", self.to_local_typed_name(&typed)).unwrap();
-        self.emit_pointer(&typed.ptr);
 
+        // gcc doesnt like this. if we want it back,
+        // it needs to be conditionally disabled if it would cast to the same type
+        /*
+        write!(self.f, "({} ", self.to_local_typed_name(&typed)).unwrap();
+        self.emit_pointer(&typed.ptr);
         write!(self.f, ")").unwrap();
+        */
+
+
         self.emit_expr(&expr);
         write!(self.f, ")\n").unwrap();
 
@@ -1505,9 +1511,9 @@ impl Emitter {
                 }
                 write!(self.f, "{{").unwrap();
                 for (name, field) in fields {
-                    write!(self.f, "\n.{} = ", name).unwrap();
+                    write!(self.f, ".{} = ", name).unwrap();
                     self.emit_expr(field);
-                    write!(self.f, ",\n").unwrap();
+                    write!(self.f, ",").unwrap();
                 }
                 write!(self.f, "}}").unwrap();
             }
