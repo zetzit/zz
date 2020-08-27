@@ -599,6 +599,7 @@ fn abs_expr(
 
             match makro::expr(name, loc, args) {
                 Ok(expr2) => {
+                    log::debug!("abs macro complete {} {}", name, loc);
                     *expr = expr2;
                     abs_expr(expr, scope, inbody, all_modules, self_md_name);
                 }
@@ -607,6 +608,7 @@ fn abs_expr(
                         emit_error(e.message, &e.details);
                         std::process::exit(9);
                     } else {
+                        log::debug!("abs incomplete because of macro {} {}", name, loc);
                         scope.complete.replace(false);
                     }
                 }

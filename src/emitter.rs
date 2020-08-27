@@ -1491,7 +1491,8 @@ impl Emitter {
                 self.emit_expr(expr);
             }
             ast::Expression::MacroCall { loc, .. } => {
-                write!(self.f, "{{INTERNAL_ERROR_MACRO_NOT_EXPANDED}}").unwrap();
+                emit_error(format!("internal compiler error"), &[(loc.clone(), "ICE: macro not available yet")]);
+                std::process::exit(9);
             }
             ast::Expression::ArrayInit { fields, loc } => {
                 self.emit_loc(&loc);

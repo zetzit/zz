@@ -521,7 +521,9 @@ fn main() {
                 submatches.value_of("variant").unwrap_or("default"),
                 stage,
                 submatches.is_present("slow"),
-            )
+            );
+
+            println!("success");
         }
         ("", None) => {
             zz::build(zz::BuildSet::All, "default", zz::make::Stage::test(), false);
