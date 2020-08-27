@@ -356,7 +356,6 @@ impl Emitter {
         };
 
         let fieldval = match expr {
-            ast::Expression::LiteralString { v, .. } => format!("b\"{}\".as_ptr()", v),
             ast::Expression::LiteralChar { v, .. } => format!("'{}'", v),
             ast::Expression::Literal { v, .. } => format!("{}", v),
             _ => {
@@ -821,7 +820,7 @@ impl {name} {{
             ast::Expression::LiteralString { loc, v } => {
                 self.emit_loc(&loc);
                 write!(self.f, "    \"").unwrap();
-                for c in v.as_bytes() {
+                for c in v {
                     self.write_escaped_literal(*c, true);
                 }
                 write!(self.f, "\"").unwrap();

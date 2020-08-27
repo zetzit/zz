@@ -623,8 +623,8 @@ impl Emitter {
 
                     // TODO this is a hack to work around string literals containing
                     // native file endings
-                    v.retain(|i| i != '\r');
-                    f.write_all(v.as_bytes()).unwrap();
+                    v.retain(|i| *i != b'\r');
+                    f.write_all(&v).unwrap();
                 }
                 ast::Expression::ArrayInit { fields, .. } => {
                     for field in fields {
@@ -1208,7 +1208,9 @@ impl Emitter {
                                         std::process::exit(9);
                                     }
                                     if let ast::Expression::LiteralString{v,..} = args[0].as_ref() {
-                                        write!(self.f, "#pragma comment(linker, \"{}\")\n", v).unwrap();
+                                        write!(self.f, "#pragma comment(linker, \"").unwrap();
+                                        self.f.write(&v).unwrap();
+                                        write!(self.f, "\")\n").unwrap();
                                         continue;
                                     } else {
                                         emit_error(format!("invalid flags statement"),
@@ -1567,7 +1569,7 @@ impl Emitter {
             ast::Expression::LiteralString { loc, v } => {
                 self.emit_loc(&loc);
                 write!(self.f, "    \"").unwrap();
-                for c in v.as_bytes() {
+                for c in v {
                     self.write_escaped_literal(*c, true);
                 }
                 write!(self.f, "\"").unwrap();

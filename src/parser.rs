@@ -989,7 +989,7 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
             };
 
             Expression::LiteralString {
-                v: String::from_utf8_lossy(&v).to_string(),
+                v,
                 loc,
             }
         }
@@ -1859,7 +1859,7 @@ fn unescape(s: &str, loc: &Location) -> Vec<u8> {
                         .fold(0, |acc, c| acc * 16 + c.to_digit(16).unwrap());
                     if value > 255 {
                         emit_error(
-                            "octal value too big for char",
+                            "hex value too big for char",
                             &[(loc.clone(), "in this literal string")],
                         );
                         std::process::exit(9);
