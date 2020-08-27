@@ -16,6 +16,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::io::Write;
+use log;
 
 static ABORT: AtomicBool = AtomicBool::new(false);
 
@@ -92,6 +93,7 @@ impl Pipeline {
     }
 
     fn do_macros(&mut self) {
+        self.macros_available = false;
         self.pb_reset();
         let more: Vec<ast::Module> = self
             .modules
@@ -157,6 +159,10 @@ impl Pipeline {
         expand::expand(&mut module).map_err(|e| Some(e))?;
         let (ok, complete) = symbolic::execute(&mut module, false /*TODO*/);
         if !ok {
+            return Err(Some(super::Error::new("aborted due to previous smt errors".to_string(), Vec::new())));
+        }
+        if !complete {
+            log::debug!("incomplete: {}", ast.name);
             return Err(None);
         }
 
@@ -261,7 +267,6 @@ impl Pipeline {
                         self.pb_done("comp", hn);
                         match r {
                             Err(None) => {
-                                ABORT.store(true, Ordering::Relaxed);
                                 None
                             }
                             Err(Some(e)) => {

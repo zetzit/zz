@@ -134,7 +134,7 @@ pub enum ScopeReturn {
 }
 
 impl Symbolic {
-    fn execute_module(&mut self, module: &mut flatten::Module, fun: usize) -> Result<(), Error> {
+    fn execute_module(&mut self, module: &mut flatten::Module, fun: Option<usize>) -> Result<(), Error> {
         debug!("~~~~~\nexecuting {}", module.name);
 
         self.current_module_name = module.name.human_name();
@@ -610,40 +610,42 @@ impl Symbolic {
             }
         }
 
-        let (fun, _) = &mut module.d[fun];
+        if let Some(fun) = fun {
+            let (fun, _) = &mut module.d[fun];
 
-        match &mut fun.def {
-            ast::Def::Function {
-                args,
-                body,
-                ret,
-                callassert,
-                calleffect,
-                callattests,
-                ..
-            } => {
-                for (_, branch_expr, body) in &mut body.branches {
-                    self.execute_function(
-                        &fun.name,
-                        args,
-                        ret.as_ref(),
-                        body,
-                        callassert,
-                        calleffect,
-                        callattests,
-                    )?;
-                    if !self.ssa.solve() {
-                        return Err(self.trace(
-                            format!("function is unprovable"),
-                            vec![(
-                                fun.loc.clone(),
-                                format!("this function body is impossible to prove"),
-                            )],
-                        ));
+            match &mut fun.def {
+                ast::Def::Function {
+                    args,
+                    body,
+                    ret,
+                    callassert,
+                    calleffect,
+                    callattests,
+                    ..
+                } => {
+                    for (_, branch_expr, body) in &mut body.branches {
+                        self.execute_function(
+                            &fun.name,
+                            args,
+                            ret.as_ref(),
+                            body,
+                            callassert,
+                            calleffect,
+                            callattests,
+                        )?;
+                        if !self.ssa.solve() {
+                            return Err(self.trace(
+                                format!("function is unprovable"),
+                                vec![(
+                                    fun.loc.clone(),
+                                    format!("this function body is impossible to prove"),
+                                )],
+                            ));
+                        }
                     }
                 }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         }
 
         Ok(())
@@ -2147,6 +2149,7 @@ impl Symbolic {
             }
             ast::Expression::MacroCall { loc, name, args } => {
                 self.incomplete = true;
+                log::debug!("incomplete because of macro {}", loc);
                 let r = self.literal(
                     loc,
                     Value::Unconstrained("unavailable macro".to_string()),
@@ -4404,7 +4407,16 @@ pub fn execute(
     // execute one in serial on the borrowed module to get modifications to globals
     if let Some((at, name, _, solver)) = function_at.pop() {
         let mut sym = Symbolic::new(&Name::from(&name), solver, macros_available);
-        if let Err(e) = sym.execute_module(module, at) {
+        if let Err(e) = sym.execute_module(module, Some(at)) {
+            parser::emit_error(e.message.clone(), &e.details);
+            return (false, false);
+        }
+        if sym.incomplete {
+            incomplete = true;
+        }
+    } else {
+        let mut sym = Symbolic::new(&module.name, None, macros_available);
+        if let Err(e) = sym.execute_module(module, None) {
             parser::emit_error(e.message.clone(), &e.details);
             return (false, false);
         }
@@ -4417,7 +4429,7 @@ pub fn execute(
         .into_par_iter()
         .map(|(at, name, mut module, solver)| {
             let mut sym = Symbolic::new(&Name::from(&name), solver, macros_available);
-            match sym.execute_module(&mut module, at) {
+            match sym.execute_module(&mut module, Some(at)) {
                 Err(e) => {
                     parser::emit_error(e.message.clone(), &e.details);
                     None

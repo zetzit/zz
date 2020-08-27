@@ -30,7 +30,7 @@ pub fn expr(
     ;
     if !mp.exists() {
         return Err(Error::new(
-            format!("macro {} is unavailable", name),
+            format!("macro {} is unavailable (exe {:?})", name, mp),
             vec![(
                 loc.clone(),
                 "macro not available here. it may be compiled later".to_string(),
@@ -156,6 +156,9 @@ pub fn stm(
     Ok(statements)
 }
 
+
+
+//for each macro, create a new module with the macro being main
 pub fn sieve(md: &ast::Module) -> Vec<ast::Module> {
     let mut newmods = Vec::new();
     for local in &md.locals {
