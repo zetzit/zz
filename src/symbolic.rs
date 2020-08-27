@@ -1642,7 +1642,7 @@ impl Symbolic {
                 let lit = match v.as_str() {
                     "file" => ast::Expression::LiteralString {
                         loc: loc.clone(),
-                        v: callloc.file.clone(),
+                        v: callloc.file.clone().into_bytes(),
                     },
                     "line" => ast::Expression::Literal {
                         loc: loc.clone(),
@@ -1650,11 +1650,11 @@ impl Symbolic {
                     },
                     "module" => ast::Expression::LiteralString {
                         loc: loc.clone(),
-                        v: self.current_module_name.clone(),
+                        v: self.current_module_name.clone().into_bytes(),
                     },
                     "function" => ast::Expression::LiteralString {
                         loc: loc.clone(),
-                        v: self.current_function_name.clone(),
+                        v: self.current_function_name.clone().into_bytes(),
                     },
                     _ => {
                         return Err(self.trace(
@@ -2379,7 +2379,7 @@ impl Symbolic {
             }
             ast::Expression::LiteralString { loc, v } => {
                 let tmp = self.temporary(
-                    format!("literal string \"{}\"", v),
+                    format!("literal string \"{}\"", String::from_utf8_lossy(&v)),
                     ast::Typed {
                         t: ast::Type::U8,
                         loc: loc.clone(),
@@ -4386,7 +4386,7 @@ pub fn execute(
                 if derive.makro == "solver" {
                     match derive.args.first().map(|x| *x.clone()) {
                         Some(ast::Expression::LiteralString { v, .. }) => {
-                            solver = Some(v);
+                            solver = Some(String::from_utf8_lossy(&v).to_string());
                         }
                         _ => {
                             parser::emit_error(

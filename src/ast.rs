@@ -474,7 +474,7 @@ pub enum Expression {
     },
     LiteralString {
         loc: Location,
-        v: String,
+        v:  Vec<u8>,
     },
     LiteralChar {
         loc: Location,
