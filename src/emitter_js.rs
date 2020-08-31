@@ -7,9 +7,12 @@ use super::name::Name;
 use super::parser::{self, emit_error};
 use super::project::Project;
 use std::collections::HashSet;
+use std::collections::HashMap;
+use super::project;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use super::emitter_common;
 
 pub struct CFile {
     pub name: Name,
@@ -25,18 +28,14 @@ pub struct Emitter {
     module: flatten::Module,
     cur_loc: Option<ast::Location>,
     register_structs: Vec<String>,
-    register_fns: Vec<(String, String)>,
+    register_fns: HashMap<String, String>,
 }
 
 pub fn make_npm_module(make: &super::make::Make) {
-    let pdir_ = format!("target/{}/npm/{}/", make.stage, make.artifact.name);
-    let pdir = std::path::Path::new(&pdir_);
+    let td      = project::target_dir();
+    let pdir_   = td.join("npm").join(&make.artifact.name);
+    let pdir    = std::path::Path::new(&pdir_);
     std::fs::create_dir_all(&pdir).unwrap();
-
-    copyr(".", pdir, Some("target"));
-    let nutarget = pdir.join("target").join(&format!("{}", make.stage));
-
-    copyr(format!("target/{}/", make.stage), &nutarget, Some("npm"));
 
     let p = pdir.join("package.json");
     let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
@@ -89,24 +88,28 @@ pub fn make_npm_module(make: &super::make::Make) {
     {{
       "target_name": "{n}",
       "sources": [
-        "target/js.c",
 "#,
         n = make.artifact.name
     )
     .unwrap();
 
     for step in &make.steps {
-        write!(f, "          \"{}\",\n", step.source.to_string_lossy()).unwrap();
+        write!(f,"      \"{}\", \n",
+            emitter_common::path_rel(&pdir, &step.source).to_string_lossy().to_string()
+        ).unwrap();
 
         // for every linked zz file, add the js bridge
-        let s = step.source.parent().unwrap();
-        if s.file_name().unwrap() == "zz" {
-            let s = s
-                .parent()
+        if step.source.parent().unwrap().file_name().unwrap() == "zz" {
+            let mut mn = step
+                .source
+                .file_stem()
                 .unwrap()
-                .join("js")
-                .join(step.source.file_name().unwrap());
-            write!(f, "          \"{}\",\n", s.to_string_lossy()).unwrap();
+                .to_string_lossy()
+                .to_string();
+            write!(f,"      \"../{}.c\",\n",
+                step.source.file_stem().unwrap().to_string_lossy()
+            )
+            .unwrap();
             register_modules.push(step.source.file_stem().unwrap().to_string_lossy());
         }
     }
@@ -114,12 +117,10 @@ pub fn make_npm_module(make: &super::make::Make) {
     write!(
         f,
         r#"
+        "js.c"
       ],
       "conditions": [
           ['OS!="win"', {{
-            'cflags!': [
-              '-Werror',
-             ],
             'cflags': [
                 '-Wno-attributes',
                 '-Wno-old-style-declaration',
@@ -142,17 +143,16 @@ pub fn make_npm_module(make: &super::make::Make) {
           }}],
       ],
       "include_dirs": [
-          "include", "target/{stage}/include",
+          "include", "../../include",
       ],
     }}
   ]
 }}
 "#,
-        stage = make.stage
     )
     .unwrap();
 
-    let p = pdir.join("target/js.c");
+    let p = pdir.join("js.c");
     let mut f = fs::File::create(&p).expect(&format!("cannot create {:?}", p));
     write!(
         f,
@@ -209,12 +209,14 @@ pub fn make_npm_module(make: &super::make::Make) {
 }
 
 pub fn outname(_project: &Project, stage: &make::Stage, module: &flatten::Module) -> String {
-    format!("target/{}/js/{}.c", stage, module.name.0[1..].join("_"))
+    let td = project::target_dir().join("npm");
+    std::fs::create_dir_all(&td);
+    td.join(format!("{}.c", module.name.0[1..].join("_"))).to_string_lossy().to_string()
 }
 
 impl Emitter {
     pub fn new(project: &Project, stage: make::Stage, module: flatten::Module) -> Self {
-        std::fs::create_dir_all(format!("target/{}/js/", stage)).unwrap();
+
         let p = outname(project, &stage, &module);
         let f = fs::File::create(&p).expect(&format!("cannot create {}", p));
 
@@ -225,7 +227,7 @@ impl Emitter {
             module,
             cur_loc: None,
             register_structs: Vec::new(),
-            register_fns: Vec::new(),
+            register_fns: HashMap::new(),
         }
     }
 
@@ -387,21 +389,25 @@ impl Emitter {
                 }
             }
 
+
+            let localto_clean = localto.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+
             write!(
                 self.f,
                 r#"
-    void * tttt_{localto} = 0;
-    size_t {localto}_tail = 0;
-    status = napi_unwrap(env, {localfrom}, &tttt_{localto});
-    if (tttt_{localto} == 0 || status != napi_ok) {{
+    void * tttt_{localto_clean} = 0;
+    size_t {localto_clean}_tail = 0;
+    status = napi_unwrap(env, {localfrom}, &tttt_{localto_clean});
+    if (tttt_{localto_clean} == 0 || status != napi_ok) {{
         {localto} = 0;
     }} else {{
-        {localto}_tail = *((size_t*)tttt_{localto});
-        {localto} = tttt_{localto} + sizeof(size_t*);
+        {localto_clean}_tail = *((size_t*)tttt_{localto_clean});
+        {localto} = tttt_{localto_clean} + sizeof(size_t*);
     }}
     "#,
                 localto = localto,
-                localfrom = localfrom
+                localfrom = localfrom,
+                localto_clean = localto_clean,
             )
             .unwrap();
             return;
@@ -422,7 +428,7 @@ impl Emitter {
             ast::Type::U64 | ast::Type::U128 => {
                 write!(
                     self.f,
-                    "    status = napi_get_value_bigint_uint64(env, {}, (uint64_t*)&{});\n",
+                    "    status = napi_get_value_bigint_uint64(env, {}, (uint64_t*)&{}, 0);\n",
                     localfrom, localto
                 )
                 .unwrap();
@@ -507,15 +513,17 @@ impl Emitter {
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "zz/{}/{}.h"
+#include "zz/{}.h"
 
 "#,
-            self.project_name,
             self.module.name.0[1..].join("_")
         )
         .unwrap();
 
         for (d, complete) in &module.d {
+            if d.vis != ast::Visibility::Export {
+                continue;
+            }
             match d.def {
                 ast::Def::Function { .. } => {
                     self.emit_fndecl(&d);
@@ -525,6 +533,10 @@ impl Emitter {
         }
         for (d, complete) in &module.d {
             if complete != &flatten::TypeComplete::Complete {
+                continue;
+            }
+
+            if d.vis != ast::Visibility::Export {
                 continue;
             }
 
@@ -578,18 +590,18 @@ impl Emitter {
         }
         write!(self.f, "    napi_value ff;\n").unwrap();
         write!(self.f, "    napi_status status;\n").unwrap();
-        for (n, f) in self.register_fns {
+        for (longname, shortname) in self.register_fns {
             write!(
                 self.f,
                 "    status = napi_create_function(env, \"{}\", NAPI_AUTO_LENGTH, {}, 0, &ff);\n",
-                n, f
+                shortname, longname
             )
             .unwrap();
             write!(self.f, "    assert(status == napi_ok);\n").unwrap();
             write!(
                 self.f,
                 "    status = napi_set_named_property(env, exports, \"{}\", ff);\n",
-                n
+                shortname
             )
             .unwrap();
             write!(self.f, "    assert(status == napi_ok);\n").unwrap();
@@ -639,6 +651,8 @@ impl Emitter {
     }
 
     pub fn emit_struct(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
+
+
         let (fields, _packed, tail, _union, impls) = match &ast.def {
             ast::Def::Struct {
                 fields,
@@ -656,6 +670,11 @@ impl Emitter {
 
         // getters and setters
         for field in fields {
+            if let ast::Array::None = field.array {
+            } else {
+                continue;
+            }
+
             write!(
                 self.f,
                 r#"
@@ -822,16 +841,24 @@ napi_value js_new_{n}(napi_env env, napi_callback_info info) {{
         let mut proplen = 0;
         write!(self.f, "    napi_property_descriptor properties[] = {{\n").unwrap();
         for (field, (fnname, _)) in impls {
+            let longname = self.to_local_name(fnname);
+            if !self.register_fns.contains_key(&longname) {
+                continue;
+            }
             write!(
                 self.f,
                 "        {{ \"{}\", 0, js_{}, 0, 0, 0, napi_default, 0 }},\n",
                 field,
-                self.to_local_name(fnname)
+                longname,
             )
             .unwrap();
             proplen += 1;
         }
         for field in fields {
+            if let ast::Array::None = field.array {
+            } else {
+                continue;
+            }
             if field.tags.contains("mut") {
                 write!(self.f, "        {{ \"{f}\", 0, 0, jsGet_{s}_{f}, jsSet_{s}_{f}, 0, napi_default, 0}},\n",
                        f = field.name,
@@ -886,7 +913,7 @@ napi_value js_new_{n}(napi_env env, napi_callback_info info) {{
     }
 
     pub fn emit_fndecl(&mut self, ast: &ast::Local) {
-        let (ret, args, _body, _vararg, _attr) = match &ast.def {
+        let (ret, args, body, _vararg, _attr) = match &ast.def {
             ast::Def::Function {
                 ret,
                 args,
@@ -897,15 +924,38 @@ napi_value js_new_{n}(napi_env env, napi_callback_info info) {{
             } => (ret, args, body, *vararg, attr),
             _ => unreachable!(),
         };
+
+        let mut has_default = false;
+        for (loc, expr, body) in &body.branches {
+            if let Some(expr) = &expr {
+            } else {
+                has_default = true;
+            }
+        }
+
+        if !has_default {
+            return;
+        }
+
         write!(
             self.f,
             "napi_value js_{}(napi_env env, napi_callback_info info);\n",
             self.to_local_name(&Name::from(&ast.name))
         )
         .unwrap();
+
+        let shortname = Name::from(&ast.name).0.last().unwrap().clone();
+        let longname = self.to_local_name(&Name::from(&ast.name));
+        self.register_fns.insert(longname.clone(), format!("js_{}", shortname));
     }
 
     pub fn emit_fn(&mut self, ast: &ast::Local) {
+
+        let longname = self.to_local_name(&Name::from(&ast.name));
+        if !self.register_fns.contains_key(&longname) {
+            return;
+        }
+
         let (ret, args, _body, _vararg, _attr) = match &ast.def {
             ast::Def::Function {
                 ret,
@@ -920,8 +970,6 @@ napi_value js_new_{n}(napi_env env, napi_callback_info info) {{
 
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
         let longname = self.to_local_name(&Name::from(&ast.name));
-        self.register_fns
-            .push((shortname.clone(), format!("js_{}", longname)));
 
         write!(
             self.f,
@@ -1071,34 +1119,3 @@ napi_value js_{}(napi_env env, napi_callback_info info) {{
     }
 }
 
-pub fn copyr<P: AsRef<std::path::Path>, Q: AsRef<std::path::Path>>(
-    from: P,
-    to: Q,
-    except: Option<&str>,
-) {
-    let to = to.as_ref();
-    let from = from.as_ref();
-
-    for entry in fs::read_dir(from).expect(&format!("cannot read dir {:?}", from)) {
-        let entry = entry.expect(&format!("cannot read dir {:?}", from));
-        let path = entry.path();
-
-        if path.file_name().unwrap().to_string_lossy().starts_with(".") {
-            continue;
-        }
-        if let Some(except) = except {
-            if path.file_name().unwrap() == except {
-                continue;
-            }
-        }
-
-        if path.is_dir() {
-            let to = to.join(path.file_name().unwrap());
-            std::fs::create_dir_all(&to).expect(&format!("cannot create dir {:?}", to));
-            copyr(&path, to, None);
-            continue;
-        }
-        let nupath = to.join(path.file_name().unwrap());
-        fs::copy(&path, &nupath).expect(&format!("cannot copy {:?} to {:?}", path, nupath));
-    }
-}
