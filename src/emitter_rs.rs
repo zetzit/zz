@@ -437,14 +437,14 @@ impl Emitter {
     }
 
     pub fn emit_struct_heap(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
-        let (fields, _packed, tail, _union) = match &ast.def {
+        let (fields, _packed, tail, union) = match &ast.def {
             ast::Def::Struct {
                 fields,
                 packed,
                 tail,
                 union,
                 ..
-            } => (fields, packed, tail, union),
+            } => (fields, packed, tail, *union),
             _ => unreachable!(),
         };
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
@@ -458,6 +458,9 @@ impl Emitter {
                 };
             }
         }
+
+        // dont emit if its a union
+        if union {return; }
 
         write!(
             self.f,
@@ -569,14 +572,14 @@ impl {name} {{
     }
 
     pub fn emit_struct_stack(&mut self, ast: &ast::Local, tail_variant: Option<u64>) {
-        let (fields, _packed, tail, _union) = match &ast.def {
+        let (fields, _packed, tail, union) = match &ast.def {
             ast::Def::Struct {
                 fields,
                 packed,
                 tail,
                 union,
                 ..
-            } => (fields, packed, tail, union),
+            } => (fields, packed, tail, *union),
             _ => unreachable!(),
         };
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
@@ -591,7 +594,12 @@ impl {name} {{
             }
         }
 
-        write!(self.f, "\n#[derive(Clone)]\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
+        if union {
+            write!(self.f, "\n#[derive(Clone)]\n#[repr(C)]\npub union {} {{\n", shortname).unwrap();
+        } else {
+            write!(self.f, "\n#[derive(Clone)]\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
+        }
+
         for i in 0..fields.len() {
             let field = &fields[i];
 
