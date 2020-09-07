@@ -249,7 +249,12 @@ vardecl     = { named_type  ~ array? ~ ( "=" ~ expr )? }
 
 semicolon   = { ";" }
 stm_list    = _{ expr_stm ~ "," ~ stm_list | expr_stm }
-for_stm     = { "for" ~ "(" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list? ~ ")" ~ block }
+for_stm     = {
+    (
+        ("for" ~ "(" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list? ~ ")") |
+        ("for" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list?)
+    ) ~ block
+}
 while_stm   = { "while" ~ expr ~ block }
 
 case_cond   = { expr ~ ("," ~ expr)* }

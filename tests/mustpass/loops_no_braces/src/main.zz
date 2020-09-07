@@ -1,0 +1,26 @@
+using log;
+
+
+
+fn never_happens() {
+    while true {
+    }
+    for ;; {}
+}
+
+export fn main() -> int {
+
+    for (int mut i = 1; i < 2; i++) {
+        log::info("hello %s\n", "loops_no_braces");
+        log::info("hello %s\n", "loops_no_braces");
+    }
+    for int mut i = 1; i < 2; i++ {
+        log::info("hello %s\n", "loops_no_braces");
+        log::info("hello %s\n", "loops_no_braces");
+    }
+
+    while unsafe<bool>(false) {
+    }
+
+    return 0;
+}

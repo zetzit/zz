@@ -476,7 +476,7 @@ export macro repeat()  {
     let num = (int)atoi(a.args[1].v.string);
 
     printf("\"");
-    for (int mut i = 0; i < num; i++) {
+    for int mut i = 0; i < num; i++ {
         printf("%s", a.args[0].v.string);
     }
     printf("\"");

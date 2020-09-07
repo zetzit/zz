@@ -375,7 +375,7 @@ impl Emitter {
             _ => unreachable!(),
         };
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
-        write!(self.f, "#[derive(Clone)]\n").unwrap();
+        write!(self.f, "#[derive(Copy,Clone, PartialEq)]\n").unwrap();
         write!(self.f, "#[repr(C)]\n").unwrap();
         write!(self.f, "pub enum {} {{\n", shortname).unwrap();
         for (name, literal) in names {
@@ -595,9 +595,9 @@ impl {name} {{
         }
 
         if union {
-            write!(self.f, "\n#[derive(Clone)]\n#[repr(C)]\npub union {} {{\n", shortname).unwrap();
+            write!(self.f, "\n#[derive(Copy,Clone)]\n#[repr(C)]\npub union {} {{\n", shortname).unwrap();
         } else {
-            write!(self.f, "\n#[derive(Clone)]\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
+            write!(self.f, "\n#[derive(Copy,Clone)]\n#[repr(C)]\npub struct {} {{\n", shortname).unwrap();
         }
 
         for i in 0..fields.len() {
@@ -685,7 +685,7 @@ impl {name} {{
 
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();
 
-        write!(self.f, "#[derive(Clone)]\n#[repr(C)]\npub struct {sn} {{\n    pub ctx: *mut std::ffi::c_void,\n",
+        write!(self.f, "#[derive(Copy,Clone)]\n#[repr(C)]\npub struct {sn} {{\n    pub ctx: *mut std::ffi::c_void,\n",
                sn = shortname,
         ).unwrap();
 
