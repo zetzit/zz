@@ -1,0 +1,8 @@
+using log;
+
+export closure buh() int;
+
+export fn main() int {
+    log::info("hello %s", "fn_return_no_arrow3");
+    return 0;
+}

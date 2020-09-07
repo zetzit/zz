@@ -33,11 +33,11 @@ struct Random {
     u32 num;
 }
 
-fn rng(Random *self) -> u32 {
+fn rng(Random *self) u32 {
     return self->num;
 }
 
-export fn main() -> int {
+export fn main() int {
     let r = Random{
         num: 42,
     };
@@ -112,7 +112,7 @@ struct Car {
     Vehicle base;
 }
 
-fn allowed_entry(Vehicle *self) -> bool {
+fn allowed_entry(Vehicle *self) bool {
     return self->wheels <= 2;
 }
 
@@ -180,7 +180,7 @@ thanks to the underlying SMT solver, the ZZ symbolic executor will know that `a[
 The where keyword requires behaviour in the callsite, and the model keyword declares how the function itself will behave.
 
 ```C
-fn bla(int a) -> int
+fn bla(int a) int
     model return == 2 * a
 {
     return a * a;
@@ -200,7 +200,7 @@ type at a given time in the program without ANY runtime code.
 
 ```C++
 
-theory is_open(int*) -> bool;
+theory is_open(int*) bool;
 
 fn open(int mut* a)
     model is_open(a)
@@ -338,9 +338,9 @@ function pointers are difficult to do nicely but also make them emit to all lang
 instead you declare closures, which are automatically casted from and to functions
 
 ```C++
-closure rand_t() -> int;
+closure rand_t() int;
 
-fn secure_random() -> int {
+fn secure_random() int {
     return 42;
 }
 
@@ -482,7 +482,7 @@ export macro repeat()  {
     printf("\"");
 }
 
-export fn main() -> int {
+export fn main() int {
     printf("hello %s\n", repeat("world ", 32));
     return 0;
 }
@@ -536,7 +536,7 @@ pub fn print(Container *self) {
 ```C++
 using example
 
-int main() -> {
+fn main() int {
   new container = example::create_container("hello");
   container.print();
   return 0;
@@ -568,7 +568,7 @@ struct Unpacked {
   int b;
 }
 
-fn main() -> int {
+fn main() int {
   printf("sizeof(Packed) == lu\n", sizeof(Packed)); // 6
   printf("sizeof(Unpacked) == lu\n", sizeof(Unpacked)); // 8
   return 0;

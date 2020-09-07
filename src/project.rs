@@ -141,8 +141,8 @@ pub fn init() {
             "\
 using log;
 
-export fn main() -> int {{
-    log::info(\"hello %s\\n\", \"{}\");
+export fn main() int {{
+    log::info(\"hello %s\", \"{}\");
     return 0;
 }}
 ",
