@@ -2,19 +2,28 @@ using <stdio.h>::{printf};
 using <stdlib.h>::{atoi};
 using err;
 using ast;
-
+using slice;
 using bam;
 
 /// creates literal string with arg0 repeated arg1 times
 export macro repeat()  {
     new+1000 a = ast::from_macro();
-    err::assert2(a.args[0].t == ast::Expression::LiteralString, "expected arg0: string");
-    err::assert2(a.args[1].t == ast::Expression::Literal,       "expected arg1: number");
-    let num = (int)atoi(a.args[1].v.string);
+
+    err::assert(a.args.count == 2);
+
+    let arg0 = (ast::Expression*)(a.args.items[0].mem);
+    let arg1 = (ast::Expression*)(a.args.items[1].mem);
+    err::assert_safe(arg0);
+    err::assert_safe(arg1);
+
+    err::assert2(arg0->t == ast::ExpressionType::LiteralString, "expected arg0: string");
+    err::assert2(arg1->t == ast::ExpressionType::Literal,       "expected arg1: number");
+    static_attest(slice::slice::integrity(&arg1->v.string));
+    let num = arg1->v.string.atoi(10);
 
     printf("\"");
-    for (int mut i = 0; i < num; i++) {
-        printf("%s", a.args[0].v.string);
+    for (i64 mut i = 0; i < num; i++) {
+        printf("%.*s", arg0->v.string.size, arg0->v.string.mem);
     }
     printf("\"");
 }
@@ -33,15 +42,33 @@ export macro make_int() {
 
 export macro increment() {
     new+1000 a = ast::from_macro();
-    if a.args[0].t == ast::Expression::Name {
-        printf("%s = %s + 1;\n", a.args[0].v.string, a.args[0].v.string);
+    err::assert(a.args.count == 1);
+    let arg0 = (ast::Expression*)(a.args.items[0].mem);
+    err::assert_safe(arg0);
+
+    if arg0->t == ast::ExpressionType::Name {
+        printf("%.*s = %.*s + 1;\n",
+            arg0->v.string.size, arg0->v.string.mem,
+            arg0->v.string.size, arg0->v.string.mem);
     }
 }
 
 export macro add() {
     new+1000 a = ast::from_macro();
-    if a.args[0].t == ast::Expression::Name {
-        printf("%s = %s + %s;\n", a.args[0].v.string, a.args[1].v.string, a.args[2].v.string);
+    err::assert(a.args.count == 3);
+
+    let arg0 = (ast::Expression*)(a.args.items[0].mem);
+    let arg1 = (ast::Expression*)(a.args.items[1].mem);
+    let arg2 = (ast::Expression*)(a.args.items[2].mem);
+    err::assert_safe(arg0);
+    err::assert_safe(arg1);
+    err::assert_safe(arg2);
+
+    if arg0->t == ast::ExpressionType::Name {
+        printf("%.*s = %.*s + %.*s;\n",
+            arg0->v.string.size, arg0->v.string.mem,
+            arg1->v.string.size, arg1->v.string.mem,
+            arg2->v.string.size, arg2->v.string.mem);
     }
 }
 
@@ -52,11 +79,11 @@ export fn main() -> int {
     int mut foo = 0;
     @increment(foo);
     if 1 != foo {
-      return 1;
+        return 1;
     }
     @add(foo, 1, 2);
     if 3 != foo {
-      return 1;
+        return 1;
     }
 
     printf("hello %s\n", @repeat("world ", 32));

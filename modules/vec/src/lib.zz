@@ -31,9 +31,10 @@ export fn make(Vec+lt mut new* self)
 {
     mem::zero(self);
     self->pool.make(sizeof(slice::Slice));
-    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice))/10;
+    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice) + sizeof(bool))/10;
 
     u8 mut* themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
+    err::assert_safe(themem);
     self->items = (slice::slice::Slice mut*)themem;
     self->owned = (bool mut *)unsafe<u8*>(themem + (unsafe<usize>(sizeof(slice::Slice)) * self->capacity));
 
@@ -54,9 +55,10 @@ export fn make_with_pool(Vec+lt mut new* self, pool::Pool mut * pool)
     mem::zero(self);
     self->pool.make(sizeof(slice::Slice));
     self->pool.extra = pool;
-    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice))/10;
+    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice) + sizeof(bool))/10;
 
     u8 mut * themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
+    err::assert_safe(themem);
     self->items = (slice::slice::Slice mut*)themem;
     self->owned = (bool mut *)unsafe<u8*>(themem + (unsafe<usize>(sizeof(slice::Slice)) * self->capacity));
 
