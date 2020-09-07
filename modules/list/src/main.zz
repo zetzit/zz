@@ -1,0 +1,38 @@
+using log;
+using list;
+using pool;
+
+export fn main() int {
+
+    new+1000 p = pool::make(8);
+    new+0 l = list::make_with_pool(&p);
+
+    l.push("hello");
+    l.push_b("bob");
+
+    for let mut i = l.iter(); i.next(); {
+        log::info(">%.*s<", i.val.size, i.val.mem);
+    }
+
+    l.pop();
+
+    for let mut i = l.iter(); i.next(); {
+        log::info(">%.*s<", i.val.size, i.val.mem);
+    }
+
+    l.pop();
+
+    for let mut i = l.iter(); i.next(); {
+        log::info(">%.*s<", i.val.size, i.val.mem);
+    }
+
+    l.pop();
+
+    for let mut i = l.iter(); i.next(); {
+        log::info(">%.*s<", i.val.size, i.val.mem);
+    }
+
+    l.push("bob");
+
+    return 0;
+}

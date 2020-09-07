@@ -2,6 +2,7 @@ using <string.h>::{memset};
 using <stdio.h>::{stderr, printf};
 using hex;
 using err;
+using mem;
 using <stdint.h>::{uintptr_t};
 
 inline using "asan.h"::{
@@ -19,14 +20,16 @@ pub theory member(void * m, Pool*p) -> bool;
 pub theory continuous(Pool p) -> bool;
 
 export struct Pool+ {
+
     usize   blocksize;
     usize   poolsize;
 
     u8 mut* used;
     u8 mut* pool;
 
+    Pool mut * mut extra;
 
-    u8  mem[];
+    u8  pmem[];
 }
 
 /// creates a new pool with blocksize
@@ -38,13 +41,22 @@ export struct Pool+ {
 export fn make(Pool+pt mut new*self, usize mut blocksize)
     model continuous(*self)
 {
+    mem::zero(self);
+
+    if pt == 0 {
+        self->blocksize = -1;
+        static_attest(continuous(*self));
+        return;
+    }
+
+
+
     // 8 byte redzone
     blocksize += 8;
     // 8 byte align
     if blocksize % ALIGN > 0 {
         blocksize += (ALIGN - (blocksize % ALIGN));
     }
-
 
     err::assert(pt > pt/(usize)blocksize);
     err::assert((usize)blocksize % ALIGN == 0);
@@ -53,8 +65,8 @@ export fn make(Pool+pt mut new*self, usize mut blocksize)
     usize mut usedmemlen = pt / (usize)blocksize / 8;
     unsafe { usedmemlen += (ALIGN - (usedmemlen % ALIGN)); }
 
-    self->used  = self->mem;
-    self->pool  = self->mem + usedmemlen;
+    self->used  = self->pmem;
+    self->pool  = self->pmem + usedmemlen;
 
     err::assert((usize)self->used % ALIGN == 0);
     err::assert((usize)self->pool % ALIGN == 0);
@@ -117,14 +129,15 @@ export fn alloc(Pool mut *self) -> void mut*
 /// this is alot less efficient than alloc()
 /// as alignment requirements can lead to more blocks being allocated than you expect
 ///
-export fn malloc(Pool mut *self, usize mut size) -> void mut*
+export fn malloc(Pool mut *self, usize want) -> void mut*
     model member(return, self)
 {
     static_attest(member(0, self));
 
+    usize mut size = want;
 
-    // 8 byte redzone
-    size += 8;
+    // redzone
+    size += ALIGN;
     // 8 byte align
     if size % ALIGN > 0 {
         size += (ALIGN - (size % ALIGN));
@@ -169,21 +182,17 @@ export fn malloc(Pool mut *self, usize mut size) -> void mut*
         }
 
         if allfree {
-            u8 mut * mut mem = 0;
+            u8 mut * mut pmem = 0;
             unsafe {
-                mem = self->pool + ((usize)self->blocksize * i);
-                ASAN_UNPOISON_MEMORY_REGION(mem, size);
-                memset(mem, 0, size);
-                mem[0] = 0x60;
-                mem[1] = 0x61;
-                mem[2] = 0x62;
-                mem[3] = 0x63;
-                mem[4] = blocks;
-                mem[5] = 0x65;
-                mem[6] = 0x66;
-                mem[7] = 0x67;
-                ASAN_POISON_MEMORY_REGION(mem, 8);
-                mem = mem + 8;
+                pmem = self->pool + ((usize)self->blocksize * i);
+                ASAN_UNPOISON_MEMORY_REGION(pmem, size);
+                memset(pmem, 0, size);
+                pmem[0] = 0x60;
+                pmem[1] = 0x61;
+                pmem[2] = 0x00;
+                pmem[3] = blocks;
+                ASAN_POISON_MEMORY_REGION(pmem, ALIGN);
+                pmem = pmem + ALIGN;
             }
 
             for (usize mut j = 0; j < blocks; j++) {
@@ -191,10 +200,27 @@ export fn malloc(Pool mut *self, usize mut size) -> void mut*
                 bitarray_set(self->used, i+j);
             }
 
-            err::assert((usize)mem % ALIGN == 0);
-            return mem;
+            err::assert((usize)pmem % ALIGN == 0);
+            return pmem;
         }
     }
+
+    if self->extra != 0 {
+        static_attest(safe(self->extra));
+        u8 mut * pmem = self->extra->malloc(want);
+        if pmem == 0 {
+            return 0;
+        }
+
+        unsafe {
+            u8 mut * hm = pmem - ALIGN;
+            hm[2] += 1;
+        }
+        static_attest(member(pmem, self));
+
+        return pmem;
+    }
+
     return 0;
 }
 
@@ -214,16 +240,29 @@ export fn free(Pool mut *self, void * unsafe mut ptr_)
     usize mut blocks;
     usize mut startblock;
     unsafe {
-        ptr = ptr - 8;
-        ASAN_UNPOISON_MEMORY_REGION(ptr, 8);
-        blocks = ptr[4];
+        ptr = ptr - ALIGN;
+        ASAN_UNPOISON_MEMORY_REGION(ptr, ALIGN);
+        blocks = ptr[3];
     }
     static_attest(len(ptr) >= 8);
 
-    if ptr[0] != 0x60 || ptr[1] != 0x61 || ptr[2] != 0x62 || ptr[3] != 0x63 || ptr[7] != 0x67 {
-        unsafe { hex::fdump(stderr, ptr, 8); }
+    if ptr[2] != 0 {
+        ptr[2] -= 1;
+        if self->extra == 0 {
+            err::panic("deep address passed to pool with no extra");
+            return;
+        }
+        static_attest(safe(self->extra));
+        static_attest(member(ptr_, self->extra));
+        self->extra->free(ptr_);
+        return;
+    }
+
+    if ptr[0] != 0x60 || ptr[1] != 0x61 || ptr[2] != 0x00  {
+        unsafe { hex::fdump(stderr, ptr, ALIGN); }
         err::panic("invalid address passed to free");
     }
+
 
     ASAN_POISON_MEMORY_REGION(ptr, blocks * self->blocksize);
 
@@ -258,38 +297,3 @@ fn bitarray_test(u8 mut* a, usize index) -> bool
 {
     return (a[index/8] & (u8)(1<<(index % 8))) > 0;
 }
-
-
-export closure iterator(Pool mut*self, void mut *block, void mut * unsafe user);
-
-/// run an iterator on every allocated block
-/// this is useful when you want to use the pool as a vector
-/// but cannot be used if you ever malloc()'d from this pool
-///
-/// it is safe to call free() and alloc() from iterator, because they are implemented as markers
-
-export fn each(Pool mut*self, iterator it, void mut * unsafe user)
-    where continuous(*self)
-{
-    static_attest(safe(self->used));
-    static_attest(len(self->used) == self->poolsize/(usize)self->blocksize);
-
-    for (usize mut i = 0; i < self->poolsize/(usize)self->blocksize ; i++) {
-        static_attest(i/8 < len(self->used));
-        if self->used[i/8] == 0x00 {
-            i+=7;
-            continue;
-        }
-
-        static_attest(i/8 < len(self->used));
-        if bitarray_test(self->used, i) {
-            unsafe{
-                u8 mut* mut mem = self->pool + ((usize)self->blocksize * i);
-                mem += 8;
-                it.fn(self, mem, user, it.ctx);
-            }
-        }
-
-    }
-}
-

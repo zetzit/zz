@@ -42,6 +42,22 @@ export fn make(Map+tt mut new* self) {
     err::assert_safe(self->buckets);
 }
 
+/// create a new map with an additional pool
+///
+/// the extra pool is used when tail memory is full
+/// you can also use no tail memory at all by setting it to 0
+///
+///     new+1000 p = pool::make(8);
+///     new+0 l = map::make_with_pool(&p);
+export fn make_with_pool(Map+tt mut new* self, pool::Pool mut *extra) {
+    memset(self, 0, sizeof(Map));
+
+    self->p.make(sizeof(Bucket));
+    self->p.extra = extra;
+    self->buckets_reserved = tt/unsafe<usize>(sizeof(Bucket))/10;
+    self->buckets = self->p.malloc(unsafe<usize>(sizeof(Bucket)) * self->buckets_reserved);
+    err::assert_safe(self->buckets);
+}
 
 /// count number of items
 export fn count(Map * self) -> usize

@@ -1,0 +1,166 @@
+using pool;
+using err;
+using slice;
+using mem;
+using log;
+
+/// a linked list item
+export struct Item {
+    slice::Slice    val;
+    Item mut *      next;
+}
+
+/// a linked list
+export struct List+ {
+    Item mut  root;
+    usize mut count;
+    pool::Pool+ mut pool;
+}
+
+/// create a new list
+///
+///     new+1000 l = list::make();
+export fn make(List+lt mut new* self) {
+    mem::zero(self);
+    self->pool.make(sizeof(Item));
+}
+
+/// create a new list with an additional pool
+///
+/// the extra pool is used when tail memory is full
+/// you can also use no tail memory at all by setting it to 0
+///
+///     new+1000 p = pool::make(8);
+///     new+0 l = list::make_with_pool(&p);
+///
+export fn make_with_pool(List+lt mut new* self, pool::Pool mut * pool) {
+    mem::zero(self);
+    self->pool.make(sizeof(Item));
+    self->pool.extra = pool;
+}
+
+/// append owned value
+/// returns false if there is no memory left in the pool
+export fn push(List mut* self, void+vt * val) bool
+{
+    void mut * m = self->pool.malloc(unsafe<usize>(sizeof(Item)) + vt);
+    if m == 0 {
+        return false;
+    }
+
+    Item mut *item  = (Item mut *)m;
+    u8 mut * owned_val = unsafe<u8 mut*>(m + unsafe<usize>(sizeof(Item)));
+
+    static_attest(safe(item));
+    static_attest(safe(owned_val));
+    static_attest(len(owned_val) == vt);
+    mem::copy(val, owned_val, vt);
+
+    item->val = slice::slice::Slice {
+        mem: owned_val,
+        size: vt,
+    };
+
+    Item mut * mut search = &self->root;
+    while search->next != 0 {
+        search = search->next;
+    }
+    search->next = item;
+
+    self->count += 1;
+
+    return true;
+}
+
+/// append borrowed value
+/// the borrowed references must be valid for the lifetime of the list
+/// returns false if there is no memory left in the pool
+export fn push_b(List mut* self, void+vt * val) bool
+{
+    void mut * m = self->pool.malloc(unsafe<usize>(sizeof(Item)));
+    if m == 0 {
+        return false;
+    }
+
+    Item mut *item  = (Item mut *)m;
+    static_attest(safe(item));
+
+    item->val = slice::slice::Slice {
+        mem: val,
+        size: vt,
+    };
+
+    Item mut * mut search = &self->root;
+    while search->next != 0 {
+        search = search->next;
+    }
+    search->next = item;
+
+    self->count += 1;
+
+    return true;
+}
+
+
+
+/// delete first item
+export fn pop(List mut* self) bool {
+    static_attest(safe(self->pool));
+
+    if self->root.next == 0 {
+        return false;
+    }
+    static_attest(safe(self->root.next));
+
+
+    let t = self->root.next;
+    self->root.next  = self->root.next->next;
+
+
+    static_attest(pool::member(t, &self->pool));
+    self->pool.free(t);
+
+
+    self->count -= 1;
+    return true;
+}
+
+
+
+/// an Iterator over a List
+export struct Iter {
+    Item mut * mut item;
+    slice::Slice    val;
+}
+
+/// return an Iterator over the List
+///
+/// for let mut i = l.iter(); i.next(); {
+///     log::info(">%.*s<", i.val.size, i.val.mem);
+/// }
+export fn iter(List mut* self) Iter
+{
+    return Iter {
+        item: &self->root
+    };
+}
+
+/// iterator next
+export fn next(Iter mut*self) bool
+    model safe(self->item)
+    model slice::slice::integrity(&self->val)
+{
+    static_attest(slice::slice::integrity(&self->val));
+    static_attest(safe(self->item));
+    if self->item->next == 0 {
+        return false;
+    }
+    self->item = self->item->next;
+    static_attest(safe(self->item));
+
+    self->val = self->item->val;
+
+    static_attest(slice::slice::integrity(&self->val));
+    return true;
+}
+
