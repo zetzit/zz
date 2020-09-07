@@ -23,7 +23,7 @@ Get the latest binary from http://bin.zetz.it
 
 ### how it looks
 
-ZZ has strong rust aesthetics, but remains a C dialect at the core.
+ZZ has some go and rust aesthetics, but remains a C dialect at the core.
 
 
 ```C++

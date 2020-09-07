@@ -1,16 +1,14 @@
 [project]
 version = "0.1.0"
-name = "pool"
+name = "list"
 cincludes = []
 cobjects = []
 pkgconfig = []
 cflags = []
-lflags = []
-
-[variants]
-default = []
 
 [dependencies]
-hex = "1"
-err = "1"
+log = "1"
 mem = "1"
+pool = "1"
+
+[repos]

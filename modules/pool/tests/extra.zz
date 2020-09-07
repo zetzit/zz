@@ -1,0 +1,25 @@
+using pool;
+using err;
+
+
+export fn main() int {
+    new+1000    big     = pool::make(10);
+    new+100     small   = pool::make(80);
+
+    err::assert(small.alloc() != 0);
+    err::assert(small.alloc() == 0);
+
+    small.extra = &big;
+
+    err::assert(small.alloc() != 0);
+    err::assert(small.alloc() != 0);
+    err::assert(small.alloc() != 0);
+    err::assert(small.alloc() != 0);
+
+
+    for usize mut  i = 0; i < 100; i++ {
+        small.free(small.alloc());
+    }
+
+    return 0;
+}

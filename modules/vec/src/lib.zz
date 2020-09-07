@@ -1,0 +1,205 @@
+using pool;
+using err;
+using slice;
+using mem;
+using log;
+
+
+export theory integrity(Vec * self) bool (
+    len(self->items) == self->capacity &&
+    len(self->owned) == self->capacity &&
+    self->count <= self->capacity
+)
+
+/// a vector is a list of items stored as continuous array
+/// unlike vec, it offer constant time lookup but grows less efficiently
+export struct Vec+ {
+
+    slice::slice::Slice mut * items;
+    bool mut * owned;
+
+    usize mut capacity;
+    usize mut count;
+    pool::Pool+ mut pool;
+}
+
+/// create a new vec
+///
+///     new+1000 l = vec::make();
+export fn make(Vec+lt mut new* self)
+    model integrity(self)
+{
+    mem::zero(self);
+    self->pool.make(sizeof(slice::Slice));
+    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice))/10;
+
+    u8 mut* themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
+    self->items = (slice::slice::Slice mut*)themem;
+    self->owned = (bool mut *)unsafe<u8*>(themem + (unsafe<usize>(sizeof(slice::Slice)) * self->capacity));
+
+    static_attest(integrity(self))
+}
+
+/// create a new vec with an additional pool
+///
+/// the extra pool is used when tail memory is full
+/// you can also use no tail memory at all by setting it to 0
+///
+///     new+1000 p = pool::make(8);
+///     new+0 l = vec::make_with_pool(&p);
+///
+export fn make_with_pool(Vec+lt mut new* self, pool::Pool mut * pool)
+    model integrity(self)
+{
+    mem::zero(self);
+    self->pool.make(sizeof(slice::Slice));
+    self->pool.extra = pool;
+    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice))/10;
+
+    u8 mut * themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
+    self->items = (slice::slice::Slice mut*)themem;
+    self->owned = (bool mut *)unsafe<u8*>(themem + (unsafe<usize>(sizeof(slice::Slice)) * self->capacity));
+
+    static_attest(integrity(self))
+}
+
+fn grow(Vec mut* self) bool
+    where integrity(self)
+    model integrity(self)
+{
+
+    let mut nucap = self->capacity * 2;
+    if nucap < 2  {
+        nucap = 2;
+    }
+
+    u8 mut* numem = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * nucap);
+    if numem == 0 {
+        return false;
+    }
+
+    let mut prev_memsize = unsafe<usize>(sizeof(slice::Slice)) * self->capacity;
+    let mut new_memsize  = unsafe<usize>(sizeof(slice::Slice)) * nucap;
+    let mut prev_mem     = (u8*)self->items;
+    static_attest(safe(numem));
+    static_attest(safe(prev_mem));
+    static_attest(len(numem) > prev_memsize);
+    static_attest(len(prev_mem) == prev_memsize);
+    mem::copy(prev_mem, numem, prev_memsize);
+
+    let prev_owned  = unsafe<u8*>(prev_mem + prev_memsize);
+    let prev_owned_size  = unsafe<usize>(sizeof(bool)) * nucap;
+    u8 mut* nuowned     = unsafe<u8*>(numem + new_memsize);
+    static_attest(safe(prev_owned));
+    static_attest(safe(nuowned));
+    static_attest(len(prev_owned) > prev_owned_size);
+    static_attest(len(nuowned) > prev_owned_size);
+    mem::copy(prev_owned, nuowned, prev_owned_size);
+
+    static_attest(pool::member(self->items, &self->pool));
+    self->pool.free(self->items);
+
+    self->items = (slice::slice::Slice mut*)numem;
+    self->owned = (bool mut*)nuowned;
+    self->capacity = nucap;
+    static_attest(integrity(self));
+
+    return true;
+}
+
+/// append owned value
+/// returns false if there is no memory left in the pool
+export fn push(Vec mut* self, void+vt * val) bool
+    where integrity(self)
+    model integrity(self)
+{
+    u8 mut * owned_val = self->pool.malloc(vt);
+    static_attest(safe(owned_val));
+    static_attest(len(owned_val) == vt);
+    mem::copy(val, owned_val, vt);
+
+    let item = slice::slice::Slice {
+         mem: owned_val,
+         size: vt,
+    };
+
+    if !self->push_i(item, true) {
+        self->pool.free(owned_val);
+        return false;
+    }
+    return true;
+}
+
+/// append borrowed value
+/// the borrowed references must be valid for the lifetime of the vec
+/// returns false if there is no memory left in the pool to grow the vec
+export fn push_b(Vec mut* self, void+vt * val) bool
+    where integrity(self)
+    model integrity(self)
+{
+    let item = slice::slice::Slice {
+        mem: val,
+        size: vt,
+    };
+    return self->push_i(item, false);
+}
+
+fn push_i(Vec mut* self, slice::slice::Slice i, bool owned) bool
+    where integrity(self)
+    model integrity(self)
+{
+    if self->count >= self->capacity {
+        if !self->grow() {
+            return false;
+        }
+        static_attest(self->capacity > self->count);
+    }
+    self->items[self->count] = i;
+    self->owned[self->count] = owned;
+    self->count += 1;
+    return true;
+}
+
+
+/// delete specific item, shifting the vec
+export fn delete(Vec mut* self) bool {
+    static_attest(safe(self->pool));
+
+    return false;
+}
+
+
+
+/// an Iterator over a Vec
+export struct Iter {
+    usize mut at;
+    Vec mut * mut v;
+
+    slice::Slice mut val;
+}
+
+/// return an Iterator over the Vec
+///
+/// for let mut i = l.iter(); i.next(); {
+///     log::info(">%.*s<", i.val.size, i.val.mem);
+/// }
+export fn iter(Vec mut* self) Iter
+{
+    return Iter {
+        v: self,
+    };
+}
+
+/// iterator next
+export fn next(Iter mut*self) bool
+{
+    static_attest(safe(self->v));
+    if self->at  >= self->v->count {
+        return false;
+    }
+    static_attest(len(self->v->items) > self->at);
+    self->val = self->v->items[self->at];
+    self->at += 1;
+    return true;
+}
+
