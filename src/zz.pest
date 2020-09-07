@@ -135,7 +135,7 @@ testcase    = { "test" ~ ident? ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
 struct_c    = _{"{" ~ (doc_comment |  struct_f )* ~ "}" }
-struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail? ~ (key_packed)* ~ struct_c ~ ";"?}
+struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail? ~ (key_packed)* ~ macrocall? ~struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
 

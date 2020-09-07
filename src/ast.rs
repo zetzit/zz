@@ -135,6 +135,7 @@ pub enum Def {
     },
     Struct {
         fields: Vec<Field>,
+        derives: Vec<Derive>,
         packed: bool,
         tail: Tail,
         union: bool,

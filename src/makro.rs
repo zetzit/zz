@@ -24,10 +24,17 @@ pub fn expr(
     let cwd = path::Path::new(&loc.file)
         .parent().expect(&format!("macro cwd for {}", loc.file));
 
+    let debug_out = super::project::target_dir()
+        .join("macro")
+        .join(& name.0[1..].join("_"))
+        .join(format!("{}:{}", loc.file, loc.line).replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
+
     let mp = super::project::target_dir()
         .join("macro")
-        .join(format!("{}{}", name.0[1..].join("_"), super::make::EXE_EXT))
-    ;
+        .join(& name.0[1..].join("_"))
+        .join(format!("macro{}", super::make::EXE_EXT));
+
+
     if !mp.exists() {
         return Err(Error::new(
             format!("macro {} is unavailable (exe {:?})", name, mp),
@@ -41,12 +48,16 @@ pub fn expr(
 
     let input = MacroStdin { args: args.clone() };
 
-    let mut cmd = Command::new(mp)
+    if let Ok(debug_out) = std::fs::File::create(&debug_out) {
+        serde_json::ser::to_writer(debug_out, &input).unwrap();
+    }
+
+    let mut cmd = Command::new(&mp)
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect(&format!("failed to execute macro {}", name));
+        .expect(&format!("failed to execute macro {}\n {:?} < {:?}", name, mp, debug_out));
 
     let stdin = std::mem::replace(&mut cmd.stdin, None).unwrap();
     serde_json::ser::to_writer(stdin, &input).unwrap();
@@ -94,10 +105,16 @@ pub fn stm(
     let cwd = path::Path::new(&loc.file)
         .parent().expect(&format!("macro cwd for {}", loc.file));
 
+    let debug_out = super::project::target_dir()
+        .join("macro")
+        .join(& name.0[1..].join("_"))
+        .join(format!("{}:{}", loc.file, loc.line).replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
+
     let mp = super::project::target_dir()
         .join("macro")
-        .join(format!("{}{}", name.0[1..].join("_"), super::make::EXE_EXT))
-    ;
+        .join(& name.0[1..].join("_"))
+        .join(format!("macro{}", super::make::EXE_EXT));
+
     if !mp.exists() {
         return Err(Error::new(
             format!("macro {} is unavailable", name),
@@ -111,12 +128,16 @@ pub fn stm(
 
     let input = MacroStdin { args: args.clone() };
 
-    let mut cmd = Command::new(mp)
+    if let Ok(debug_out) = std::fs::File::create(&debug_out) {
+        serde_json::ser::to_writer(debug_out, &input).unwrap();
+    }
+
+    let mut cmd = Command::new(&mp)
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect(&format!("failed to execute macro {}", name));
+        .expect(&format!("failed to execute macro {}\n {:?} < {:?}", name, mp, debug_out));
 
     let stdin = std::mem::replace(&mut cmd.stdin, None).unwrap();
     serde_json::ser::to_writer(stdin, &input).unwrap();

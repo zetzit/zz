@@ -2,6 +2,9 @@ using err;
 using json;
 using buffer;
 using pool;
+using vec;
+using log;
+using slice;
 
 using <stdio.h>::{stdin, stderr, fprintf, printf};
 using <string.h>::{strdup, memcpy};
@@ -12,23 +15,69 @@ export symbol ParseError;
 //  {"args":[{"Literal":{"loc":{"file":"/Users/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"3"}}]}
 
 
+fn parse_v_string_array(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+{
+    let pl = (pool::Pool mut*)u->user2;
+    static_attest(safe(pl));
+
+    let arg = (Expression mut*)u->user1;
+    static_attest(safe(arg));
+
+    if v.t == json::ValueType::Integer {
+
+        usize nulen = arg->v.string.size + 1;
+        char mut * dup = pl->malloc(nulen);
+        if arg->v.string.size > 0 {
+            memcpy(dup, arg->v.string.mem, arg->v.string.size);
+        }
+        unsafe { dup[arg->v.string.size] = v.integer; };
+
+        static_attest(pool::member(arg->v.string.mem, pl));
+        pl->free(arg->v.string.mem);
+
+        arg->v.string = slice::slice::Slice{
+            mem:    (u8*)dup,
+            size:   nulen,
+        };
+    }
+}
 
 fn parse_v(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)u->user1;
+    let pl = (pool::Pool mut*)u->user2;
+    static_attest(safe(pl));
+
+    let arg = (Expression mut*)u->user1;
     static_attest(safe(arg));
 
     if buffer::cstr_eq(k, "v") {
         switch v.t {
+            json::ValueType::Array => {
+                arg->v.string = slice::slice::Slice{
+                    mem:    0,
+                    size:   0,
+                };
+                json::next(p,  e, json::U{
+                    it:     parse_v_string_array,
+                    user1:  arg,
+                    user2:  pl,
+                });
+                if err::check(e) {
+                    return;
+                }
+            }
             json::ValueType::String => {
-                static_attest(safe(arg->pool));
+
                 static_attest(safe(v.string));
                 static_attest(nullterm(v.string));
-                char mut * dup = arg->pool->malloc(buffer::strlen(v.string));
+                char mut * dup = pl->malloc(buffer::strlen(v.string));
                 memcpy(dup, v.string, buffer::strlen(v.string) + 1);
-                arg->v.string = dup;
+                arg->v.string = slice::slice::Slice{
+                    mem:    (u8*)dup,
+                    size:   buffer::strlen(v.string) + 1,
+                };
             }
             default => {
             }
@@ -40,16 +89,23 @@ fn parse_t(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)u->user1;
+    let pl = (pool::Pool mut*)u->user2;
+    static_attest(safe(pl));
+
+    let arg = (Expression mut*)u->user1;
     static_attest(safe(arg));
 
     if buffer::cstr_eq(k, "t") {
         switch v.t {
             json::ValueType::Object => {
-              json::next(p,  e, json::U{ it: parse_t_other, user1: (void mut*)arg} );
-              if err::check(e) {
-                return;
-              }
+                json::next(p,  e, json::U{
+                    it: parse_t_other,
+                    user1:  (void mut*)arg,
+                    user2:  pl,
+                });
+                if err::check(e) {
+                    return;
+                }
             }
             default => {
             }
@@ -61,16 +117,23 @@ fn parse_t_other(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)u->user1;
+    let pl = (pool::Pool mut*)u->user2;
+    static_attest(safe(pl));
+
+    let arg = (Expression mut*)u->user1;
     static_attest(safe(arg));
 
     if buffer::cstr_eq(k, "Other") {
         switch v.t {
             json::ValueType::Array => {
-              json::next(p,  e, json::U{ it: parse_t_other_value, user1: (void mut*)arg} );
-              if err::check(e) {
-                return;
-              }
+                json::next(p,  e, json::U{
+                    it:         parse_t_other_value,
+                    user1:      (void mut*)arg,
+                    user2:      pl,
+                });
+                if err::check(e) {
+                    return;
+                }
             }
             default => {
             }
@@ -82,52 +145,68 @@ fn parse_t_other_value(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, c
     where err::checked(*e)
     where nullterm(k)
 {
-  let arg = (ExpressionS mut*)u->user1;
-  static_attest(safe(arg));
+    let pl = (pool::Pool mut*)u->user2;
+    static_attest(safe(pl));
 
-  switch v.t {
-    json::ValueType::String => {
-      static_attest(safe(arg->pool));
-      static_attest(safe(v.string));
-      static_attest(nullterm(v.string));
-      char mut * dup = arg->pool->malloc(buffer::strlen(v.string));
-      memcpy(dup, v.string, buffer::strlen(v.string) + 1);
-      arg->v.string = dup;
+    let arg = (Expression mut*)u->user1;
+    static_attest(safe(arg));
+
+    switch v.t {
+        json::ValueType::String => {
+            static_attest(safe(v.string));
+            static_attest(nullterm(v.string));
+
+            char mut * dup = pl->malloc(buffer::strlen(v.string));
+            memcpy(dup, v.string, buffer::strlen(v.string) + 1);
+            arg->v.string = slice::slice::Slice{
+                mem:    (u8*)dup,
+                size:   buffer::strlen(v.string) + 1,
+            };
+        }
+        default => {
+        }
     }
-    default => {
-    }
-  }
 }
 
-fn parse_arg(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
-    let arg = (ExpressionS mut*)u->user1;
+    let pl = (pool::Pool mut*)u->user2;
+    static_attest(safe(pl));
+
+    let arg = (Expression mut*)u->user1;
     static_attest(safe(arg));
 
     switch v.t {
         json::ValueType::Object => {
             if buffer::cstr_eq(k, "Literal") {
-                arg->t = Expression::Literal;
-                json::next(p,  e, json::U{it:parse_v, user1: (void mut*)arg} );
+                arg->t = ExpressionType::Literal;
+                json::next(p,  e, json::U{
+                    it:parse_v,
+                    user1: arg,
+                    user2: pl,
+                });
                 if err::check(e) {
                     return;
                 }
             } else if buffer::cstr_eq(k, "LiteralString") {
-                arg->t = Expression::LiteralString;
-                json::next(p,  e, json::U{it:parse_v, user1: (void mut*)arg} );
+                arg->t = ExpressionType::LiteralString;
+                json::next(p,  e, json::U{
+                    it:     parse_v,
+                    user1:  arg,
+                    user2:  pl,
+                });
                 if err::check(e) {
                     return;
                 }
             } else if buffer::cstr_eq(k, "Name") {
-                arg->t = Expression::Name;
-                json::next(p,  e, json::U{it:parse_t, user1: (void mut*)arg} );
-                if err::check(e) {
-                    return;
-                }
-            } else if buffer::cstr_eq(k, "args") {
-                json::next(p,  e, json::U{it:parse_arg, user1: (void mut*)arg} );
+                arg->t = ExpressionType::Name;
+                json::next(p,  e, json::U{
+                    it:     parse_t,
+                    user1:  arg,
+                    user2:  pl,
+                });
                 if err::check(e) {
                     return;
                 }
@@ -146,14 +225,29 @@ fn parse_arglist(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *
     where err::checked(*e)
     where nullterm(k)
 {
+    let pl = (pool::Pool mut*)u->user2;
+    static_attest(safe(pl));
+
     let ast = (Ast mut*)u->user1;
     static_attest(safe(ast));
+    static_attest(vec::integrity(&ast->args));
 
     switch v.t {
         json::ValueType::Object => {
-            err::assert(v.index < static(len(ast->args)));
-            ast->args[v.index].pool = &ast->pool;
-            json::next(p,  e, json::U { it: parse_arg, user1: (void mut*)&ast->args[v.index]} );
+
+            let m = (Expression mut *)pl->malloc(sizeof(Expression));
+            if m == 0 {
+                return;
+            }
+            static_attest(safe(m));
+            ast->args.push_b(m);
+
+            json::next(p,  e, json::U{
+                it:     parse_expression,
+                user1:  m,
+                user2:  u->user2
+            });
+
             if err::check(e) {
                 return;
             }
@@ -168,13 +262,14 @@ fn parse_doc(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, j
     where err::checked(*e)
     where nullterm(k)
 {
-    let ast = (Ast mut*)u->user1;
-    static_attest(safe(ast));
-
     switch v.t {
         json::ValueType::Array => {
             if buffer::cstr_eq(k, "args") {
-                json::next(p,  e, json::U{ it: parse_arglist, user1: ast} );
+                json::next(p,  e, json::U{
+                    it: parse_arglist,
+                    user1: u->user1,
+                    user2: u->user2,
+                });
                 if err::check(e) {
                     return;
                 }
@@ -189,8 +284,7 @@ fn parse_doc(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, j
 }
 
 
-export enum Expression
-{
+export enum ExpressionType {
     Invalid,
     Literal,
     LiteralString,
@@ -198,28 +292,33 @@ export enum Expression
 }
 
 export union ExpressionValue {
-    char * string;
+    slice::slice::Slice string;
 }
 
-export struct ExpressionS
+export struct Expression
 {
-    Expression      t;
+    ExpressionType  t;
     ExpressionValue v;
-    pool::Pool mut* pool;
 }
 
 export struct Ast+
 {
-    ExpressionS     args[100];
-    pool::Pool+     mut pool;
+    vec::Vec+0      mut args;
+    pool::Pool+     mut pl;
 }
 
 pub fn from_macro(Ast+t mut new *self)
     where t > t/64
+    model(vec::integrity(&self->args))
 {
-    self->pool.make(64);
+    self->pl.make(64);
+    self->args.make_with_pool(&self->pl);
     new+1000 e = err::make();
-    new+1000 parser = json::parser(&e, json::U{ it: parse_doc, user1: self} );
+    new+1000 parser = json::parser(&e, json::U{
+        it: parse_doc,
+        user1: self,
+        user2: &self->pl,
+    });
     e.abort();
 
     new+1000 s = buffer::make();
@@ -227,5 +326,6 @@ pub fn from_macro(Ast+t mut new *self)
         json::push(&parser, &e, s.mem, s.at);
         e.abort();
     }
+    static_attest(vec::integrity(&self->args));
 }
 

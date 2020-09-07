@@ -402,9 +402,13 @@ fn p(
                 let mut packed = false;
                 let mut tail = Tail::None;
                 let mut union = false;
+                let mut derives = Vec::new();
 
                 for part in decl {
                     match part.as_rule() {
+                        Rule::macrocall => {
+                            derives.push(parse_derive(n, part));
+                        }
                         Rule::doc_comment => {
                             //TODO
                         }
@@ -469,6 +473,7 @@ fn p(
                         tail,
                         union,
                         impls: HashMap::new(),
+                        derives,
                     },
                 });
             }

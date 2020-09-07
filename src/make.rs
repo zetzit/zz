@@ -400,9 +400,30 @@ impl Make {
 
         args.push("-Werror=pointer-sign".to_string());
         args.push("-Werror=int-to-pointer-cast".to_string());
+
         if self.stage.pic {
             args.push("-fPIC".into());
         }
+        if let Some(opt) = &self.stage.optimize {
+            args.push(format!("-O{}", opt).into());
+        }
+        if self.stage.lto {
+            args.push("-flto".into());
+        }
+        if self.stage.debug {
+            args.push("-g".into());
+            args.push("-fstack-protector-strong".into());
+        }
+
+        if self.stage.asan {
+            args.push("-fsanitize=address".into());
+            args.push("-fsanitize=undefined".into());
+        }
+
+        if self.stage.fuzz {
+            args.push("-m32".into());
+        }
+
         args.push("-c".to_string());
         args.push(cf.filepath.clone());
         args.push("-o".to_string());
@@ -610,7 +631,9 @@ impl Make {
                 );
             }
             super::project::ArtifactType::Macro => {
-                std::fs::create_dir_all(td.join("macro")).expect("create target dir");
+                let dir = td.join("macro").join(&self.artifact.name);
+
+                std::fs::create_dir_all(&dir).expect("create target dir");
                 cmd = self.host_cc.clone();
                 args.extend_from_slice(&self.lobjs);
                 if self.stage.asan {
@@ -618,10 +641,7 @@ impl Make {
                     args.push("-fsanitize=undefined".into());
                 }
                 args.push("-o".into());
-                args.push(td.join("macro")
-                    .join(format!("{}{}", self.artifact.name, EXE_EXT))
-                    .to_string_lossy().to_string()
-                );
+                args.push(dir.join(format!("macro{}", EXE_EXT)).to_string_lossy().to_string());
             }
             super::project::ArtifactType::Exe => {
                 args.push("-fvisibility=hidden".into());
