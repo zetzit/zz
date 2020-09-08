@@ -241,6 +241,9 @@ impl Emitter {
                         }
                     }
                 }
+                ast::Def::Type { .. } => {
+                    self.emit_typealias(&d);
+                }
                 _ => (),
             }
             write!(self.f, "#endif\n").unwrap();
@@ -576,6 +579,19 @@ impl Emitter {
             self.to_local_name(&Name::from(&ast.name))
         )
         .unwrap();
+    }
+
+    pub fn emit_typealias(&mut self, ast: &ast::Local) {
+        let alias = match &ast.def {
+            ast::Def::Type { alias, ..} => (alias),
+            _ => unreachable!(),
+        };
+
+        self.emit_loc(&ast.loc);
+        write!(self.f, "typedef {} {};\n",
+            self.to_local_typed_name(alias),
+            self.to_local_name(&Name::from(&ast.name)),
+        ).unwrap();
     }
 
     pub fn emit_enum(&mut self, ast: &ast::Local) {

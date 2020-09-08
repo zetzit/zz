@@ -924,58 +924,113 @@ pub fn abs(
     }
     md.imports.extend(newimports);
 
-    let mut new_locals = Vec::new();
-    // round one, just get all local defs
-    for ast in &mut md.locals {
-        let mut ns = md.name.clone();
-        ns.0.push(ast.name.clone());
-        match &mut ast.def {
-            ast::Def::Symbol {} => {
-                scope.insert(ast.name.clone(), ns, &ast.loc, false, true);
-            }
-            ast::Def::Enum { names, .. } => {
-                let mut value = 0;
-                for (_, val) in names.iter_mut() {
-                    if let Some(val) = val {
-                        value = *val;
-                    } else {
-                        *val = Some(value);
-                    }
-                    value += 1;
-                }
-                for (name, value) in names {
-                    let subname = format!("{}::{}", ast.name, name);
 
-                    new_locals.push(ast::Local {
-                        doc: String::new(),
-                        name: subname.clone(),
-                        loc: ast.loc.clone(),
-                        vis: ast.vis.clone(),
-                        def: ast::Def::Const {
-                            typed: ast::Typed {
-                                t: ast::Type::Int,
-                                loc: ast.loc.clone(),
-                                ..Default::default()
-                            },
-                            expr: ast::Expression::Literal {
-                                loc: ast.loc.clone(),
-                                v: format!("{}", value.unwrap()),
-                            },
-                        },
-                    });
-                    let mut ns = md.name.clone();
-                    ns.push(subname.clone());
-                    scope.insert(subname, ns, &ast.loc, false, false);
+
+    // round one, get all local defs
+    let mut working_on_locals = std::mem::replace(&mut md.locals, Vec::new());
+    let mut more_locals = Vec::new();
+    loop {
+        for ast in &mut working_on_locals {
+            let mut ns = md.name.clone();
+            ns.0.push(ast.name.clone());
+            match &mut ast.def {
+                ast::Def::Symbol {} => {
+                    scope.insert(ast.name.clone(), ns, &ast.loc, false, true);
                 }
-                scope.insert(ast.name.clone(), ns, &ast.loc, false, true);
+                ast::Def::Enum { names, .. } => {
+                    let mut value = 0;
+                    for (_, val) in names.iter_mut() {
+                        if let Some(val) = val {
+                            value = *val;
+                        } else {
+                            *val = Some(value);
+                        }
+                        value += 1;
+                    }
+                    for (name, value) in names {
+                        let subname = format!("{}::{}", ast.name, name);
+
+                        //new_locals.push(ast::Local {
+                        //    doc: String::new(),
+                        //    name: subname.clone(),
+                        //    loc: ast.loc.clone(),
+                        //    vis: ast.vis.clone(),
+                        //    def: ast::Def::Const {
+                        //        typed: ast::Typed {
+                        //            t: ast::Type::Int,
+                        //            loc: ast.loc.clone(),
+                        //            ptr: Vec::new(),
+                        //            tail: ast::Tail::None,
+                        //        },
+                        //        expr: ast::Expression::Literal {
+                        //            loc: ast.loc.clone(),
+                        //            v: format!("{}", value.unwrap()),
+                        //        },
+                        //    },
+                        //});
+                        let mut ns = md.name.clone();
+                        ns.push(subname.clone());
+                        scope.insert(subname, ns, &ast.loc, false, false);
+                    }
+                    scope.insert(ast.name.clone(), ns, &ast.loc, false, true);
+                }
+                _ => {
+                    scope.insert(ast.name.clone(), ns, &ast.loc, false, false);
+                }
+            };
+        }
+
+        for ast in &mut working_on_locals {
+            let mut ns = md.name.clone();
+            ns.0.push(ast.name.clone());
+            let ast_ = ast.clone();
+            match &mut ast.def {
+                ast::Def::Enum { ref mut derives, .. } | ast::Def::Struct { ref mut derives, .. } | ast::Def::Type { ref mut derives, .. } => {
+                    for derive in std::mem::replace(derives, Vec::new()) {
+                        let mut t = ast::Typed {
+                            t: ast::Type::Other(Name::from(&derive.makro)),
+                            loc: derive.loc.clone(),
+                            ptr: Vec::new(),
+                            tail: ast::Tail::None,
+                            ..Default::default()
+                        };
+                        scope.abs(all_modules, &md.name, &mut t, false);
+                        let name = if let ast::Type::Other(n) = t.t {
+                            n
+                        } else {
+                            unreachable!()
+                        };
+
+                        match makro::derive(&name, &derive.loc, &derive.args, ast_.clone()) {
+                            Ok(more) => {
+                                more_locals.append(&mut more.clone());
+                            }
+                            Err(e) => {
+                                if scope.macros_available {
+                                    emit_error(e.message, &e.details);
+                                    std::process::exit(9);
+                                } else {
+                                    derives.push(derive);
+                                    scope.complete.replace(false);
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {},
             }
-            _ => {
-                scope.insert(ast.name.clone(), ns, &ast.loc, false, false);
-            }
-        };
+        }
+
+        md.locals.append(&mut working_on_locals);
+
+        if more_locals.len() == 0 {
+            break
+        } else {
+            working_on_locals = std::mem::replace(&mut more_locals, Vec::new());
+        }
     }
 
-    //md.locals.extend(new_locals);
+
 
     // round two, make all dependencies absolute
     for ast in &mut md.locals {
@@ -1000,6 +1055,7 @@ pub fn abs(
                 ref mut body,
                 callassert,
                 calleffect,
+                ref mut argsexpanded,
                 ..
             } => {
 
@@ -1017,7 +1073,10 @@ pub fn abs(
                     }
                 }
 
-                abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
+                if !*argsexpanded {
+                    abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
+                    *argsexpanded = true;
+                }
 
                 for calleffect in calleffect {
                     abs_expr(calleffect, &scope, true, all_modules, &md.name);
@@ -1098,6 +1157,9 @@ pub fn abs(
                         }
                     }
                 }
+            }
+            ast::Def::Type { ref mut alias, .. } => {
+                scope.abs(all_modules, &md.name, alias, false);
             }
             ast::Def::Symbol { .. } => {}
             ast::Def::Enum { .. } => {}

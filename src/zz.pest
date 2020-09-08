@@ -81,10 +81,11 @@ qident      = @{ "(" ~ qident_inner ~ ")" }
 star        = @{ "*" }
 local_i     = {(ident | qident) ~ ( WHITESPACE+  ~ "as" ~ WHITESPACE+ ~ (ident | qident))?}
 local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ local_i )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
-namespace   = ${ ident ~ "::" ~ namespace? }
+namespace   = ${ "::" ? ~ ident ~ "::" ~ namespace? }
 
 
-param       = _{ tail | expr }
+param_short = !{ type_name ~ "=" ~ expr }
+param       = _{ tail | param_short |  expr  }
 params      = !{ "[" ~ (param ~ ",")* ~ param? ~ "]" }
 tail        = ${ "+" ~ (ident | digit*) }
 type_name   = ${ namespace? ~ ident }
@@ -114,7 +115,7 @@ theory_impl = { "(" ~ expr ~ ")" }
 
 enum_i      = { ident ~ ( "=" ~ int_literal)? }
 enum_list   = _{enum_i ~ "," ~ enum_list | enum_i  }
-ienum       = { (exported | key_shared)? ~ "enum" ~ ident ~ "{" ~ enum_list? ~ ","?  ~ "}"  }
+ienum       = { (exported | key_shared)? ~ "enum" ~ ident ~  macrocall* ~"{" ~ enum_list? ~ ","?  ~ "}"  }
 
 symbol        = { ( exported | key_shared)? ~ "symbol" ~ ident  ~ ";" }
 
@@ -134,7 +135,7 @@ testcase    = { "test" ~ ident? ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
 struct_c    = _{"{" ~ (doc_comment |  struct_f )* ~ "}" }
-struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail?  ~ (key_packed)* ~ macrocall? ~struct_c ~ ";"?}
+struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail? ~ (key_packed)* ~ macrocall* ~struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
 
@@ -151,6 +152,8 @@ istatic     = {
 vararg          = @{"..."}
 macro_args      = {ident ~ ( "," ~ ( ident | vararg) )* }
 imacro          = { ( exported | key_shared)? ~ "macro" ~ ident ~ "(" ~ macro_args? ~")" ~ block }
+
+typealias       = { (exported | key_shared )* ~ "type" ~ ident ~ macrocall*  ~ "=" ~ anon_type? ~ ";"?}
 
 // pp
 
@@ -317,20 +320,20 @@ macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 
 // file
 
-top_level_declarations = _{(struct_d
-                        | doc_comment
-                        | function
-                        | closure
-                        | theory
-                        | ienum
-                        | symbol
-                        | flags
-                        | import
-                        | constant
-                        | testcase
-                        | imacro
-                        | istatic
-                        | NEWLINE )*}
 
+top_level_declarations = { SOI ~ (struct_d
+                    | doc_comment
+                    | function
+                    | closure
+                    | theory
+                    | ienum
+                    | symbol
+                    | flags
+                    | import
+                    | constant
+                    | testcase
+                    | imacro
+                    | istatic
+                    | typealias
+                    | NEWLINE )*  ~ EOI}
 
-file        = { SOI ~ top_level_declarations ~ EOI }

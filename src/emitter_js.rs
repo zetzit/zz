@@ -583,6 +583,7 @@ impl Emitter {
                 ast::Def::Theory { .. } => {}
                 ast::Def::Testcase { .. } => {}
                 ast::Def::Include { .. } => {}
+                ast::Def::Type { .. } => {}
             }
             write!(self.f, "\n").unwrap();
         }
@@ -653,7 +654,7 @@ impl Emitter {
     pub fn emit_enum(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
         let names = match &ast.def {
-            ast::Def::Enum { names, .. } => (names),
+            ast::Def::Enum { names, ..} => (names),
             _ => unreachable!(),
         };
     }

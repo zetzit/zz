@@ -652,6 +652,22 @@ impl Symbolic {
                 }
                 ast::Def::Testcase { .. } => {}
                 ast::Def::Include { .. } => {}
+                ast::Def::Type { .. } => {
+                    let sym = self.alloc(
+                        Name::from(&d.name),
+                        ast::Typed {
+                            t: ast::Type::Other(Name::from(&d.name.clone())),
+                            loc: d.loc.clone(),
+                            ..Default::default()
+                        },
+                        d.loc.clone(),
+                        Tags::new(),
+                    );
+                    let sym = match sym {
+                        Err(_) => continue,
+                        Ok(v) => v,
+                    };
+                }
             }
         }
 
@@ -1156,6 +1172,23 @@ impl Symbolic {
             self.memory[b].t = self.memory[a].t.clone();
             return Ok((self.memory[a].typed.clone(), a, b));
         }
+
+        // if the lhs is a typeid and the rhs is a definition
+        if self.memory[a].typed.t == ast::Type::Typeid {
+            if let Some(d) = self.defs.get(&self.memory[b].name) {
+                let r = self.literal(
+                    here,
+                    Value::Integer(parser::Integer::Unsigned(b as u64)),
+                    ast::Typed {
+                        t: ast::Type::Typeid,
+                        loc: here.clone(),
+                        ..Default::default()
+                    },
+                )?;
+                return Ok((self.memory[a].typed.clone(), a, r));
+            }
+        }
+
 
         // if one is an unsigned literal, cast it into the other type
         if self.memory[a].typed.t == ast::Type::ULiteral {
@@ -3847,7 +3880,7 @@ impl Symbolic {
     fn alloc(
         &mut self,
         name: Name,
-        typed: ast::Typed,
+        mut typed: ast::Typed,
         loc: ast::Location,
         tags: ast::Tags,
     ) -> Result<Symbol, Error> {
@@ -3870,6 +3903,12 @@ impl Symbolic {
                     ),
                 ],
             ));
+        }
+
+        if let ast::Type::Other(o) = &typed.t {
+            if let Some(ast::Def::Type{alias, ..}) = self.defs.get(&o) {
+                typed = alias.clone();
+            }
         }
 
         let t = Self::smt_type(&typed);
