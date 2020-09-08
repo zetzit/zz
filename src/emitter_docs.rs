@@ -117,6 +117,7 @@ impl Emitter {
                 ast::Def::Theory { .. } => {}
                 ast::Def::Testcase { .. } => {}
                 ast::Def::Include { .. } => {}
+                ast::Def::Type { .. } => {}
             }
             write!(self.f, "\n").unwrap();
         }

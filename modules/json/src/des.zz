@@ -1,0 +1,301 @@
+using <stdio.h>::{printf};
+using ast;
+using err;
+using log;
+using buffer;
+using slice;
+
+pub macro impl()
+{
+    new+10000 a = ast::from_macro();
+
+    if a.local.t == ast::DefType::Type {
+
+        slice::Slice mut vec_item = {0};
+
+        static_attest(nullterm(a.local.v.dalias.alias.name));
+        if buffer::cstr_eq(a.local.v.dalias.alias.name, "::vec::Vec") {
+
+            for let mut it = a.local.v.dalias.alias.params.iter(); it.next(); {
+                let expr = (ast::Expression*)it.val.mem;
+                err::assert_safe(expr);
+                if expr->t != ast::ExpressionType::Infix {
+                    continue;
+                }
+
+                let lhs = expr->v.infix.lhs;
+                err::assert_safe(lhs);
+                if lhs->t != ast::ExpressionType::Call {
+                    continue;
+                }
+                let name = lhs->v.call.name;
+                err::assert_safe(name);
+                if name->t != ast::ExpressionType::Name {
+                    continue;
+                }
+                if !name->v.string.eq_cstr("::vec::item") {
+                    continue;
+                }
+
+                let rhs = expr->v.infix.rhs;
+                err::assert_safe(rhs);
+                if rhs->t != ast::ExpressionType::Name {
+                    continue;
+                }
+
+                vec_item = rhs->v.string;
+            }
+
+            if vec_item.size < 1 {
+                err::panic("derive on vec requires an attached smt expression of vec::item = type");
+            }
+
+            printf(r#"pub fn %s_json_des_impl_next(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v, void mut*obj)
+                where err::checked(*e)
+                where nullterm(k)
+            {
+                vec::Vec[+0] mut * self = (vec::Vec[+0] mut *)obj;
+                static_attest(safe(self));
+                let pl = (pool::Pool mut *)u->user2;
+                static_attest(safe(pl));
+
+                if v.t != json::ValueType::Array {
+                    e->fail(err::InvalidArgument, "expected array for vec %s");
+                    return;
+                }
+
+                static_attest(safe(v.string));
+                static_attest(nullterm(v.string));
+
+                self->make_with_pool(pl);
+
+                json::next(p,  e, json::U{
+                    it:    %s_json_des_impl_array,
+                    user1: obj,
+                    user2: u->user2,
+                });
+
+             }
+
+            "#, a.local.name, a.local.name, a.local.name);
+
+
+            printf(r#"pub fn %s_json_des_impl_array(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+                where err::checked(*e)
+                where nullterm(k)
+            {
+                vec::Vec mut * self = (vec::Vec mut *)u->user1;
+                static_attest(safe(self));
+                static_attest(vec::integrity(self) == true);
+
+                let pl = (pool::Pool mut *)u->user2;
+                static_attest(safe(pl));
+
+
+                if v.t == json::ValueType::Object {
+                    let m = (%.*s mut *)pl->malloc(sizeof(%.*s));
+                    if m == 0 {
+                        e->fail(err::OutOfTail, "cannot allocate %.*s from pool");
+                        return;
+                    }
+                    static_attest(safe(m));
+                    vec::push_b(self,m);
+                    %.*s_json_des_impl_next(u, e, p, k, v, (void mut*)m);
+                    if err::check(e) {
+                        return;
+                    }
+                }
+            }
+
+            "#, a.local.name,
+            vec_item.size, vec_item.mem, vec_item.size, vec_item.mem,  vec_item.size, vec_item.mem, vec_item.size, vec_item.mem);
+
+
+
+        }
+
+    } else if a.local.t == ast::DefType::Enum {
+        printf(r#"pub fn %s_json_des_impl_next(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v, void mut*obj)
+            where err::checked(*e)
+            where nullterm(k)
+        {
+            let self = (%s mut *)obj;
+            static_attest(safe(self));
+            let pl = (pool::Pool mut *)u->user2;
+            static_attest(safe(pl));
+
+            if v.t != json::ValueType::String {
+                e->fail(err::InvalidArgument, "expected string for enum %s");
+                return;
+            }
+
+            static_attest(safe(v.string));
+            static_attest(nullterm(v.string));
+
+            if false {}
+        "#, a.local.name, a.local.name, a.local.name);
+
+        for let mut it = a.local.v.denum.items.iter(); it.next(); {
+            let item = (ast::EnumItem *)it.val.mem;
+            err::assert_safe(item);
+
+            printf(r#"else if buffer::cstr_eq(v.string, "%s") {
+                *self = %s::%s;
+            }"#, item->name, a.local.name, item->name);
+        }
+
+
+        printf(r#" else { e->fail(err::InvalidArgument, "invalid value %%s for enum %s", v.string);}
+        }"#, a.local.name);
+    } else if a.local.t == ast::DefType::Struct {
+
+        printf(r#"pub fn %s_json_des_impl_next(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v, void mut*obj)
+            where err::checked(*e)
+            where nullterm(k)
+        {
+            if v.t == json::ValueType::Object {
+                json::next(p,  e, json::U{
+                    it:    %s_json_des_impl_obj,
+                    user1: obj,
+                    user2: u->user2,
+                });
+            }
+        }"#, a.local.name, a.local.name);
+
+        printf(r#"pub fn %s_json_des_impl_obj(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+            where err::checked(*e)
+            where nullterm(k)
+        {
+        let self = (%s mut *)u->user1;
+        static_attest(safe(self));
+        let pl = (pool::Pool mut *)u->user2;
+        static_attest(safe(pl));
+
+        if false {}
+        "#, a.local.name, a.local.name);
+
+        for let mut it = a.local.v.dstruct.fields.iter(); it.next(); {
+            let field = (ast::Field*)it.val.mem;
+            err::assert_safe(field);
+
+            static_attest(nullterm(field->typed.name));
+
+            new+1000 fieldtype = buffer::make();
+            err::assert_safe(field->typed.name);
+            static_attest(nullterm(field->typed.name));
+            fieldtype.append_cstr(field->typed.name);
+
+            if ( fieldtype.eq_cstr("Char") || fieldtype.eq_cstr("char") ) && field->typed.ptr.count == 1 {
+                printf(r#"else if buffer::cstr_eq(k, "%s") && v.t == json::ValueType::String {
+                    static_attest(safe(v.string));
+                    static_attest(nullterm(v.string));
+                    let sli = slice::slice::Slice {
+                        mem:    (u8*)v.string,
+                        size:   buffer::strlen(v.string) + 1,
+                    };
+                    self->%s = (char mut*)pl->copy(sli);
+                }"#, field->name, field->name);
+            } else if fieldtype.starts_with_cstr("::") {
+                if field->typed.ptr.count == 0 {
+                    printf(r#"else if buffer::cstr_eq(k, "%s") {
+                        e->abort();
+
+                        %s_json_des_impl_next(u, e, p, k, v, &self->%s);
+                        if err::check(e) {
+                            return;
+                        }
+                    }
+                    "#, field->name, fieldtype.cstr(), field->name);
+                } else if field->typed.ptr.count == 1  {
+                    printf(r#"else if buffer::cstr_eq(k, "%s") {
+                        self->%s = pl->malloc(sizeof(%s));
+                        if self->%s == 0 {
+                            e->fail(err::OutOfTail, "cannot allocate %s from pool");
+                            return;
+                        }
+                        static_attest(safe(self->%s));
+                        e->abort();
+                        %s_json_des_impl_next(u, e, p, k, v, (void mut*)self->%s);
+                        if err::check(e) {
+                            return;
+                        }
+                    }"#, field->name,
+                         field->name, fieldtype.cstr(),
+                         field->name,
+                         fieldtype.cstr(),
+                         field->name,
+                         fieldtype.cstr(),
+                         field->name);
+                }
+            } else if fieldtype.eq_cstr("bool") || fieldtype.eq_cstr("Bool") {
+                printf(r#"else if buffer::cstr_eq(k, "%s") && v.t == json::ValueType::Boolean {
+                    if v.integer > 0 {
+                        self->%s = true;
+                    } else {
+                        self->%s = false;
+                    }
+                }"#, field->name, field->name, field->name);
+            } else if
+                fieldtype.eq_cstr("int")  ||
+                fieldtype.eq_cstr("uint") ||
+                fieldtype.eq_cstr("i8") ||
+                fieldtype.eq_cstr("u8") ||
+                fieldtype.eq_cstr("i16") ||
+                fieldtype.eq_cstr("u16") ||
+                fieldtype.eq_cstr("i32") ||
+                fieldtype.eq_cstr("u32") ||
+                fieldtype.eq_cstr("i64") ||
+                fieldtype.eq_cstr("u64") ||
+                fieldtype.eq_cstr("i128") ||
+                fieldtype.eq_cstr("u128") ||
+                fieldtype.eq_cstr("isize") ||
+                fieldtype.eq_cstr("Usize") ||
+                fieldtype.eq_cstr("Int")  ||
+                fieldtype.eq_cstr("Uint") ||
+                fieldtype.eq_cstr("I8") ||
+                fieldtype.eq_cstr("U8") ||
+                fieldtype.eq_cstr("I16") ||
+                fieldtype.eq_cstr("U16") ||
+                fieldtype.eq_cstr("I32") ||
+                fieldtype.eq_cstr("U32") ||
+                fieldtype.eq_cstr("I64") ||
+                fieldtype.eq_cstr("U64") ||
+                fieldtype.eq_cstr("I128") ||
+                fieldtype.eq_cstr("U128") ||
+                fieldtype.eq_cstr("Isize") ||
+                fieldtype.eq_cstr("Usize")
+            {
+                printf(r#"else if buffer::cstr_eq(k, "%s") && v.t == json::ValueType::Integer {
+                    self->%s =  v.integer;
+                }"#, field->name, field->name);
+            } else {
+                log::error("struct member '%s::%s' cannot be deserialized", a.local.name, field->name);
+            }
+
+
+        }
+        printf("else {log::debug(\"json member '%%s' does not map to any field in struct '%s'\", k);} }", a.local.name);
+    } else {
+        err::panic("derive can only be applied to struct or enum");
+    }
+
+}
+
+pub macro use()
+{
+    new+10000 a = ast::from_macro();
+    err::assert(a.args.count == 3);
+    let arg0 = (ast::Expression*)(a.args.items[0].mem);
+    let arg1 = (ast::Expression*)(a.args.items[1].mem);
+    let arg2 = (ast::Expression*)(a.args.items[2].mem);
+    err::assert_safe(arg0);
+    err::assert_safe(arg1);
+    err::assert_safe(arg2);
+    printf(r#"json::U {
+        it:     %s_json_des_impl_obj,
+        user1:  %s,
+        user2:  %s,
+    }"#,  arg0->v.string.mem, arg1->v.string.mem, arg2->v.string.mem);
+}
+
+

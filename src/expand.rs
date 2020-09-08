@@ -78,7 +78,7 @@ impl Stack {
                 && complete == &flatten::TypeComplete::Complete
             {
                 return Err(Error::new(
-                    format!("redeclation of local name '{}'", name),
+                    format!("redeclaration of local name '{}'", name),
                     vec![
                         (
                             loc.clone(),
@@ -351,6 +351,19 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
             }
             ast::Def::Testcase { .. } => {}
             ast::Def::Include { .. } => {}
+            ast::Def::Type { .. } => {
+                stack.alloc(
+                    Name::from(&d.name),
+                    ast::Typed {
+                        t: ast::Type::Other(Name::from(&d.name.clone())),
+                        loc: d.loc.clone(),
+                        ..Default::default()
+                    },
+                    d.loc.clone(),
+                    Tags::new(),
+                    complete,
+                )?;
+            }
         }
     }
 

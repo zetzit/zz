@@ -38,18 +38,18 @@ export struct B {
 
 export fn main() int {
 
-    //B[mop(self.a) == 3] mut b;
+    B[mop(self.a) == 3] mut b;
 
-    //log::info("hello %d %d",
-    //    static(mop(b.a)),
-    //    static(bob(b.a))
-    //);
+    log::info("hello %d %d",
+        static(mop(b.a)),
+        static(bob(b.a))
+    );
 
-    //b.a.fop();
+    b.a.fop();
 
 
 
-    new[bob(self) == 12] a = make();
+    new[bob = 12] a = make();
     static_assert(bob(a) == 12);
     a.fop();
     static_assert(bob(a) == 12);

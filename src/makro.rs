@@ -10,9 +10,10 @@ use std::path;
 
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct MacroStdin {
-    args: Vec<Box<ast::Expression>>,
+    args:   Vec<Box<ast::Expression>>,
+    local:  Option<ast::Local>,
 }
 
 pub fn expr(
@@ -46,7 +47,7 @@ pub fn expr(
     }
     let mp = mp.canonicalize().expect(&format!("macro path for {:?}", mp));
 
-    let input = MacroStdin { args: args.clone() };
+    let input = MacroStdin { args: args.clone(), local: None };
 
     if let Ok(debug_out) = std::fs::File::create(&debug_out) {
         serde_json::ser::to_writer(debug_out, &input).unwrap();
@@ -63,7 +64,7 @@ pub fn expr(
     serde_json::ser::to_writer(stdin, &input).unwrap();
 
     if !cmd.wait().unwrap().success() {
-        eprintln!("failed to execute macro {}", name);
+        eprintln!("failed to execute macro {}\n {:?} < {:?}", name,  mp, debug_out);
         std::process::exit(9);
     }
 
@@ -126,7 +127,7 @@ pub fn stm(
     }
     let mp = mp.canonicalize().expect(&format!("macro path for {:?}", mp));
 
-    let input = MacroStdin { args: args.clone() };
+    let input = MacroStdin { args: args.clone(), local: None };
 
     if let Ok(debug_out) = std::fs::File::create(&debug_out) {
         serde_json::ser::to_writer(debug_out, &input).unwrap();
@@ -143,7 +144,7 @@ pub fn stm(
     serde_json::ser::to_writer(stdin, &input).unwrap();
 
     if !cmd.wait().unwrap().success() {
-        eprintln!("failed to execute macro {}", name);
+        eprintln!("failed to execute macro {}\n {:?} < {:?}", name,  mp, debug_out);
         std::process::exit(9);
     }
 
@@ -175,6 +176,85 @@ pub fn stm(
         }
     }
     Ok(statements)
+}
+
+pub fn derive (
+    name: &Name,
+    loc: &ast::Location,
+    args: &Vec<Box<ast::Expression>>,
+    local: ast::Local,
+) -> Result<Vec<ast::Local>, Error> {
+
+    let cwd = path::Path::new(&loc.file)
+        .parent().expect(&format!("macro cwd for {}", loc.file));
+
+    let debug_out = super::project::target_dir()
+        .join("macro")
+        .join(& name.0[1..].join("_"))
+        .join(format!("{}:{}", loc.file, loc.line).replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
+
+    let mp = super::project::target_dir()
+        .join("macro")
+        .join(& name.0[1..].join("_"))
+        .join(format!("macro{}", super::make::EXE_EXT));
+
+    if !mp.exists() {
+        return Err(Error::new(
+            format!("macro {} is unavailable", name),
+            vec![(
+                loc.clone(),
+                "macro not available here. it may be compiled later".to_string(),
+            )],
+        ));
+    }
+    let mp = mp.canonicalize().expect(&format!("macro path for {:?}", mp));
+
+    let input = MacroStdin { args: args.clone(), local: Some(local) };
+
+    if let Ok(debug_out) = std::fs::File::create(&debug_out) {
+        serde_json::ser::to_writer(debug_out, &input).unwrap();
+    }
+
+    let mut cmd = Command::new(&mp)
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect(&format!("failed to execute macro {}\n {:?} < {:?}", name, mp, debug_out));
+
+    let stdin = std::mem::replace(&mut cmd.stdin, None).unwrap();
+    serde_json::ser::to_writer(stdin, &input).unwrap();
+
+    if !cmd.wait().unwrap().success() {
+        eprintln!("failed to execute macro {}\n {:?} < {:?}", name,  mp, debug_out);
+        std::process::exit(9);
+    }
+
+    let mut n = String::new();
+    cmd.stdout.as_mut().unwrap().read_to_string(&mut n).unwrap();
+
+    let (path, source) = ast::generated_source(&format!("{}", loc), n);
+
+    let pp = match parser::ZZParser::parse(parser::Rule::top_level_declarations, source) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(Error::new(
+                format!("syntax error in proc macro return: {}", e),
+                vec![(loc.clone(), "in this macro invocation".to_string())],
+            ));
+        }
+    };
+
+    let module = match parser::parse_module(&path, &super::make::Stage::release(), pp) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(Error::new(
+                format!("syntax error in proc macro return: {}", e),
+                vec![(loc.clone(), "in this macro invocation".to_string())],
+            ));
+        }
+    };
+    Ok(module.locals)
 }
 
 

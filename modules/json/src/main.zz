@@ -1,0 +1,97 @@
+using log;
+using json;
+using pool;
+using err;
+using buffer;
+using mem;
+using slice;
+using vec::{Vec, item};
+using vec;
+
+
+enum FuelType @json::des::impl()
+{
+    Invalid,
+    StinkyGoo,
+    Electric,
+}
+
+struct Engine @json::des::impl()
+{
+    FuelType    fuel_type;
+    bool        running;
+}
+
+struct Window  @json::des::impl()
+{
+    bool open;
+}
+
+type WindowList @json::des::impl() = Vec[item = Window];
+
+struct Car @json::des::impl()
+{
+    int         tires;
+    char*       brand;
+    Engine      engine;
+    Window*     sunroof;
+    WindowList  windows;
+}
+
+
+export fn from_json(Car mut new * self, err::Err+et mut *e, char *js, pool::Pool mut* pt)
+    where err::checked(*e)
+    where nullterm(js)
+{
+    mem::zero(self);
+    json::U u = @json::des::use(Car, self, pt);
+    static_attest(safe(u.it));
+    new+1000 p = json::parser(e, u);
+    if err::check(e) { return ; }
+    json::push(&p, e, js, buffer::strlen(js));
+}
+
+pub fn main() {
+    new+1000  e = err::make();
+
+    new+10000 p = pool::make(32);
+    new car = from_json(&e, r#"{
+        "tires": 3,
+        "brand": "We Hate The Environment Inc.",
+        "wut": 1,
+        "engine": {
+            "fuel_type": "Electric",
+            "running":true
+        },
+        "sunroof": {
+            "open": true
+        },
+        "windows": [
+        {
+            "open": true
+        },
+        {
+            "open": false
+        },
+        {
+            "open": true
+        },
+        ]
+    }"#, &p);
+    e.abort();
+
+
+    log::info("car.brand = %s", car.brand);
+    log::info("car.tires = %d", car.tires);
+    log::info("car.engine.running = %d", car.engine.running);
+    log::info("car.engine.fuel_type = %d", car.engine.fuel_type);
+    if car.sunroof != 0 {
+        static_attest(safe(car.sunroof));
+        log::info("car.sunroof.open = %d", car.sunroof->open);
+    }
+    for let mut iter = vec::iter(&car.windows); iter.next(); {
+        let window = (Window *)iter.val.mem;
+        err::assert_safe(window);
+        log::info("car.windows[].open = %d", window->open);
+    }
+}

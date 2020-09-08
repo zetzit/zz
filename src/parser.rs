@@ -53,7 +53,7 @@ fn p(
 ) -> Result<Module, pest::error::Error<Rule>> {
     let (file_str, _) = read_source(n.to_string_lossy().to_string());
 
-    let file = ZZParser::parse(Rule::file , file_str)?;
+    let file = ZZParser::parse(Rule::top_level_declarations, file_str)?;
 
     let mut module = parse_module(&n.to_string_lossy().to_string(), stage, file)?;
     module.source = n.to_path_buf();
@@ -706,6 +706,48 @@ pub(crate) fn parse_module(
                     loc,
                     def: Def::Flags {
                         body,
+                    },
+                });
+            }
+            Rule::typealias => {
+                let decl = decl.into_inner();
+
+                let mut loc     = None;
+                let mut vis     = Visibility::Object;
+                let mut name    = None;
+                let mut alias   = None;
+                let mut derives = Vec::new();
+
+                for part in decl {
+                    match part.as_rule() {
+                        Rule::macrocall => {
+                            derives.push(parse_derive(n, part));
+                        }
+                        Rule::key_shared => {
+                            vis = Visibility::Shared;
+                        }
+                        Rule::exported => {
+                            vis = Visibility::Export;
+                        }
+                        Rule::ident => {
+                            loc = Some(Location::from_span(n.into(), &part.as_span()));
+                            name = Some(part.as_str().into());
+                        }
+                        Rule::anon_type => {
+                            alias = Some(parse_anon_type(n, part));
+                        }
+                        e => panic!("unexpected rule {:?} in typealias", e),
+                    }
+                }
+
+                module.locals.push(Local {
+                    doc: std::mem::replace(&mut doccomments, String::new()),
+                    name: name.unwrap(),
+                    vis,
+                    loc: loc.unwrap(),
+                    def: Def::Type {
+                        derives,
+                        alias: alias.unwrap(),
                     },
                 });
             }
@@ -1512,6 +1554,31 @@ pub(crate) fn parse_named_type(n: &str, decl: pest::iterators::Pair<'static, Rul
                         Rule::expr => {
                             params.push(parse_expr(n, lhs));
                         }
+                        Rule::param_short => {
+                            let loc         = Location::from_span(n.into(), &lhs.as_span());
+                            let mut lhs     = lhs.into_inner();
+                            let typename    = Name::from(lhs.next().unwrap().as_str());
+                            let rhs         = parse_expr(n, lhs.next().unwrap());
+
+                            params.push(Expression::Infix{
+                                lhs: Box::new(Expression::Call {
+                                    loc: loc.clone(),
+                                    name: Box::new(Expression::Name(Typed{
+                                        t: Type::Other(typename),
+                                        ..Default::default()
+                                    })),
+                                    args: vec![Box::new(Expression::Name(Typed{
+                                        t: Type::Other(Name::from("self")),
+                                        ..Default::default()
+                                    }))],
+                                    expanded: false,
+                                    emit: EmitBehaviour::Default,
+                                }),
+                                rhs: Box::new(rhs),
+                                op: InfixOperator::Equals,
+                                loc: loc.clone(),
+                            });
+                        }
                         Rule::tail => {
                             tail = parse_named_type_tail(n, lhs);
                         }
@@ -1629,6 +1696,31 @@ pub(crate) fn parse_anon_type(n: &str, decl: pest::iterators::Pair<'static, Rule
                             } else {
                                 tail = Tail::Dynamic(None)
                             }
+                        }
+                        Rule::param_short => {
+                            let loc         = Location::from_span(n.into(), &part.as_span());
+                            let mut lhs     = part.into_inner();
+                            let typename    = Name::from(lhs.next().unwrap().as_str());
+                            let rhs         = parse_expr(n, lhs.next().unwrap());
+
+                            params.push(Expression::Infix{
+                                lhs: Box::new(Expression::Call {
+                                    loc: loc.clone(),
+                                    name: Box::new(Expression::Name(Typed{
+                                        t: Type::Other(typename),
+                                        ..Default::default()
+                                    })),
+                                    args: vec![Box::new(Expression::Name(Typed{
+                                        t: Type::Other(Name::from("self")),
+                                        ..Default::default()
+                                    }))],
+                                    expanded: false,
+                                    emit: EmitBehaviour::Default,
+                                }),
+                                rhs: Box::new(rhs),
+                                op: InfixOperator::Equals,
+                                loc: loc.clone(),
+                            });
                         }
                         e => panic!("unexpected rule {:?} in params", e),
                     }

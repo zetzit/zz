@@ -1,4 +1,4 @@
-using <string.h>::{memset};
+using <string.h>::{memset, memmove};
 using <stdio.h>::{stderr, printf};
 using hex;
 using err;
@@ -123,6 +123,24 @@ export fn alloc(Pool mut *self) -> void mut*
 
     return r;
 }
+
+/// copy a sized object using memory from this pool
+/// returns null if the pool is full
+/// this is alot less efficient than alloc()
+/// as alignment requirements can lead to more blocks being allocated than you expect
+///
+export fn copy(Pool mut *self, void+vt *obj) -> void mut*
+    model member(return, self)
+{
+    void mut * m = self->malloc(vt);
+    if m == 0 {
+        return 0;
+    }
+
+    memmove(m, obj, vt);
+    return m;
+}
+
 
 /// malloc a zeroed continuous memory block of any size
 /// returns null if the pool is full

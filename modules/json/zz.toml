@@ -8,7 +8,9 @@ cflags = []
 lflags = []
 
 [dependencies]
-err = "1"
+err  = "1"
+pool = "1"
+ast  = "1"
 
 [variants]
 default = []

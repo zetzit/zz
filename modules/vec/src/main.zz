@@ -30,11 +30,7 @@ export fn main() int {
     log::info(">%.*s<", v.size, v.mem);
 
 
-
-
-
-
-    new[vec::item(self) == typeof(A), +0] l2 = vec::make_with_pool(&p);
+    new[vec::item = A, +0] l2 = vec::make_with_pool(&p);
 
 
     A a;
@@ -42,6 +38,8 @@ export fn main() int {
     A a2;
     l2.push(&a2);
 
+
+    // must not compile
     //B b;
     //l2.push(&b);
 

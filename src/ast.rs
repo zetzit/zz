@@ -171,6 +171,10 @@ pub enum Def {
         inline: bool,
         needs: Vec<(Typed, Location)>,
     },
+    Type {
+        alias:      Typed,
+        derives:    Vec<Derive>,
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

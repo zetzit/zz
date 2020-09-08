@@ -299,6 +299,7 @@ static inline void * pyFATGetPtr(PyObject * obj , char * expected_type) {{
                 ast::Def::Theory { .. } => {}
                 ast::Def::Testcase { .. } => {}
                 ast::Def::Include { .. } => {}
+                ast::Def::Type { .. } => {}
             }
             write!(self.f, "\n").unwrap();
         }

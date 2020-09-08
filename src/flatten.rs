@@ -614,6 +614,9 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     }
                     forceinline.insert(name.clone());
                 }
+                ast::Def::Type { alias, .. } => {
+                    decl_deps.extend(type_deps(cr, &alias));
+                }
             }
 
             if expecting_sub_type {
