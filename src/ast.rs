@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Location {
     pub file: String,
     pub line: usize,
@@ -80,6 +80,12 @@ pub enum Tail {
     Bind(String, Location),
 }
 
+impl Default for Tail {
+    fn default() -> Self {
+        Tail::None
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Derive {
     pub loc: Location,
@@ -120,6 +126,8 @@ pub enum Def {
 
         // never checked, only asserted into smt
         callattests: Vec<Expression>,
+
+        argsexpanded: bool,
     },
     Theory {
         ret:    Option<AnonArg>,
@@ -144,6 +152,7 @@ pub enum Def {
     Symbol {},
     Enum {
         names: Vec<(String, Option<u64>)>,
+        derives: Vec<Derive>,
     },
     Macro {
         args: Vec<String>,
@@ -181,6 +190,7 @@ pub struct Pointer {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Type {
+    Void,
     New,
     Elided,
 
@@ -192,6 +202,7 @@ pub enum Type {
     U128,
 
     // signed int of x bytes
+    Char,
     I8,
     I16,
     I32,
@@ -217,6 +228,8 @@ pub enum Type {
     ULiteral,
     ILiteral,
 
+    Typeid,
+
     Other(Name),
 }
 
@@ -236,9 +249,12 @@ impl Type {
             | Type::F32
             | Type::F64
             | Type::ULiteral
+            | Type::Typeid
+            | Type::Void
             | Type::Other(_) => false,
 
-            Type::I8
+            Type::Char
+            | Type::I8
             | Type::I16
             | Type::I32
             | Type::I64
@@ -250,12 +266,19 @@ impl Type {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+impl Default for Type {
+    fn default() -> Self {
+        Type::Elided
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Typed {
-    pub t: Type,
-    pub loc: Location,
-    pub ptr: Vec<Pointer>,
-    pub tail: Tail,
+    pub t:      Type,
+    pub loc:    Location,
+    pub ptr:    Vec<Pointer>,
+    pub tail:   Tail,
+    pub params: Vec<Expression>
 }
 
 impl PartialEq for Typed {
@@ -266,6 +289,8 @@ impl PartialEq for Typed {
 impl std::fmt::Display for Typed {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.t {
+            Type::Void => write!(f, "void"),
+            Type::Char => write!(f, "i8"), 
             Type::New => write!(f, "new"),
             Type::Elided => write!(f, "elided"),
             Type::U8 => write!(f, "u8"),
@@ -287,6 +312,7 @@ impl std::fmt::Display for Typed {
             Type::F64 => write!(f, "f64"),
             Type::ILiteral => write!(f, "iliteral"),
             Type::ULiteral => write!(f, "uliteral"),
+            Type::Typeid  => write!(f, "type"),
             Type::Other(name) => write!(f, "{}", name),
         }?;
 

@@ -144,9 +144,8 @@ impl Symbolic {
             Name::from("len"),
             ast::Typed {
                 t: ast::Type::Other(Name::from("theory")),
-                ptr: Vec::new(),
                 loc: ast::Location::builtin(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             ast::Location::builtin(),
             Tags::new(),
@@ -154,13 +153,13 @@ impl Symbolic {
         self.memory[sym].value = Value::Theory {
             args: vec![ast::NamedArg {
                 typed: ast::Typed {
-                    t: ast::Type::Other("void".into()),
+                    t: ast::Type::Void,
                     ptr: vec![ast::Pointer {
                         tags: ast::Tags::new(),
                         loc: ast::Location::builtin(),
                     }],
                     loc: ast::Location::builtin(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 name: "array".to_string(),
                 tags: ast::Tags::new(),
@@ -168,9 +167,8 @@ impl Symbolic {
             }],
             ret: ast::Typed {
                 t: ast::Type::USize,
-                ptr: Vec::new(),
                 loc: ast::Location::builtin(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             body: None,
         };
@@ -187,9 +185,8 @@ impl Symbolic {
             Name::from("safe"),
             ast::Typed {
                 t: ast::Type::Other(Name::from("theory")),
-                ptr: Vec::new(),
                 loc: ast::Location::builtin(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             ast::Location::builtin(),
             Tags::new(),
@@ -197,13 +194,13 @@ impl Symbolic {
         self.memory[sym].value = Value::Theory {
             args: vec![ast::NamedArg {
                 typed: ast::Typed {
-                    t: ast::Type::Other("void".into()),
+                    t: ast::Type::Void,
                     ptr: vec![ast::Pointer {
                         tags: ast::Tags::new(),
                         loc: ast::Location::builtin(),
                     }],
                     loc: ast::Location::builtin(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 name: "pointer".to_string(),
                 tags: ast::Tags::new(),
@@ -211,9 +208,8 @@ impl Symbolic {
             }],
             ret: ast::Typed {
                 t: ast::Type::Bool,
-                ptr: Vec::new(),
                 loc: ast::Location::builtin(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             body: None,
         };
@@ -226,9 +222,8 @@ impl Symbolic {
             Name::from("nullterm"),
             ast::Typed {
                 t: ast::Type::Other(Name::from("theory")),
-                ptr: Vec::new(),
                 loc: ast::Location::builtin(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             ast::Location::builtin(),
             Tags::new(),
@@ -236,13 +231,13 @@ impl Symbolic {
         self.memory[sym].value = Value::Theory {
             args: vec![ast::NamedArg {
                 typed: ast::Typed {
-                    t: ast::Type::Other("::ext::<stddef.h>::char".into()),
+                    t: ast::Type::Char,
                     ptr: vec![ast::Pointer {
                         tags: ast::Tags::new(),
                         loc: ast::Location::builtin(),
                     }],
                     loc: ast::Location::builtin(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 name: "cstr".to_string(),
                 tags: ast::Tags::new(),
@@ -250,9 +245,8 @@ impl Symbolic {
             }],
             ret: ast::Typed {
                 t: ast::Type::Bool,
-                ptr: Vec::new(),
                 loc: ast::Location::builtin(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             body: None,
         };
@@ -269,9 +263,8 @@ impl Symbolic {
             Name::from("symbol"),
             ast::Typed {
                 t: ast::Type::Other(Name::from("theory")),
-                ptr: Vec::new(),
                 loc: ast::Location::builtin(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             ast::Location::builtin(),
             Tags::new(),
@@ -279,13 +272,13 @@ impl Symbolic {
         self.memory[sym].value = Value::Theory {
             args: vec![ast::NamedArg {
                 typed: ast::Typed {
-                    t: ast::Type::Other("::ext::<stddef.h>::char".into()),
+                    t: ast::Type::Char,
                     ptr: vec![ast::Pointer {
                         tags: ast::Tags::new(),
                         loc: ast::Location::builtin(),
                     }],
                     loc: ast::Location::builtin(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 name: "cstr".to_string(),
                 tags: ast::Tags::new(),
@@ -296,6 +289,7 @@ impl Symbolic {
                 ptr: Vec::new(),
                 loc: ast::Location::builtin(),
                 tail: ast::Tail::None,
+                ..Default::default()
             },
             body: None,
         };
@@ -307,14 +301,74 @@ impl Symbolic {
         );
         self.builtin.insert("symbol".to_string(), sym);
 
+
+
+        // built in typeof theory
+        let sym = self.alloc(
+            Name::from("typeof"),
+            ast::Typed {
+                t: ast::Type::Other(Name::from("theory")),
+                loc: ast::Location::builtin(),
+                ..Default::default()
+            },
+            ast::Location::builtin(),
+            Tags::new(),
+        )?;
+        self.memory[sym].value = Value::Theory {
+            args: vec![ast::NamedArg {
+                typed: ast::Typed {
+                    t: ast::Type::Void,
+                    loc: ast::Location::builtin(),
+                    ..Default::default()
+                },
+                name: "pointer".to_string(),
+                tags: ast::Tags::new(),
+                loc: ast::Location::builtin(),
+            }],
+            ret: ast::Typed {
+                t: ast::Type::Typeid,
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
+                ..Default::default()
+            },
+            body: None,
+        };
+        self.ssa.theory(
+            sym,
+            vec![smt::Type::Unsigned(64)],
+            "typeof",
+            smt::Type::Unsigned(64),
+        );
+        self.builtin.insert("typeof".to_string(), sym);
+
+
+        // built in sizeof
+        let sym = self.alloc(
+            Name::from("sizeof"),
+            ast::Typed {
+                t: ast::Type::Other(Name::from("c prim")),
+                loc: ast::Location::builtin(),
+                ..Default::default()
+            },
+            ast::Location::builtin(),
+            Tags::new(),
+        )?;
+        self.memory[sym].value = Value::Unconstrained("sizeof is deferred to C".to_string());
+        self.builtin.insert("sizeof".to_string(), sym);
+
+
+
+
+
+
         for (name, loc) in &module.c_names {
             let sym = self.alloc(
                 name.clone(),
                 ast::Typed {
                     t: ast::Type::Other(name.clone()),
-                    ptr: Vec::new(),
                     loc: loc.clone(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 loc.clone(),
                 Tags::new(),
@@ -331,9 +385,8 @@ impl Symbolic {
                         Name::from(&d.name),
                         ast::Typed {
                             t: ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -391,9 +444,8 @@ impl Symbolic {
                         Name::from(&d.name),
                         ast::Typed {
                             t: ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -473,7 +525,7 @@ impl Symbolic {
                     if !tags.contains("mut") {
                         let esym = self.execute_expr(expr)?;
                         self.copy(sym, esym, &d.loc)?;
-                        self.tail_into_ssa(sym, &d.loc)?;
+                        self.type_params_into_ssa(sym, &d.loc)?;
                     }
                 }
                 ast::Def::Const { typed, expr } => {
@@ -491,9 +543,8 @@ impl Symbolic {
                         Name::from(&d.name),
                         ast::Typed {
                             t: ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -508,9 +559,8 @@ impl Symbolic {
                         Name::from(&d.name),
                         ast::Typed {
                             t: ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -525,9 +575,8 @@ impl Symbolic {
                         Name::from(&d.name),
                         ast::Typed {
                             t: ast::Type::ULiteral,
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -538,9 +587,8 @@ impl Symbolic {
                         format!("true"),
                         ast::Typed {
                             t: ast::Type::Bool,
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -553,14 +601,13 @@ impl Symbolic {
                         .invocation(*thsym, vec![(sym, self.memory[sym].temporal)], (tmp, 0));
                     self.ssa.literal(tmp, 1, smt::Type::Bool);
                 }
-                ast::Def::Enum { names } => {
+                ast::Def::Enum { names, .. } => {
                     self.alloc(
                         Name::from(&d.name),
                         ast::Typed {
                             t: ast::Type::Other(Name::from(&d.name.clone())),
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -577,8 +624,7 @@ impl Symbolic {
                         let t = ast::Typed {
                             t: ast::Type::ULiteral,
                             loc: d.loc.clone(),
-                            ptr: Vec::new(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         };
                         let sym = self.alloc(localname, t, d.loc.clone(), ast::Tags::new())?;
                         self.memory[sym].value = Value::Integer(parser::Integer::Unsigned(value));
@@ -595,9 +641,8 @@ impl Symbolic {
                         Name::from(&d.name),
                         ast::Typed {
                             t: ast::Type::Other(Name::from(&d.name)),
-                            ptr: Vec::new(),
                             loc: d.loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         d.loc.clone(),
                         Tags::new(),
@@ -709,15 +754,14 @@ impl Symbolic {
 
                 let field_name = match &self.memory[prev].typed.t {
                     /// tail of void * equals its len
-                    ast::Type::Other(o) if o.human_name() == "ext::<stddef.h>::void" && self.memory[prev].typed.ptr.len() == 1 => {
+                    ast::Type::Void  => {
 
                         let tmp = self.temporary(
                             format!("len({})", self.memory[prev].name),
                             ast::Typed {
                                 t: ast::Type::USize,
-                                ptr: Vec::new(),
                                 loc: args[i].loc.clone(),
-                                tail: ast::Tail::None,
+                                ..Default::default()
                             },
                             args[i].loc.clone(),
                             Tags::new(),
@@ -800,9 +844,8 @@ impl Symbolic {
                     format!("len({})", self.memory[sym2].name),
                     ast::Typed {
                         t: ast::Type::USize,
-                        ptr: Vec::new(),
                         loc: args[i].loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     args[i].loc.clone(),
                     Tags::new(),
@@ -989,10 +1032,10 @@ impl Symbolic {
                                     loc: expr.loc().clone(),
                                     expr: Box::new(expr.clone()),
                                     into: ast::Typed {
-                                        t:      ast::Type::Other(Name::from("void")),
+                                        t:      ast::Type::Void,
                                         loc:    expr.loc().clone(),
                                         ptr:    vec![ast::Pointer{loc:expr.loc().clone(), tags: ast::Tags::new()}],
-                                        tail:   ast::Tail::None,
+                                        ..Default::default()
                                     },
                                 };
 
@@ -1102,7 +1145,7 @@ impl Symbolic {
             return Ok((self.memory[a].typed.clone(), a, b));
         }
 
-        // if one is elided, it becomes the other type
+        // if one is elided or void, it becomes the other type
         if self.memory[a].typed.t == ast::Type::Elided {
             self.memory[a].typed = self.memory[b].typed.clone();
             self.memory[a].t = self.memory[b].t.clone();
@@ -1263,7 +1306,7 @@ impl Symbolic {
                         }
                     }
 
-                    self.tail_into_ssa(sym, loc)?;
+                    self.type_params_into_ssa(sym, loc)?;
 
                     if let Some(assign) = assign {
                         let sym2 = self.execute_expr(assign)?;
@@ -1276,9 +1319,15 @@ impl Symbolic {
                                 vec![(loc.clone(), format!("unable to find type of this local"))],
                             ));
                         } else {
+                            let params = typed_o.params.clone();
                             *typed_o = self.memory[sym].typed.clone();
+                            typed_o.params = params;
+
                         }
                     }
+
+                    self.attached_params_into_ssa(sym, loc)?;
+
                 }
                 ast::Statement::If { branches } => {
                     /*
@@ -1416,9 +1465,8 @@ impl Symbolic {
                                 ),
                                 ast::Typed {
                                     t: ast::Type::Bool,
-                                    ptr: Vec::new(),
                                     loc: expr2.loc().clone(),
-                                    tail: ast::Tail::None,
+                                    ..Default::default()
                                 },
                                 expr2.loc().clone(),
                                 ast::Tags::new(),
@@ -1656,9 +1704,9 @@ impl Symbolic {
                         loc: loc.clone(),
                         v: self.current_function_name.clone().into_bytes(),
                     },
-                    _ => {
+                    o => {
                         return Err(self.trace(
-                            format!("invalid callsite_source"),
+                            format!("invalid callsite_source {}", o),
                             vec![(loc.clone(), format!(""))],
                         ));
                     }
@@ -1695,86 +1743,97 @@ impl Symbolic {
 
                 match &defined[i-1].typed.t {
                     // tail of void *
-                    ast::Type::Other(o) if o.human_name() == "ext::<stddef.h>::void" && defined[i-1].typed.ptr.len() == 1 => {
+                    ast::Type::Void => {
 
-                        // a pointer to a complex type
-                        if let ast::Type::Other(o) = &self.memory[callptr].typed.t {
+                        // an array
+                        if let Value::Array{len, .. } = self.memory[callptr].value {
+                            let genarg = Box::new(ast::Expression::Literal {
+                                loc: prev.loc().clone(),
+                                v: format!("{}", len),
+                            });
+                            called.push(genarg);
+                        } else {
 
-                            if self.memory[callptr].typed.ptr.len() != 1 {
-
-                                if o.human_name() == "slice::slice::Slice" {
-                                    let nusizecall = Box::new(ast::Expression::MemberAccess{
-                                        loc:    prev.loc().clone(),
-                                        lhs:    prevprev.clone(),
-                                        op:     ".".to_string(),
-                                        rhs:    "size".to_string(),
-                                    });
-
-                                    *prev = Box::new(ast::Expression::MemberAccess{
-                                        loc:    prev.loc().clone(),
-                                        lhs:    prevprev.clone(),
-                                        op:     ".".to_string(),
-                                        rhs:    "mem".to_string(),
-                                    });
-                                    called.push(nusizecall);
-                                    continue;
-                                } else {
-                                    return Err(self.trace(
-                                        format!("tail size of {} bound to wrong pointer", self.memory[callptr].name),
-                                        vec![
-                                            (prev_loc.clone(), format!("void tail requires a pointer of depth 1")),
-                                            (
-                                                defined[i].loc.clone(),
-                                                format!("required by this tail binding"),
-                                                ),
-                                            ],
-                                    ));
-                                }
-                            }
-
-                            let mut genarg = if o.human_name() == "ext::<stddef.h>::void" {
+                            let mut genarg = if ast::Type::Void == self.memory[callptr].typed.t {
                                 Box::new(ast::Expression::Literal {
                                     loc: prev.loc().clone(),
                                     v: "0".to_string(),
                                 })
-                            } else {
+                            // a pointer to a complex type
+                            } else if let ast::Type::Other(o) = &self.memory[callptr].typed.t {
+                                if self.memory[callptr].typed.ptr.len() != 1 {
+                                    if o.human_name() == "slice::slice::Slice" {
+                                        let nusizecall = Box::new(ast::Expression::MemberAccess{
+                                            loc:    prev.loc().clone(),
+                                            lhs:    prevprev.clone(),
+                                            op:     ".".to_string(),
+                                            rhs:    "size".to_string(),
+                                        });
+
+                                        *prev = Box::new(ast::Expression::MemberAccess{
+                                            loc:    prev.loc().clone(),
+                                            lhs:    prevprev.clone(),
+                                            op:     ".".to_string(),
+                                            rhs:    "mem".to_string(),
+                                        });
+                                        called.push(nusizecall);
+                                        continue;
+                                    } else {
+                                        return Err(self.trace(
+                                            format!("tail size of {} bound to wrong pointer", self.memory[callptr].name),
+                                            vec![
+                                                (prev_loc.clone(), format!("void tail requires a pointer of depth 1")),
+                                                (
+                                                    defined[i].loc.clone(),
+                                                    format!("required by this tail binding"),
+                                                    ),
+                                                ],
+                                        ));
+                                    }
+                                }
+
                                 Box::new(ast::Expression::Unsafe{
                                     loc: prev.loc().clone(),
                                     into: ast::Typed{
                                         t: ast::Type::USize,
                                         loc:    prev.loc().clone(),
-                                        ptr:    Vec::new(),
-                                        tail:   ast::Tail::None,
+                                        ..Default::default()
                                     },
                                     expr: Box::new(ast::Expression::Call {
                                         loc: prev.loc().clone(),
                                         name: Box::new(ast::Expression::Name(ast::Typed {
                                             t:      ast::Type::Other(Name::from("::ext::<stddef.h>::sizeof")),
                                             loc:    prev.loc().clone(),
-                                            ptr:    Vec::new(),
-                                            tail:   ast::Tail::None,
+                                            ..Default::default()
                                         })),
                                         args:       vec![Box::new(ast::Expression::Name(ast::Typed {
                                             t:      ast::Type::Other(o.clone()),
                                             loc:    self.memory[callptr].typed.loc.clone(),
-                                            ptr:    Vec::new(),
-                                            tail:   ast::Tail::None,
+                                            ..Default::default()
                                         }))],
                                         expanded:   false,
                                         emit:       ast::EmitBehaviour::Default,
                                     })
                                 })
+                            } else {
+                                return Err(self.trace(
+                                    format!("tail size of {} bound to wrong value", self.memory[callptr].name),
+                                    vec![
+                                        (prev_loc.clone(), format!("void tail requires a pointer of depth 1")),
+                                        (
+                                            defined[i].loc.clone(),
+                                            format!("required by this tail binding"),
+                                            ),
+                                        ],
+                                ));
                             };
-
-
 
                             match &self.memory[callptr].typed.tail.clone() {
                                 ast::Tail::Bind(name, loc) => {
                                     let genarg2 = Box::new(ast::Expression::Name(ast::Typed {
                                         t: ast::Type::Other(Name::from(name)),
-                                        ptr: Vec::new(),
                                         loc: loc.clone(),
-                                        tail: ast::Tail::None,
+                                        ..Default::default()
                                     }));
                                     genarg = Box::new(ast::Expression::Infix {
                                         loc: self.memory[callptr].typed.loc.clone(),
@@ -1812,13 +1871,6 @@ impl Symbolic {
 
                             called.push(genarg);
 
-                        // an array
-                        } else if let Value::Array{len, .. } = self.memory[callptr].value {
-                            let genarg = Box::new(ast::Expression::Literal {
-                                loc: prev.loc().clone(),
-                                v: format!("{}", len),
-                            });
-                            called.push(genarg);
                         }
                     },
                     _ => {
@@ -1826,9 +1878,8 @@ impl Symbolic {
                             ast::Tail::Bind(name, loc) => {
                                 let genarg = Box::new(ast::Expression::Name(ast::Typed {
                                     t: ast::Type::Other(Name::from(name)),
-                                    ptr: Vec::new(),
                                     loc: loc.clone(),
-                                    tail: ast::Tail::None,
+                                    ..Default::default()
                                 }));
                                 called.push(genarg);
                             }
@@ -1884,20 +1935,20 @@ impl Symbolic {
             name:   "_ctx".to_string(),
             tags,
             typed:  ast::Typed {
-                t:      ast::Type::Other(Name::from("void")),
+                t:      ast::Type::Void,
                 loc:    nameloc.clone(),
                 ptr:    vec![ast::Pointer{loc:nameloc.clone(), tags: ast::Tags::new()}],
-                tail:   ast::Tail::None,
+                ..Default::default()
             },
         });
 
         let fns = self.temporary(
             format!( "closure.fn {}", typename),
             ast::Typed {
-                t:      ast::Type::Other(Name::from("void")),
+                t:      ast::Type::Void,
                 loc:    nameloc.clone(),
                 ptr:    vec![ast::Pointer{loc:nameloc.clone(), tags: ast::Tags::new()}],
-                tail:   ast::Tail::None,
+                ..Default::default()
             },
             nameloc.clone(),
             Tags::new(),
@@ -1913,10 +1964,10 @@ impl Symbolic {
         let ctx = self.temporary(
             format!( "closure.ctx {}", typename),
             ast::Typed {
-                t:      ast::Type::Other(Name::from("void")),
+                t:      ast::Type::Void,
                 loc:    nameloc.clone(),
                 ptr:    vec![ast::Pointer{loc:nameloc.clone(), tags: ast::Tags::new()}],
-                tail:   ast::Tail::None,
+                ..Default::default()
             },
             nameloc.clone(),
             Tags::new(),
@@ -1928,6 +1979,157 @@ impl Symbolic {
         });
     }
 
+
+    fn array_access(
+        &mut self,
+        lhs_sym: Symbol,
+        rhs_sym: Symbol,
+        loc: &ast::Location,
+        rhsloc:  &ast::Location,
+    ) -> Result<Symbol, Error> {
+        if self.memory[rhs_sym].typed.t.signed() {
+            return Err(self.trace(
+                format!("array access with signed index is not well defined"),
+                vec![(
+                    rhsloc.clone(),
+                    format!("array index must be of type usize"),
+                )],
+            ));
+        }
+
+        if self.memory[rhs_sym].typed.t != ast::Type::USize
+            && self.memory[rhs_sym].typed.t != ast::Type::ULiteral
+        {
+            return Err(self.trace(
+                format!("array access with something not a usize"),
+                vec![(
+                    rhsloc.clone(),
+                    format!("array index must be of type usize"),
+                )],
+            ));
+        }
+
+        let static_index = if let smt::Assertion::Constrained(i) = self
+            .ssa
+            .value((rhs_sym, self.memory[rhs_sym].temporal), |a, _| a)
+        {
+            Some(i as usize)
+        } else {
+            None
+        };
+        match &self.memory[lhs_sym].value {
+            Value::Array { array, .. } => {
+                if let Some(i) = &static_index {
+                    if let Some(sym) = array.get(i) {
+                        return Ok(*sym);
+                    }
+                }
+            }
+            _ => (),
+        }
+
+        if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
+            return Err(self.trace(
+                format!("cannot prove memory access due to unexpected type"),
+                vec![(
+                    loc.clone(),
+                    format!("lhs of array expression appears to be not a pointer or array"),
+                )],
+            ));
+        }
+
+        self.ssa.debug("begin array bounds");
+        let tmp1 = self.temporary(
+            format!("len({})", self.memory[lhs_sym].name),
+            ast::Typed {
+                t: ast::Type::USize,
+                loc: loc.clone(),
+                ..Default::default()
+            },
+            loc.clone(),
+            Tags::new(),
+        )?;
+        let lensym = self
+            .builtin
+            .get("len")
+            .expect("ICE: len theory not built in");
+        self.ssa.invocation(
+            *lensym,
+            vec![(lhs_sym, self.memory[lhs_sym].temporal)],
+            (tmp1, 0),
+        );
+
+        let tmp2 = self.temporary(
+            format!(
+                "{} < len({})",
+                self.memory[rhs_sym].name, self.memory[lhs_sym].name
+            ),
+            ast::Typed {
+                t: ast::Type::Bool,
+                loc: loc.clone(),
+                ..Default::default()
+            },
+            loc.clone(),
+            Tags::new(),
+        )?;
+
+        self.memory[tmp2].value = Value::InfixOp {
+            lhs: (rhs_sym, self.memory[rhs_sym].temporal),
+            rhs: (tmp1, 0),
+            op: ast::InfixOperator::Lessthan,
+        };
+        self.ssa.infix_op(
+            tmp2,
+            (rhs_sym, self.memory[rhs_sym].temporal),
+            (tmp1, 0),
+            ast::InfixOperator::Lessthan,
+            smt::Type::Bool,
+            false,
+        );
+
+        self.ssa.debug("assert that length less than index is true");
+        self.ssa.assert(
+            vec![(tmp2, self.memory[tmp2].temporal)],
+            |a, model| match a {
+                false => {
+                    let mut estack = Vec::new();
+                    estack.extend(self.demonstrate(
+                        model.as_ref().unwrap(),
+                        (tmp2, self.memory[tmp2].temporal),
+                        0,
+                    ));
+                    Err(self.trace(format!("possible out of bounds array access"), estack))
+                }
+                true => Ok(()),
+            },
+        )?;
+
+        let mut newtype = self.memory[lhs_sym].typed.clone();
+        newtype.ptr.pop();
+
+        let tmp = self.temporary(
+            format!(
+                "array member {}[{}]",
+                self.memory[lhs_sym].name, self.memory[rhs_sym].name
+            ),
+            newtype,
+            loc.clone(),
+            self.memory[lhs_sym].tags.clone(),
+        )?;
+        self.memory[tmp].value = Value::Unconstrained("array content".to_string());
+
+        match &mut self.memory[lhs_sym].value {
+            Value::Array { array, .. } => {
+                if let Some(i) = &static_index {
+                    array.insert(*i, tmp);
+                }
+            }
+            _ => (),
+        }
+
+        Ok(tmp)
+    }
+
     fn member_access(
         &mut self,
         lhs_sym: Symbol,
@@ -1937,7 +2139,7 @@ impl Symbolic {
 
 
         if let ast::Type::Other(n) = &self.memory[lhs_sym].typed.t.clone() {
-            if let Some(ast::Def::Closure{ret,args,nameloc,..}) = self.defs.get(&n).cloned() {
+            if let Some(ast::Def::Closure{ret,args,nameloc,..}) = self.defs.get(&n) {
                 if let Value::Closure{..} = self.memory[lhs_sym].value {
                 } else {
                     self.memory[lhs_sym].value = self.make_closure_val(n.clone())?;
@@ -1967,6 +2169,7 @@ impl Symbolic {
         if let ast::Type::Other(n) = &self.memory[lhs_sym].typed.t {
             if let Some(ast::Def::Struct { fields, tail, .. }) = self.defs.get(&n) {
                 struct_def = Some((fields.clone(), tail));
+
             }
         };
 
@@ -2122,6 +2325,9 @@ impl Symbolic {
             }
             _ => unreachable!(),
         }
+
+        self.type_params_into_ssa(tmp, loc)?;
+
         Ok(tmp)
     }
 
@@ -2156,8 +2362,7 @@ impl Symbolic {
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                 )?;
                 Ok(r)
@@ -2192,9 +2397,8 @@ impl Symbolic {
                                         format!("desugar of self call {}", name),
                                         ast::Typed {
                                             t: ast::Type::USize,
-                                            ptr: Vec::new(),
                                             loc: loc.clone(),
-                                            tail: ast::Tail::None,
+                                            ..Default::default()
                                         },
                                         loc.clone(),
                                         Tags::new(),
@@ -2216,8 +2420,7 @@ impl Symbolic {
                                         name: ast::Expression::Name(ast::Typed {
                                             t: ast::Type::Other(name),
                                             loc: exprloc.clone(),
-                                            ptr: Vec::new(),
-                                            tail: ast::Tail::None,
+                                            ..Default::default()
                                         }),
                                         selfarg,
                                     };
@@ -2232,150 +2435,7 @@ impl Symbolic {
             ast::Expression::ArrayAccess { lhs, rhs, loc } => {
                 let lhs_sym = self.execute_expr(lhs)?;
                 let rhs_sym = self.execute_expr(rhs)?;
-
-                if self.memory[rhs_sym].typed.t.signed() {
-                    return Err(self.trace(
-                        format!("array access with signed index is not well defined"),
-                        vec![(
-                            rhs.loc().clone(),
-                            format!("array index must be of type usize"),
-                        )],
-                    ));
-                }
-
-                if self.memory[rhs_sym].typed.t != ast::Type::USize
-                    && self.memory[rhs_sym].typed.t != ast::Type::ULiteral
-                {
-                    return Err(self.trace(
-                        format!("array access with something not a usize"),
-                        vec![(
-                            rhs.loc().clone(),
-                            format!("array index must be of type usize"),
-                        )],
-                    ));
-                }
-
-                let static_index = if let smt::Assertion::Constrained(i) = self
-                    .ssa
-                    .value((rhs_sym, self.memory[rhs_sym].temporal), |a, _| a)
-                {
-                    Some(i as usize)
-                } else {
-                    None
-                };
-                match &self.memory[lhs_sym].value {
-                    Value::Array { array, .. } => {
-                        if let Some(i) = &static_index {
-                            if let Some(sym) = array.get(i) {
-                                return Ok(*sym);
-                            }
-                        }
-                    }
-                    _ => (),
-                }
-
-                if self.memory[lhs_sym].t != smt::Type::Unsigned(64) {
-                    return Err(self.trace(
-                        format!("cannot prove memory access due to unexpected type"),
-                        vec![(
-                            lhs.loc().clone(),
-                            format!("lhs of array expression appears to be not a pointer or array"),
-                        )],
-                    ));
-                }
-
-                self.ssa.debug("begin array bounds");
-                let tmp1 = self.temporary(
-                    format!("len({})", self.memory[lhs_sym].name),
-                    ast::Typed {
-                        t: ast::Type::USize,
-                        ptr: Vec::new(),
-                        loc: loc.clone(),
-                        tail: ast::Tail::None,
-                    },
-                    loc.clone(),
-                    Tags::new(),
-                )?;
-                let lensym = self
-                    .builtin
-                    .get("len")
-                    .expect("ICE: len theory not built in");
-                self.ssa.invocation(
-                    *lensym,
-                    vec![(lhs_sym, self.memory[lhs_sym].temporal)],
-                    (tmp1, 0),
-                );
-
-                let tmp2 = self.temporary(
-                    format!(
-                        "{} < len({})",
-                        self.memory[rhs_sym].name, self.memory[lhs_sym].name
-                    ),
-                    ast::Typed {
-                        t: ast::Type::Bool,
-                        ptr: Vec::new(),
-                        loc: loc.clone(),
-                        tail: ast::Tail::None,
-                    },
-                    loc.clone(),
-                    Tags::new(),
-                )?;
-
-                self.memory[tmp2].value = Value::InfixOp {
-                    lhs: (rhs_sym, self.memory[rhs_sym].temporal),
-                    rhs: (tmp1, 0),
-                    op: ast::InfixOperator::Lessthan,
-                };
-                self.ssa.infix_op(
-                    tmp2,
-                    (rhs_sym, self.memory[rhs_sym].temporal),
-                    (tmp1, 0),
-                    ast::InfixOperator::Lessthan,
-                    smt::Type::Bool,
-                    false,
-                );
-
-                self.ssa.debug("assert that length less than index is true");
-                self.ssa.assert(
-                    vec![(tmp2, self.memory[tmp2].temporal)],
-                    |a, model| match a {
-                        false => {
-                            let mut estack = Vec::new();
-                            estack.extend(self.demonstrate(
-                                model.as_ref().unwrap(),
-                                (tmp2, self.memory[tmp2].temporal),
-                                0,
-                            ));
-                            Err(self.trace(format!("possible out of bounds array access"), estack))
-                        }
-                        true => Ok(()),
-                    },
-                )?;
-
-                let mut newtype = self.memory[lhs_sym].typed.clone();
-                newtype.ptr.pop();
-
-                let tmp = self.temporary(
-                    format!(
-                        "array member {}[{}]",
-                        self.memory[lhs_sym].name, self.memory[rhs_sym].name
-                    ),
-                    newtype,
-                    loc.clone(),
-                    self.memory[lhs_sym].tags.clone(),
-                )?;
-                self.memory[tmp].value = Value::Unconstrained("array content".to_string());
-
-                match &mut self.memory[lhs_sym].value {
-                    Value::Array { array, .. } => {
-                        if let Some(i) = &static_index {
-                            array.insert(*i, tmp);
-                        }
-                    }
-                    _ => (),
-                }
-
-                Ok(tmp)
+                self.array_access(lhs_sym, rhs_sym, loc, rhs.loc())
             }
             ast::Expression::LiteralString { loc, v } => {
                 let tmp = self.temporary(
@@ -2387,7 +2447,7 @@ impl Symbolic {
                             tags: ast::Tags::new(),
                             loc: loc.clone(),
                         }],
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     loc.clone(),
                     Tags::new(),
@@ -2398,16 +2458,17 @@ impl Symbolic {
                 };
                 self.ssa_mark_safe(tmp, loc)?;
                 self.ssa_mark_nullterm(tmp, loc)?;
+                self.len_into_ssa(tmp, loc, v.len() + 1)?;
                 Ok(tmp)
             }
             ast::Expression::LiteralChar { loc, v } => {
                 let tmp = self.temporary(
                     format!("literal char '{}'", *v as char),
                     ast::Typed {
-                        t: ast::Type::Other("::ext::<stddef.h>::char".into()),
+                        t: ast::Type::Char,
                         loc: loc.clone(),
                         ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     loc.clone(),
                     Tags::new(),
@@ -2422,32 +2483,28 @@ impl Symbolic {
                     let t = ast::Typed {
                         t: ast::Type::Bool,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     };
                     self.literal(loc, Value::Integer(parser::Integer::Unsigned(0xffffffff)), t)
                 } else if v == "false" {
                     let t = ast::Typed {
                         t: ast::Type::Bool,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     };
                     self.literal(loc, Value::Integer(parser::Integer::Unsigned(0)), t)
                 } else if let Some(v) = parser::parse_int(&v) {
                     let t = ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     };
                     self.literal(loc, Value::Integer(v), t)
                 } else {
                     let t = ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     };
                     self.literal(loc, Value::Unconstrained(format!("literal {}", v)), t)
                 }
@@ -2487,9 +2544,8 @@ impl Symbolic {
                 if op.returns_boolean() {
                     newtype = ast::Typed {
                         t: ast::Type::Bool,
-                        ptr: Vec::new(),
                         loc: loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     };
                 };
 
@@ -2513,9 +2569,8 @@ impl Symbolic {
                         format!("len({})", self.memory[lhs_sym].name),
                         ast::Typed {
                             t: ast::Type::USize,
-                            ptr: Vec::new(),
                             loc: loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         loc.clone(),
                         Tags::new(),
@@ -2537,9 +2592,8 @@ impl Symbolic {
                         ),
                         ast::Typed {
                             t: ast::Type::Bool,
-                            ptr: Vec::new(),
                             loc: loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         loc.clone(),
                         Tags::new(),
@@ -2582,9 +2636,8 @@ impl Symbolic {
                         format!("len({})", self.memory[lhs_sym].name),
                         ast::Typed {
                             t: ast::Type::USize,
-                            ptr: Vec::new(),
                             loc: loc.clone(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                         loc.clone(),
                         Tags::new(),
@@ -2937,7 +2990,25 @@ impl Symbolic {
         }
 
         match static_name.as_ref().map(|s| s.as_str()) {
-            Some("typeid") => {
+            Some("sizeof") => {
+                for arg in args {
+                    // ignore any errors because sizeof(type) is legal
+                    self.execute_expr(arg).ok();
+                }
+                let tmp = self.temporary(
+                    format!("sizeof"),
+                    ast::Typed {
+                        t: ast::Type::USize,
+                        loc: loc.clone(),
+                        ..Default::default()
+                    },
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                self.current_call.pop();
+                return Ok(tmp);
+            }
+            Some("typeof") => {
                 if args.len() != 1 {
                     return Err(self.trace(
                         "call argument count mismatch".to_string(),
@@ -2947,25 +3018,31 @@ impl Symbolic {
                         )],
                     ));
                 }
+
                 let sym = self.execute_expr(&mut args[0])?;
+                if self.memory[sym].typed.t != ast::Type::Void {
+                    let typename = Name::from(&self.memory[sym].typed.to_string());
+                    if let Ok(v) = self.name(&typename, loc) {
+                        let r = self.literal(
+                            loc,
+                            Value::Integer(parser::Integer::Unsigned(v as u64)),
+                            ast::Typed {
+                                t: ast::Type::Typeid,
+                                loc: loc.clone(),
+                                ..Default::default()
+                            },
+                        );
 
-                let r = self.literal(
-                    loc,
-                    Value::Integer(parser::Integer::Unsigned(1)),
-                    ast::Typed {
-                        t: ast::Type::ULiteral,
-                        loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
-                    },
-                );
+                        *emit = ast::EmitBehaviour::Error {
+                            loc: loc.clone(),
+                            message: format!("typeof cannot be used here as it has no actual rvalue",),
+                        };
+                        self.current_call.pop();
+                        return r;
+                    }
+                }
 
-                *expr = ast::Expression::Literal {
-                    loc: loc.clone(),
-                    v: format!("\"{}\"", self.memory[sym].typed),
-                };
-                self.current_call.pop();
-                return r;
+                // fallthrough means typeof() is done to ssa
             }
             Some("len") => {
                 if args.len() != 1 {
@@ -2987,8 +3064,7 @@ impl Symbolic {
                             ast::Typed {
                                 t: ast::Type::ULiteral,
                                 loc: loc.clone(),
-                                ptr: Vec::new(),
-                                tail: ast::Tail::None,
+                                ..Default::default()
                             },
                         );
                         self.current_call.pop();
@@ -3010,7 +3086,12 @@ impl Symbolic {
                         )],
                     ));
                 }
+
+                let in_model = self.in_model;
+                self.in_model = true;
                 let sym = self.execute_expr(&mut args[0])?;
+                self.in_model = in_model;
+
                 if self.memory[sym].t != smt::Type::Bool {
                     return Err(self.trace(
                         format!("expected boolean, got {}", self.memory[sym].typed),
@@ -3033,8 +3114,7 @@ impl Symbolic {
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                 );
                 self.current_call.pop();
@@ -3053,7 +3133,11 @@ impl Symbolic {
                         )],
                     ));
                 }
+                let in_model = self.in_model;
+                self.in_model = true;
                 let sym = self.execute_expr(&mut args[0])?;
+                self.in_model = in_model;
+
                 if self.memory[sym].t != smt::Type::Bool {
                     return Err(self.trace(
                         format!("expected boolean, got {}", self.memory[sym].typed),
@@ -3083,8 +3167,7 @@ impl Symbolic {
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                 );
                 *expr = ast::Expression::Literal {
@@ -3128,13 +3211,53 @@ impl Symbolic {
                     ast::Typed {
                         t: ast::Type::ULiteral,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                 );
                 *expr = ast::Expression::Literal {
                     loc: loc.clone(),
                     v: format!("{}", val),
+                };
+                self.current_call.pop();
+                return r;
+            }
+            Some("constrained") => {
+                if args.len() != 1 {
+                    return Err(self.trace(
+                        "call argument count mismatch".to_string(),
+                        vec![(
+                            name.loc().clone(),
+                            format!("builtin needs 1 argument, but you passed {}", args.len()),
+                        )],
+                    ));
+                }
+                let sym = self.execute_expr(&mut args[0])?;
+                let v = self.ssa.value((sym, self.memory[sym].temporal), |a,model|match a{
+                   smt::Assertion::Unsolveable => {
+                       Err(self.trace(format!("static is not solveable"), vec![
+                           (loc.clone(), format!("there may be conflicting constraints"))
+                       ]))
+                   }
+                   smt::Assertion::Unconstrained(_) => {
+                        Ok(0)
+                   }
+                   smt::Assertion::Constrained(val) => {
+                       Ok(1)
+                   }
+                })?;
+
+                let r = self.literal(
+                    loc,
+                    Value::Integer(parser::Integer::Unsigned(v)),
+                    ast::Typed {
+                        t: ast::Type::Bool,
+                        loc: loc.clone(),
+                        ..Default::default()
+                    },
+                );
+                *expr = ast::Expression::Literal {
+                    loc: loc.clone(),
+                    v: format!("{}", v),
                 };
                 self.current_call.pop();
                 return r;
@@ -3196,10 +3319,24 @@ impl Symbolic {
                 self.ssa.debug("collecting theory invocation arguments");
                 for (i, arg) in args.into_iter().enumerate() {
                     let s = self.execute_expr(arg)?;
-                    syms.push((s, self.memory[s].temporal));
 
-                    debug_arg_names.push(format!("{}", self.memory[s].name));
-                    if Self::smt_type(&fargs[i].typed) != self.memory[s].t {
+                    if Self::smt_type(&fargs[i].typed) == self.memory[s].t {
+                        syms.push((s, self.memory[s].temporal));
+                        debug_arg_names.push(format!("{}", self.memory[s].name));
+                    } else if fargs[i].typed.t == ast::Type::Void {
+
+                        let tmp = self.temporary(
+                            format!("ignoretype({})", self.memory[s].name),
+                            fargs[i].typed.clone(),
+                            loc.clone(),
+                            Tags::new(),
+                        )?;
+                        self.memory[tmp].value = self.memory[s].value.clone();
+
+                        syms.push((tmp, self.memory[tmp].temporal));
+                        debug_arg_names.push(format!("{}", self.memory[s].name));
+
+                    } else {
                         return Err(self.trace(
                             format!(
                                 "incompatible arguments to theory {}",
@@ -3420,10 +3557,9 @@ impl Symbolic {
                 let return_sym = self.temporary(
                     format!("return value of {}", self.memory[name_sym].name),
                     ret.clone().unwrap_or(ast::Typed {
-                        t: ast::Type::Other(Name::from("void")),
+                        t: ast::Type::Void,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     }),
                     loc.clone(),
                     Tags::new(),
@@ -3442,10 +3578,9 @@ impl Symbolic {
                     let return_sym_inner = self.alloc(
                         Name::from("return"),
                         ret.clone().unwrap_or(ast::Typed {
-                            t: ast::Type::Other(Name::from("void")),
+                            t: ast::Type::Void,
                             loc: loc.clone(),
-                            ptr: Vec::new(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         }),
                         loc.clone(),
                         Tags::new(),
@@ -3545,6 +3680,9 @@ impl Symbolic {
                     (*to, self.memory[*to].temporal - 1),
                     self.memory[*to].t.clone(),
                 );
+
+                // rebuild attached types
+                self.attached_params_into_ssa(*to, &self.memory[*to].declared.clone());
             }
             _ => (),
         }
@@ -3556,9 +3694,8 @@ impl Symbolic {
             format!("safe({})", self.memory[lhs_sym].name),
             ast::Typed {
                 t: ast::Type::Bool,
-                ptr: Vec::new(),
                 loc: loc.clone(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             loc.clone(),
             Tags::new(),
@@ -3594,8 +3731,28 @@ impl Symbolic {
     }
 
     fn deref(&mut self, lhs_sym: Symbol, loc: &ast::Location) -> Result<Symbol, Error> {
-        if let Value::Address(to) = self.memory[lhs_sym].value.clone() {
-            return Ok(to);
+        if let Value::Address(to) = &self.memory[lhs_sym].value {
+            return Ok(*to);
+        }
+
+        //degrading an array
+        if let Value::Array{..} = &self.memory[lhs_sym].value {
+            let tmp = self.literal(
+                loc,
+                Value::Integer(parser::Integer::Unsigned(0)),
+                ast::Typed {
+                    t: ast::Type::ULiteral,
+                    loc: loc.clone(),
+                    ..Default::default()
+                },
+            )?;
+
+            return self.array_access(
+                lhs_sym,
+                tmp,
+                loc,
+                loc
+            );
         }
 
         let mut nutype = self.memory[lhs_sym].typed.clone();
@@ -3639,8 +3796,8 @@ impl Symbolic {
             }
             o => {
                 return Err(self.trace(
-                    format!("deref of {} is not possible", o),
-                    vec![(loc.clone(), format!("this must be a pointer"))],
+                    format!("deref of {} is not possible",  self.memory[lhs_sym].typed),
+                    vec![(loc.clone(), format!("this must be a pointer, but {} is a {}", self.memory[lhs_sym].name, o))],
                 ))
             }
         }
@@ -3680,6 +3837,9 @@ impl Symbolic {
             ast::Type::Elided => crate::smt::Type::Unsigned(64),
             ast::Type::ULiteral => crate::smt::Type::Unsigned(64),
             ast::Type::ILiteral => crate::smt::Type::Signed(64),
+            ast::Type::Typeid => crate::smt::Type::Unsigned(64),
+            ast::Type::Void   => crate::smt::Type::Unsigned(64),
+            ast::Type::Char   => crate::smt::Type::Signed(8),
         }
     }
 
@@ -3738,8 +3898,80 @@ impl Symbolic {
         Ok(symbol)
     }
 
-    fn tail_into_ssa(&mut self, sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
+    fn attached_params_into_ssa(&mut self, sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
         self.ssa.debug_loc(loc);
+
+        if self.memory[sym].typed.params.len() > 0 {
+
+            //let global_only = vec![self.stack[0].clone()];
+            //let stack_original = std::mem::replace(&mut self.stack, global_only);
+
+            self.push("type_params".to_string());
+            self.ssa.debug("type_params");
+
+            self.cur().locals.insert(Name::from("self"), sym);
+
+            for mut expr in self.memory[sym].typed.params.clone() {
+
+                let in_model = self.in_model;
+                self.in_model = true;
+                let casym = self.execute_expr(&mut expr)?;
+                self.in_model = in_model;
+
+                if self.memory[casym].t != smt::Type::Bool {
+                    return Err(self.trace(
+                        format!("expected boolean, got {}", self.memory[casym].typed),
+                        vec![(expr.loc().clone(), format!("expression must evaluate to boolean"))],
+                    ));
+                }
+
+                if !self.ssa.attest((casym, self.memory[casym].temporal), true) {
+                    return Err(self.trace(format!("attachment leads to conflicting constraints"),
+                        vec![(
+                            expr.loc().clone(),
+                            format!("attachment leads to conflicting constraints"),
+                        )],
+                    ));
+                }
+            }
+
+            self.ssa.debug("end of type_params");
+            self.pop();
+            //self.stack = stack_original;
+
+        }
+        Ok(())
+    }
+
+    fn type_params_into_ssa(&mut self, sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
+        self.ssa.debug_loc(loc);
+
+        self.attached_params_into_ssa(sym,loc)?;
+
+
+        if let Ok(typesym) = self.name(&Name::from(&self.memory[sym].typed.to_string()), loc) {
+
+            let r = self.literal(
+                loc,
+                Value::Integer(parser::Integer::Unsigned(typesym as u64)),
+                ast::Typed {
+                    t: ast::Type::ULiteral,
+                    loc: loc.clone(),
+                    ..Default::default()
+                },
+            )?;
+
+            let typeofsym = self
+                .builtin
+                .get("typeof")
+                .expect("ICE: typeof theory not built in");
+            self.ssa.invocation(
+                *typeofsym,
+                vec![(sym, self.memory[sym].temporal)],
+                (r, self.memory[r].temporal),
+            );
+        }
+
 
         let tailsym = match self.memory[sym].typed.tail.clone() {
             ast::Tail::None => return Ok(()),
@@ -3758,13 +3990,12 @@ impl Symbolic {
                 ast::Typed {
                     t: ast::Type::ULiteral,
                     loc: loc.clone(),
-                    ptr: Vec::new(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
             )?,
             ast::Tail::Bind(name, loc) => {
                 self.ssa.debug_loc(&loc);
-                self.ssa.debug("tail_into_ssa");
+                self.ssa.debug("type_params_into_ssa");
                 self.name(&Name::from(&name), &loc)?
             }
         };
@@ -3773,7 +4004,7 @@ impl Symbolic {
 
         let sized_sym = match &self.memory[sym].typed.t {
             /// tail of void * equals its len
-            ast::Type::Other(o) if o.human_name() == "void" && self.memory[sym].typed.ptr.len() == 1 => {
+            ast::Type::Void => {
                 sym
             }
             ast::Type::Other(n) => match self.defs.get(n) {
@@ -3802,7 +4033,6 @@ impl Symbolic {
             }
         };
 
-
         let lensym = self
             .builtin
             .get("len")
@@ -3812,6 +4042,8 @@ impl Symbolic {
             vec![(sized_sym, self.memory[sized_sym].temporal)],
             (tailsym, self.memory[tailsym].temporal),
         );
+
+
         Ok(())
     }
 
@@ -3855,9 +4087,8 @@ impl Symbolic {
                 ),
                 ast::Typed {
                     t: ast::Type::Bool,
-                    ptr: Vec::new(),
                     loc: used_here.clone(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 used_here.clone(),
                 Tags::new(),
@@ -3884,9 +4115,8 @@ impl Symbolic {
                 ),
                 ast::Typed {
                     t: ast::Type::Bool,
-                    ptr: Vec::new(),
                     loc: used_here.clone(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 used_here.clone(),
                 Tags::new(),
@@ -4035,12 +4265,22 @@ impl Symbolic {
 
         self.memory[lhs].value = self.memory[rhs].value.clone();
 
-        self.ssa.assign_branch(
-            (lhs, self.memory[lhs].temporal),
-            (rhs, self.memory[rhs].temporal),
-            (lhs, self.memory[lhs].temporal - 1),
-            Self::smt_type(&newtype),
-        );
+        if self.memory[lhs].temporal > 0 {
+            self.ssa.assign_branch(
+                (lhs, self.memory[lhs].temporal),
+                (rhs, self.memory[rhs].temporal),
+                (lhs, self.memory[lhs].temporal - 1),
+                Self::smt_type(&newtype),
+            );
+        } else {
+            // happens if type_coersion creates a new temporary
+            self.ssa.assign(
+                (lhs, self.memory[lhs].temporal),
+                (rhs, self.memory[rhs].temporal),
+                Self::smt_type(&newtype),
+            );
+
+        }
 
         Ok(())
     }
@@ -4058,9 +4298,8 @@ impl Symbolic {
             format!("true"),
             ast::Typed {
                 t: ast::Type::Bool,
-                ptr: Vec::new(),
                 loc: loc.clone(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             loc.clone(),
             Tags::new(),
@@ -4083,9 +4322,8 @@ impl Symbolic {
             format!("true"),
             ast::Typed {
                 t: ast::Type::Bool,
-                ptr: Vec::new(),
                 loc: loc.clone(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             loc.clone(),
             Tags::new(),
@@ -4105,9 +4343,8 @@ impl Symbolic {
             format!("len({})", self.memory[sym].name),
             ast::Typed {
                 t: ast::Type::USize,
-                ptr: Vec::new(),
                 loc: loc.clone(),
-                tail: ast::Tail::None,
+                ..Default::default()
             },
             loc.clone(),
             Tags::new(),
@@ -4134,9 +4371,8 @@ impl Symbolic {
                 format!("{}", name),
                 ast::Typed {
                     t: ast::Type::Other(name.clone()),
-                    ptr: Vec::new(),
                     loc: used_here.clone(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 },
                 used_here.clone(),
                 Tags::new(),

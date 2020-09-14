@@ -206,10 +206,18 @@ impl Solver {
         let tmp_debug = self.var(&tmp);
 
         let theory = &self.theories[&theory];
-        self.solver
-            .borrow_mut()
-            .assert(&format!("(= {} ({} {}) )", tmp_debug, theory, debug_args))
-            .expect(&format!("invocation failed: (= {} ({} {}) )", tmp_debug, theory, debug_args));
+
+        if debug_args.len() > 0 {
+            self.solver
+                .borrow_mut()
+                .assert(&format!("(= {} ({} {}) )", tmp_debug, theory, debug_args))
+                .expect(&format!("invocation failed: (= {} ({} {}) )", tmp_debug, theory, debug_args));
+        } else {
+            self.solver
+                .borrow_mut()
+                .assert(&format!("(= {} {})", tmp_debug, theory))
+                .expect(&format!("invocation failed: (= {} {})", tmp_debug, theory));
+        }
         self.checkpoint();
     }
 
@@ -652,10 +660,10 @@ impl Solver {
         };
     }
 
-    pub fn attest(&mut self, lhs: TemporalSymbol, compare: bool) -> bool {
+    pub fn attest(&mut self, lhs: TemporalSymbol, compare_with: bool) -> bool {
         let mut smt = self.var(&lhs);
 
-        if !compare {
+        if !compare_with {
             smt = format!("(not {})", smt);
         }
 

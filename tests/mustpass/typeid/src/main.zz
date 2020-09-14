@@ -1,0 +1,51 @@
+using log;
+
+
+
+export theory bob() type;
+
+struct A {
+}
+
+struct B {
+}
+
+
+export fn callme(void* whatever)
+    where typeof(*whatever) == bob()
+{
+}
+
+export fn main() int {
+
+    static_assert(typeof(A) == typeof(A));
+
+    A a1;
+    A a2;
+
+    static_assert(typeof(a1) == typeof(a2));
+
+
+    static_attest(bob() == typeof(a1));
+
+    static_assert(typeof(a1) == bob());
+    static_assert(typeof(a2) == bob());
+
+    B b1;
+
+    static_assert(typeof(b1) != bob());
+
+
+    callme(&a1);
+
+
+
+    void * a;
+    static_assert(!constrained(typeof(*a)));
+    static_attest(typeof(*a) == bob());
+    static_assert(constrained(typeof(*a)));
+
+
+    log::info("hello %s", "typeof");
+    return 0;
+}

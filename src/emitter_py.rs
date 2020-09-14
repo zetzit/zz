@@ -172,6 +172,8 @@ impl Emitter {
             ast::Type::Bool => "bool".to_string(),
             ast::Type::F32 => "float".to_string(),
             ast::Type::F64 => "double".to_string(),
+            ast::Type::Char => "char".to_string(),
+            ast::Type::Void => "void".to_string(),
             ast::Type::Other(ref n) => {
                 let mut s = self.to_local_name(&n);
                 match &name.tail {
@@ -182,7 +184,7 @@ impl Emitter {
                 }
                 s
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(
@@ -394,7 +396,7 @@ static inline void * pyFATGetPtr(PyObject * obj , char * expected_type) {{
     pub fn emit_enum(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
         let names = match &ast.def {
-            ast::Def::Enum { names } => (names),
+            ast::Def::Enum { names, .. } => (names),
             _ => unreachable!(),
         };
 
@@ -876,6 +878,7 @@ PyTypeObject py_Type_{ln}  = {{
                     | ast::Type::Int
                     | ast::Type::UInt
                     | ast::Type::ISize
+                    | ast::Type::Void
                     | ast::Type::USize => {
                         write!(self.f, "    long long int pass_arg{} = arg{};\n", i, i).unwrap();
                         pycallfmt.push("l");
@@ -886,19 +889,18 @@ PyTypeObject py_Type_{ln}  = {{
                         pycallfmt.push("d");
                         pycallargs.push(format!("pass_arg{}", i));
                     }
+                    ast::Type::Char => {
+                        write!(self.f, "    char pass_arg{} = arg{};\n", i,i).unwrap();
+                        pycallfmt.push("c");
+                        pycallargs.push(format!("pass_arg{}", i));
+                    }
                     ast::Type::Other(ref n) => {
-                        let tname = n.0.last().unwrap();
-                        if tname == "char" {
-                            write!(self.f, "    char pass_arg{} = arg{};\n", i,i).unwrap();
-                            pycallfmt.push("c");
-                            pycallargs.push(format!("pass_arg{}", i));
-                        } else {
-                            unreachable!();
-                        }
+                        unreachable!();
                     }
                     ast::Type::ILiteral
                     | ast::Type::ULiteral
                     | ast::Type::Elided
+                    | ast::Type::Typeid
                     | ast::Type::New => {
                         parser::emit_error(
                             "ICE: untyped literal ended up in emitter",
@@ -1107,7 +1109,8 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
                     | ast::Type::Int
                     | ast::Type::UInt
                     | ast::Type::ISize
-                    | ast::Type::USize => {
+                    | ast::Type::USize
+                    | ast::Type::Void => {
                         write!(self.f, "    long long int arg{} = 0;\n", i).unwrap();
                         parse_tuple_fmt.push("l");
                         parse_tuple_args.push(format!("&arg{}", i));
@@ -1119,14 +1122,15 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
                         parse_tuple_args.push(format!("&arg{}", i));
                         pass_args.push(format!("arg{}", i));
                     }
+                    ast::Type::Char => {
+                        write!(self.f, "    char arg{} = 0;\n", i).unwrap();
+                        parse_tuple_fmt.push("c");
+                        parse_tuple_args.push(format!("&arg{}", i));
+                        pass_args.push(format!("arg{}", i));
+                    }
                     ast::Type::Other(ref n) => {
                         let tname = n.0.last().unwrap();
-                        if tname == "char" {
-                            write!(self.f, "    char arg{} = 0;\n", i).unwrap();
-                            parse_tuple_fmt.push("c");
-                            parse_tuple_args.push(format!("&arg{}", i));
-                            pass_args.push(format!("arg{}", i));
-                        } else if self.closure_types.contains(&self.to_local_typed_name(&arg.typed)) {
+                        if self.closure_types.contains(&self.to_local_typed_name(&arg.typed)) {
                             write!(self.f, "    PyObject * arg{} = 0;\n", i).unwrap();
                             parse_tuple_fmt.push("O");
                             parse_tuple_args.push(format!("&arg{}", i));
@@ -1139,6 +1143,7 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
                     ast::Type::ILiteral
                     | ast::Type::ULiteral
                     | ast::Type::Elided
+                    | ast::Type::Typeid
                     | ast::Type::New => {
                         parser::emit_error(
                             "ICE: untyped literal ended up in emitter",
@@ -1257,9 +1262,8 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
                     write!(self.f, "    double rarg = (double)({});\n", thecall,).unwrap();
                     write!(self.f, "    return PyLong_FromDouble(rarg);\n").unwrap();
                 }
-                ast::Type::Other(ref n) => {
-                    let tname = n.0.last().unwrap();
-                    if tname == "char" && arg.typed.ptr.len() == 0 {
+                ast::Type::Char => {
+                    if arg.typed.ptr.len() == 0 {
                         write!(
                             self.f,
                             "    long long int rarg = (long long int)({});\n",
@@ -1267,10 +1271,23 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
                         )
                         .unwrap();
                         write!(self.f, "    return PyLong_FromLong(rarg);\n").unwrap();
-                    } else if tname == "char" && arg.typed.ptr.len() == 1 {
+                    } else if arg.typed.ptr.len() == 1 {
                         write!(self.f, "    const char * rarg = {};\n", thecall,).unwrap();
                         write!(self.f, "    return PyUnicode_FromString(rarg);\n").unwrap();
-                    } else if n == &Name::from("::ext::<Python.h>::PyObject"){
+                    }
+                }
+                ast::Type::Void => {
+                    write!(self.f, "    void * rarg = (void*)({});\n", thecall,).unwrap();
+                    write!(
+                        self.f,
+                        "    return PyCapsule_New(rarg, \"{}\", 0);\n",
+                        self.to_local_typed_name(&arg.typed)
+                        )
+                    .unwrap();
+                }
+                ast::Type::Other(ref n) => {
+                    let tname = n.0.last().unwrap();
+                    if n == &Name::from("::ext::<Python.h>::PyObject"){
                         write!(self.f, "    return ({});\n", thecall,).unwrap();
                     } else {
                         write!(self.f, "    void * rarg = (void*)({});\n", thecall,).unwrap();
@@ -1282,7 +1299,7 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
                         .unwrap();
                     }
                 }
-                ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+                ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid => {
                     parser::emit_error(
                         "ICE: untyped literal ended up in emitter",
                         &[(
@@ -1299,6 +1316,8 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
 
     pub fn to_c_typed_name(&self, name: &ast::Typed) -> String {
         match name.t {
+            ast::Type::Void => "void".to_string(),
+            ast::Type::Char => "char".to_string(),
             ast::Type::U8 => "uint8_t".to_string(),
             ast::Type::U16 => "uint16_t".to_string(),
             ast::Type::U32 => "uint32_t".to_string(),
@@ -1326,7 +1345,7 @@ static PyObject* py_{}(PyObject *pyself, PyObject *args) {{
                 }
                 s
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(

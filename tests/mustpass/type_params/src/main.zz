@@ -1,0 +1,59 @@
+using log;
+
+
+export struct A {
+
+}
+
+export theory bob(A self) int;
+export theory mop(A self) int;
+
+
+export fn make (A mut new *self)
+    where bob(*self) > 0
+
+{
+}
+
+
+export fn fop(A mut*self)
+    where bob(*self) > 1
+{
+    dop(self);
+}
+
+
+
+export fn dop(A mut*self)
+    where bob(*self) > 1
+{
+}
+
+
+export struct B {
+    A[bob(self) == 3] a;
+}
+
+
+
+export fn main() int {
+
+    //B[mop(self.a) == 3] mut b;
+
+    //log::info("hello %d %d",
+    //    static(mop(b.a)),
+    //    static(bob(b.a))
+    //);
+
+    //b.a.fop();
+
+
+
+    new[bob(self) == 12] a = make();
+    static_assert(bob(a) == 12);
+    a.fop();
+    static_assert(bob(a) == 12);
+
+
+    return 0;
+}

@@ -260,6 +260,8 @@ impl Emitter {
             ast::Type::Bool => "bool".to_string(),
             ast::Type::F32 => "float".to_string(),
             ast::Type::F64 => "double".to_string(),
+            ast::Type::Char => "char".to_string(),
+            ast::Type::Void => "void".to_string(),
             ast::Type::Other(ref n) => {
                 let mut s = self.to_local_name(&n);
                 match &name.tail {
@@ -270,7 +272,7 @@ impl Emitter {
                 }
                 s
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(
@@ -351,10 +353,7 @@ impl Emitter {
                 )
                 .unwrap();
             }
-            ast::Type::Other(ref n) => {
-                //TODO
-            }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(
@@ -363,6 +362,12 @@ impl Emitter {
                     )],
                 );
                 std::process::exit(9);
+            }
+            ast::Type::Other(ref n) => {
+                //TODO
+            }
+            ast::Type::Char | ast::Type::Void => {
+                //TODO
             }
         }
     }
@@ -466,10 +471,13 @@ impl Emitter {
                 )
                 .unwrap();
             }
+            ast::Type::Char | ast::Type::Void => {
+                //TODO
+            }
             ast::Type::Other(ref n) => {
                 //TODO
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(
@@ -645,7 +653,7 @@ impl Emitter {
     pub fn emit_enum(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
         let names = match &ast.def {
-            ast::Def::Enum { names } => (names),
+            ast::Def::Enum { names, .. } => (names),
             _ => unreachable!(),
         };
     }

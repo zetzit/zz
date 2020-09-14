@@ -142,6 +142,8 @@ impl Emitter {
             ast::Type::Bool => "bool".to_string(),
             ast::Type::F32 => "f32".to_string(),
             ast::Type::F64 => "f64".to_string(),
+            ast::Type::Char => "u8".to_string(),
+            ast::Type::Void => "std::ffi::c_void".to_string(),
             ast::Type::Other(ref n) => {
                 if name.ptr.len() != 1 {
                     if n.0[1] == "ext" {
@@ -172,7 +174,7 @@ impl Emitter {
                 s
             }
                 */
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid=> {
                 parser::emit_error(
                     "ICE: untyped ended up in emitter",
                     &[(
@@ -371,7 +373,7 @@ impl Emitter {
     pub fn emit_enum(&mut self, ast: &ast::Local) {
         self.emit_loc(&ast.loc);
         let names = match &ast.def {
-            ast::Def::Enum { names } => (names),
+            ast::Def::Enum { names, .. } => (names),
             _ => unreachable!(),
         };
         let shortname = Name::from(&ast.name).0.last().unwrap().clone();

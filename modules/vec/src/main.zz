@@ -3,9 +3,19 @@ using vec;
 using pool;
 using err;
 
+
+export struct A {
+}
+
+export struct B {
+}
+
 export fn main() int {
 
+
     new+1000 p = pool::make(8);
+
+
     new+0 l = vec::make_with_pool(&p);
 
     err::assert(l.push("hello"));
@@ -18,6 +28,23 @@ export fn main() int {
 
     v = l.items[1];
     log::info(">%.*s<", v.size, v.mem);
+
+
+
+
+
+
+    new[vec::item(self) == typeof(A), +0] l2 = vec::make_with_pool(&p);
+
+
+    A a;
+    l2.push(&a);
+    A a2;
+    l2.push(&a2);
+
+    //B b;
+    //l2.push(&b);
+
 
     return 0;
 }

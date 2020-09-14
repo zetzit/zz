@@ -1,0 +1,6 @@
+using log;
+
+export fn main() int {
+    log::info("hello %d", sizeof(u8));
+    return 0;
+}

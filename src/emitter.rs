@@ -134,6 +134,8 @@ impl Emitter {
 
     pub fn to_local_typed_name(&self, name: &ast::Typed) -> String {
         match name.t {
+            ast::Type::Void => "void".to_string(),
+            ast::Type::Char => "char".to_string(),
             ast::Type::U8 => "uint8_t".to_string(),
             ast::Type::U16 => "uint16_t".to_string(),
             ast::Type::U32 => "uint32_t".to_string(),
@@ -161,7 +163,7 @@ impl Emitter {
                 }
                 s
             }
-            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New => {
+            ast::Type::ILiteral | ast::Type::ULiteral | ast::Type::Elided | ast::Type::New | ast::Type::Typeid => {
                 parser::emit_error(
                     "ICE: untyped literal ended up in emitter",
                     &[(
@@ -578,7 +580,7 @@ impl Emitter {
 
     pub fn emit_enum(&mut self, ast: &ast::Local) {
         let names = match &ast.def {
-            ast::Def::Enum { names } => (names),
+            ast::Def::Enum { names, ..} => (names),
             _ => unreachable!(),
         };
         self.emit_loc(&ast.loc);

@@ -120,9 +120,19 @@ impl Scope {
         }
     }
 
-    pub fn abs(&self, t: &mut ast::Typed, inbody: bool) {
+    pub fn abs(&self,
+        all_modules:     &HashMap<Name, loader::Module>,
+        self_md_name:    &Name,
+        t:               &mut ast::Typed,
+        inbody:          bool
+    ) {
+
         for ptr in &mut t.ptr {
             self.tags(&mut ptr.tags);
+        }
+
+        for expr in &mut t.params {
+            abs_expr(expr, self, true, all_modules, self_md_name);
         }
 
         let name = match &mut t.t {
@@ -185,7 +195,7 @@ impl Scope {
                 return;
             }
 
-            "uint" => {
+            "uint" | "unsigned" => {
                 t.t = ast::Type::UInt;
                 return;
             }
@@ -216,16 +226,19 @@ impl Scope {
                 t.t = ast::Type::F64;
                 return;
             }
-
-            "char" | "void" | "sizeof" | "unsigned" => {
-                let nuname = Name(vec![
-                    String::new(),
-                    "ext".to_string(),
-                    "<stddef.h>".to_string(),
-                    name.to_string(),
-                ]);
-                debug!("  {} => {}", *name, nuname);
-                *name = nuname;
+            "type" => {
+                t.t = ast::Type::Typeid;
+                return;
+            }
+            "void" => {
+                t.t = ast::Type::Void;
+                return;
+            }
+            "char" => {
+                t.t = ast::Type::Char;
+                return;
+            }
+            "sizeof" => {
                 return;
             }
             _ => (),
@@ -525,7 +538,7 @@ fn abs_expr(
             }
         }
         ast::Expression::StructInit { typed, fields, .. } => {
-            scope.abs(typed, inbody);
+            scope.abs(all_modules, self_md_name,typed, inbody);
             for (_, expr) in fields {
                 abs_expr(expr, scope, inbody, all_modules, self_md_name);
             }
@@ -538,11 +551,11 @@ fn abs_expr(
         }
         ast::Expression::Cast { expr, into, .. } => {
             abs_expr(expr, scope, inbody, all_modules, self_md_name);
-            scope.abs(into, inbody);
+            scope.abs(all_modules, self_md_name,into, inbody);
         }
         ast::Expression::Unsafe { expr, into, .. } => {
             abs_expr(expr, scope, inbody, all_modules, self_md_name);
-            scope.abs(into, inbody);
+            scope.abs(all_modules, self_md_name,into, inbody);
         }
         ast::Expression::MemberAccess { lhs, .. } => {
             abs_expr(lhs, scope, inbody, all_modules, self_md_name);
@@ -552,7 +565,7 @@ fn abs_expr(
             abs_expr(rhs, scope, inbody, all_modules, self_md_name);
         }
         ast::Expression::Name(ref mut t) => {
-            scope.abs(t, inbody);
+            scope.abs(all_modules, self_md_name,t, inbody);
             if let ast::Type::Other(ref mut name) = &mut t.t {
                 check_abs_available(
                     name,
@@ -583,10 +596,9 @@ fn abs_expr(
             let mut t = ast::Typed {
                 t: ast::Type::Other(name.clone()),
                 loc: loc.clone(),
-                ptr: Vec::new(),
-                tail: ast::Tail::None,
+                ..Default::default()
             };
-            scope.abs(&mut t, false);
+            scope.abs(all_modules, self_md_name,&mut t, false);
             if let ast::Type::Other(n) = t.t {
                 *name = n;
             } else {
@@ -687,7 +699,7 @@ fn abs_statement(
                     abs_expr(array, &scope, inbody, all_modules, self_md_name);
                 }
             }
-            scope.abs(typed, false);
+            scope.abs(all_modules, self_md_name,typed, false);
             if let ast::Type::Other(ref mut name) = &mut typed.t {
                 check_abs_available(
                     name,
@@ -741,10 +753,9 @@ fn abs_statement(
             let mut t = ast::Typed {
                 t: ast::Type::Other(name.clone()),
                 loc: loc.clone(),
-                ptr: Vec::new(),
-                tail: ast::Tail::None,
+                ..Default::default()
             };
-            scope.abs(&mut t, false);
+            scope.abs(all_modules, self_md_name,&mut t, false);
             if let ast::Type::Other(n) = t.t {
                 *name = n;
             } else {
@@ -782,10 +793,9 @@ fn expand_makro_statements(
                 let mut t = ast::Typed {
                     t: ast::Type::Other(name.clone()),
                     loc: loc.clone(),
-                    ptr: Vec::new(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 };
-                scope.abs(&mut t, false);
+                scope.abs(all_modules, self_md_name,&mut t, false);
                 if let ast::Type::Other(n) = t.t {
                     name = n;
                 } else {
@@ -945,8 +955,7 @@ pub fn abs(
                             typed: ast::Typed {
                                 t: ast::Type::Int,
                                 loc: ast.loc.clone(),
-                                ptr: Vec::new(),
-                                tail: ast::Tail::None,
+                                ..Default::default()
                             },
                             expr: ast::Expression::Literal {
                                 loc: ast.loc.clone(),
@@ -973,14 +982,14 @@ pub fn abs(
         match &mut ast.def {
             ast::Def::Static { typed, expr, .. } => {
                 abs_expr(expr, &scope, false, all_modules, &md.name);
-                scope.abs(typed, false);
+                scope.abs(all_modules, &md.name ,typed, false);
                 if let ast::Type::Other(ref mut name) = &mut typed.t {
                     check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
                 }
             }
             ast::Def::Const { typed, expr, .. } => {
                 abs_expr(expr, &scope, false, all_modules, &md.name);
-                scope.abs(typed, false);
+                scope.abs(all_modules, &md.name,typed, false);
                 if let ast::Type::Other(ref mut name) = &mut typed.t {
                     check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
                 }
@@ -1002,7 +1011,7 @@ pub fn abs(
 
                 scope.push();
                 if let Some(ret) = ret {
-                    scope.abs(&mut ret.typed, false);
+                    scope.abs(all_modules, &md.name,&mut ret.typed, false);
                     if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
                         check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
@@ -1026,7 +1035,7 @@ pub fn abs(
             }
             ast::Def::Closure { ret, args, .. } => {
                 if let Some(ret) = ret {
-                    scope.abs(&mut ret.typed, false);
+                    scope.abs(all_modules, &md.name,&mut ret.typed, false);
                     if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
                         check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
@@ -1037,13 +1046,13 @@ pub fn abs(
             }
             ast::Def::Theory { ret, args, body, .. } => {
                 if let Some(ret) = ret {
-                    scope.abs(&mut ret.typed, false);
+                    scope.abs(all_modules, &md.name,&mut ret.typed, false);
                     if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
                         check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
                     }
                 }
                 for arg in args {
-                    scope.abs(&mut arg.typed, false);
+                    scope.abs(all_modules, &md.name,&mut arg.typed, false);
                     scope.tags(&mut arg.tags);
                     if let ast::Type::Other(ref mut name) = &mut arg.typed.t {
                         check_abs_available(name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
@@ -1056,7 +1065,7 @@ pub fn abs(
             ast::Def::Struct { fields, .. } => {
                 let fieldslen = fields.len();
                 for (i, field) in fields.iter_mut().enumerate() {
-                    scope.abs(&mut field.typed, false);
+                    scope.abs(all_modules, &md.name,&mut field.typed, false);
                     if let ast::Type::Other(ref mut name) = &mut field.typed.t {
                         check_abs_available(
                             name,
@@ -1110,7 +1119,7 @@ pub fn abs(
             }
             ast::Def::Include { needs, .. } => {
                 for (t, _) in needs {
-                    scope.abs(t, false);
+                    scope.abs(all_modules, &md.name,t, false);
                 }
             }
         }
@@ -1119,7 +1128,7 @@ pub fn abs(
     // round three, create ext types
     for import in &mut md.imports {
         for (name, _) in &mut import.needs {
-            scope.abs(name, false);
+            scope.abs(all_modules, &md.name,name, false);
         }
 
         if import.name.0[1] == "ext" {
@@ -1198,7 +1207,7 @@ fn abs_args(
 ) {
     let oargs = std::mem::replace(args, Vec::new());
     for mut arg in oargs {
-        scope.abs(&mut arg.typed, false);
+        scope.abs(all_modules, mdname,&mut arg.typed, false);
         scope.tags(&mut arg.tags);
         if let ast::Type::Other(ref mut name) = &mut arg.typed.t {
             check_abs_available(name, astvis, all_modules, &arg.typed.loc, mdname);
@@ -1234,8 +1243,7 @@ fn abs_args(
                     typed: ast::Typed {
                         t: ast::Type::USize,
                         loc: loc.clone(),
-                        ptr: Vec::new(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     name: s.clone(),
                     tags: tags,

@@ -33,8 +33,6 @@ export fn main() -> int {
 
     A mut a = {0};
     a.a = 3;
-    printf("typeid(a) == %s\n", typeid(a));
-    printf("typeid(a.a) == %s\n", typeid(a.a));
 
     A mut * b = &a;
     static_assert(safe(&a));

@@ -83,13 +83,16 @@ local_i     = {(ident | qident) ~ ( WHITESPACE+  ~ "as" ~ WHITESPACE+ ~ (ident |
 local       = { "{" ~ WHITESPACE* ~ local_i ~ WHITESPACE* ~ ("," ~ WHITESPACE* ~ local_i )* ~ WHITESPACE* ~ ","? ~ WHITESPACE*~ "}" }
 namespace   = ${ ident ~ "::" ~ namespace? }
 
+
+param       = _{ tail | expr }
+params      = !{ "[" ~ (param ~ ",")* ~ param? ~ "]" }
 tail        = ${ "+" ~ (ident | digit*) }
 type_name   = ${ namespace? ~ ident }
 tag_name    = ${ (ident | key_mut | key_unsafe) ~ ("<" ~ expr ~ ">")? }
 ptr         = !{"*"}
 type_part   = _{ (tag_name | ptr ) }
-anon_type   = !{ type_name ~ tail? ~ type_part* }
-type_name_with_tail = ${type_name ~ tail?}
+anon_type   = !{ type_name ~ (tail | params)? ~ type_part* }
+type_name_with_tail = ${type_name ~ ( tail | params)?}
 named_type  = !{ type_name_with_tail ~ named_typei}
 named_typei = _{ type_part  ~ named_typei | ident }
 
@@ -125,17 +128,13 @@ syspath     = @{"<" ~ path ~ ">"}
 localpath   = @{"\"" ~ path ~ "\""}
 
 
-
-
-
-
 testop      = { "==" | "=" | "!=" | "<" | ">" | ">=" | "<=" }
 testfield   = { ident ~ testop ~ expr }
 testcase    = { "test" ~ ident? ~ "{" ~ testfield* ~ "}" }
 
 struct_f    = { named_type  ~ array? ~ ";" }
 struct_c    = _{"{" ~ (doc_comment |  struct_f )* ~ "}" }
-struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail? ~ (key_packed)* ~ macrocall? ~struct_c ~ ";"?}
+struct_d    = { (exported | key_shared )* ~ (key_struct | key_union) ~ ident ~ tail?  ~ (key_packed)* ~ macrocall? ~struct_c ~ ";"?}
 
 constant    = { ( exported | key_shared)? ~ "const"  ~ named_type ~ "=" ~ expr ~ ";"}
 
@@ -318,8 +317,7 @@ macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 
 // file
 
-
-file        = { SOI ~ (struct_d
+top_level_declarations = _{(struct_d
                         | doc_comment
                         | function
                         | closure
@@ -332,5 +330,7 @@ file        = { SOI ~ (struct_d
                         | testcase
                         | imacro
                         | istatic
-                        | NEWLINE )+  ~ EOI}
+                        | NEWLINE )*}
 
+
+file        = { SOI ~ top_level_declarations ~ EOI }

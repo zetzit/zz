@@ -51,7 +51,11 @@ fn p(
     n: &Path,
     stage: &Stage,
 ) -> Result<Module, pest::error::Error<Rule>> {
-    let mut module = Module::default();
+    let (file_str, _) = read_source(n.to_string_lossy().to_string());
+
+    let file = ZZParser::parse(Rule::file , file_str)?;
+
+    let mut module = parse_module(&n.to_string_lossy().to_string(), stage, file)?;
     module.source = n.to_path_buf();
     module.sources.insert(n.canonicalize().unwrap());
     module.name.push(
@@ -60,14 +64,19 @@ fn p(
             .to_string_lossy()
             .into(),
     );
+    Ok(module)
+}
 
-    let n = &n.to_string_lossy().to_string();
-    let (file_str, _) = read_source(n.clone());
+pub(crate) fn parse_module(
+    n: &str,
+    stage: &Stage,
+    mut decl: pest::iterators::Pairs<'static, Rule>,
+) -> Result<Module, pest::error::Error<Rule>>
+{
+    let mut module = Module::default();
 
-    let mut file = ZZParser::parse(Rule::file, file_str)?;
     let mut doccomments = String::new();
-
-    for decl in file.next().unwrap().into_inner() {
+    for decl in decl.next().unwrap().into_inner() {
         match decl.as_rule() {
             Rule::doc_comment => {
                 let mut s = decl.as_str().to_string();
@@ -250,6 +259,7 @@ fn p(
                                 callassert,
                                 calleffect,
                                 callattests: Vec::new(),
+                                argsexpanded: false,
                             },
                         });
                     }
@@ -316,9 +326,13 @@ fn p(
                 let mut name = None;
                 let mut names = Vec::new();
                 let mut loc = None;
+                let mut derives = Vec::new();
 
                 for part in decl {
                     match part.as_rule() {
+                        Rule::macrocall => {
+                            derives.push(parse_derive(n, part));
+                        }
                         Rule::key_shared => {
                             vis = Visibility::Shared;
                         }
@@ -358,7 +372,7 @@ fn p(
                     name: name.unwrap(),
                     vis,
                     loc: loc.unwrap(),
-                    def: Def::Enum { names },
+                    def: Def::Enum { names, derives },
                 });
             }
             Rule::testcase => {
@@ -507,9 +521,8 @@ fn p(
                                 needs.push((
                                     Typed {
                                         t: Type::Other(Name::from(ident.as_str())),
-                                        ptr: Vec::new(),
                                         loc: Location::from_span(n.into(), &ident.as_span()),
-                                        tail: Tail::None,
+                                        ..Default::default()
                                     },
                                     Location::from_span(n.into(), &ident.as_span()),
                                 ));
@@ -707,13 +720,13 @@ pub(crate) fn parse_derive(n: &str, decl: pest::iterators::Pair<'static, Rule>) 
     match decl.as_rule() {
         Rule::macrocall => {}
         _ => {
-            panic!("parse_expr call called with {:?}", decl);
+            panic!("parse_derive call called with {:?}", decl);
         }
     };
     let loc = Location::from_span(n.into(), &decl.as_span());
 
     let mut decl = decl.into_inner();
-    let makro = decl.next().unwrap().as_str().to_string();
+    let makro = decl.next().unwrap().into_inner().next().unwrap().as_str().to_string();
 
     let mut args = Vec::new();
     if let Some(callargs) = decl.next() {
@@ -888,9 +901,8 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed {
                         t: Type::Other(name),
-                        ptr: Vec::new(),
                         loc,
-                        tail: Tail::None,
+                        ..Default::default()
                     })
                 }
                 Rule::expr_to_precedence_2 => parse_expr(n, part),
@@ -911,9 +923,8 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed {
                         t: Type::Other(name),
-                        ptr: Vec::new(),
                         loc,
-                        tail: Tail::None,
+                        ..Default::default()
                     })
                 }
                 Rule::expr => parse_expr(n, part),
@@ -973,9 +984,8 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
             let name = Name::from(expr.as_str());
             Expression::Name(Typed {
                 t: Type::Other(name),
-                ptr: Vec::new(),
                 loc,
-                tail: Tail::None,
+                ..Default::default()
             })
         }
         Rule::string_literal => {
@@ -1025,9 +1035,8 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                     let name = Name::from(part.as_str());
                     Expression::Name(Typed {
                         t: Type::Other(name),
-                        ptr: Vec::new(),
                         loc,
-                        tail: Tail::None,
+                        ..Default::default()
                     })
                 }
                 Rule::expr_to_precedence_2 => parse_expr(n, part),
@@ -1084,10 +1093,9 @@ pub(crate) fn parse_expr_inner(n: &str, expr: pest::iterators::Pair<'static, Rul
                             parse_expr(n, e)
                         } else {
                             Expression::Name(Typed {
-                                t: Type::Other(Name::from(name.as_str())),
-                                ptr: Vec::new(),
-                                loc: Location::from_span(n.into(), &name.as_span()),
-                                tail: Tail::None,
+                                t:      Type::Other(Name::from(name.as_str())),
+                                loc:    Location::from_span(n.into(), &name.as_span()),
+                                ..Default::default()
                             })
                         };
 
@@ -1459,9 +1467,24 @@ pub(crate) fn parse_block(
 
 #[derive(Debug)]
 pub(crate) struct TypedName {
-    name: String,
-    typed: Typed,
-    tags: Tags,
+    name:   String,
+    typed:  Typed,
+    tags:   Tags,
+}
+
+fn parse_named_type_tail(n: &str, decl: pest::iterators::Pair<'static, Rule>) -> Tail {
+    let loc = Location::from_span(n.into(), &decl.as_span());
+    let mut part = decl.as_str().to_string();
+    part.remove(0);
+    if part.len() > 0 {
+        if let Ok(n) = part.parse::<u64>() {
+            return Tail::Static(n, loc);
+        } else {
+            return Tail::Bind(part, loc);
+        }
+    } else {
+        return Tail::Dynamic(None);
+    }
 }
 
 pub(crate) fn parse_named_type(n: &str, decl: pest::iterators::Pair<'static, Rule>) -> TypedName {
@@ -1474,6 +1497,7 @@ pub(crate) fn parse_named_type(n: &str, decl: pest::iterators::Pair<'static, Rul
 
     let loc = Location::from_span(n.into(), &decl.as_span());
 
+    let mut params = Vec::new();
     let mut tail = Tail::None;
 
     //the actual type name is always on the left hand side
@@ -1482,19 +1506,23 @@ pub(crate) fn parse_named_type(n: &str, decl: pest::iterators::Pair<'static, Rul
     let typename = Name::from(lhsdecl.next().unwrap().as_str());
     for lhs in lhsdecl {
         match lhs.as_rule() {
-            Rule::tail => {
-                let loc = Location::from_span(n.into(), &lhs.as_span());
-                let mut part = lhs.as_str().to_string();
-                part.remove(0);
-                if part.len() > 0 {
-                    if let Ok(n) = part.parse::<u64>() {
-                        tail = Tail::Static(n, loc);
-                    } else {
-                        tail = Tail::Bind(part, loc);
+            Rule::params => {
+                for lhs in lhs.into_inner() {
+                    match lhs.as_rule() {
+                        Rule::expr => {
+                            params.push(parse_expr(n, lhs));
+                        }
+                        Rule::tail => {
+                            tail = parse_named_type_tail(n, lhs);
+                        }
+                        e => panic!("unexpected rule {:?} in params", e),
                     }
-                } else {
-                    tail = Tail::Dynamic(None)
                 }
+            }
+            Rule::expr => {
+            }
+            Rule::tail => {
+                tail = parse_named_type_tail(n, lhs);
             }
             e => panic!("unexpected rule {:?} in named_type lhs", e),
         }
@@ -1556,6 +1584,7 @@ pub(crate) fn parse_named_type(n: &str, decl: pest::iterators::Pair<'static, Rul
             loc: loc.clone(),
             ptr,
             tail,
+            params,
         },
         tags,
     }
@@ -1576,10 +1605,35 @@ pub(crate) fn parse_anon_type(n: &str, decl: pest::iterators::Pair<'static, Rule
     let mut tags = Tags::new();
     let mut ptr = Vec::new();
     let mut tail = Tail::None;
+    let mut params = Vec::new();
 
     for part in decl {
         let loc = Location::from_span(n.into(), &part.as_span());
         match part.as_rule() {
+            Rule::params => {
+                for part in part.into_inner() {
+                    match part.as_rule() {
+                        Rule::expr => {
+                            params.push(parse_expr(n, part));
+                        }
+                        Rule::tail => {
+                            let loc = Location::from_span(n.into(), &part.as_span());
+                            let mut part = part.as_str().to_string();
+                            part.remove(0);
+                            if part.len() > 0 {
+                                if let Ok(n) = part.parse::<u64>() {
+                                    tail = Tail::Static(n, loc);
+                                } else {
+                                    tail = Tail::Bind(part, loc);
+                                }
+                            } else {
+                                tail = Tail::Dynamic(None)
+                            }
+                        }
+                        e => panic!("unexpected rule {:?} in params", e),
+                    }
+                }
+            }
             Rule::ptr => {
                 ptr.push(Pointer {
                     tags: std::mem::replace(&mut tags, Tags::new()),
@@ -1633,6 +1687,7 @@ pub(crate) fn parse_anon_type(n: &str, decl: pest::iterators::Pair<'static, Rule
         loc,
         ptr,
         tail,
+        params,
     }
 }
 

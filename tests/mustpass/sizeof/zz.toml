@@ -1,0 +1,13 @@
+[project]
+version = "0.1.0"
+name = "sizeof"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+
+[dependencies]
+mem = "1"
+log = "1"
+
+[repos]

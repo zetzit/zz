@@ -202,9 +202,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Name::from(&d.name),
                     ast::Typed {
                         t: ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr: Vec::new(),
                         loc: d.loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     d.loc.clone(),
                     Tags::new(),
@@ -218,9 +217,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Name::from(&d.name),
                     ast::Typed {
                         t: ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr: Vec::new(),
                         loc: d.loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     d.loc.clone(),
                     Tags::new(),
@@ -263,9 +261,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Name::from(&d.name),
                     ast::Typed {
                         t: ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr: Vec::new(),
                         loc: d.loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     d.loc.clone(),
                     Tags::new(),
@@ -277,9 +274,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Name::from(&d.name),
                     ast::Typed {
                         t: ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr: Vec::new(),
                         loc: d.loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     d.loc.clone(),
                     Tags::new(),
@@ -291,9 +287,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Name::from(&d.name),
                     ast::Typed {
                         t: ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr: Vec::new(),
                         loc: d.loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     d.loc.clone(),
                     Tags::new(),
@@ -305,9 +300,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Name::from(&d.name),
                     ast::Typed {
                         t: ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr: Vec::new(),
                         loc: d.loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     d.loc.clone(),
                     Tags::new(),
@@ -347,9 +341,8 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                     Name::from(&d.name),
                     ast::Typed {
                         t: ast::Type::Other(Name::from(&d.name.clone())),
-                        ptr: Vec::new(),
                         loc: d.loc.clone(),
-                        tail: ast::Tail::None,
+                        ..Default::default()
                     },
                     d.loc.clone(),
                     Tags::new(),
@@ -455,15 +448,13 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                             let loc = farg.typed.ptr[0].loc.clone();
                             let ast_safe = ast::Expression::Name(ast::Typed {
                                 t: ast::Type::Other(Name::from("safe")),
-                                ptr: Vec::new(),
                                 loc: loc.clone(),
-                                tail: ast::Tail::None,
+                                ..Default::default()
                             });
                             let ast_argname = ast::Expression::Name(ast::Typed {
                                 t: ast::Type::Other(Name::from(&farg.name)),
-                                ptr: Vec::new(),
                                 loc: loc.clone(),
-                                tail: ast::Tail::None,
+                                ..Default::default()
                             });
                             let ast_call = ast::Expression::Call {
                                 loc: loc.clone(),
@@ -680,7 +671,9 @@ impl Stack {
                                                     (loc.clone(), "incorrect new argument pointer length".to_string()),
                                                 ]));
                                             }
-                                            let tail = typed.tail.clone();
+                                            let tail    = typed.tail.clone();
+                                            let params  = typed.params.clone();
+
                                             *typed = arg.typed.clone();
                                             typed.ptr = Vec::new();
 
@@ -692,7 +685,9 @@ impl Stack {
                                                         .insert(*f, tvloc.clone());
                                                 }
                                             }
-                                            typed.tail = tail;
+                                            typed.tail   = tail;
+                                            typed.params = params;
+
                                             nuargpos = Some(n);
                                         }
 
@@ -723,9 +718,8 @@ impl Stack {
                                 op: ast::PrefixOperator::AddressOf,
                                 expr: Box::new(ast::Expression::Name(ast::Typed {
                                     t: ast::Type::Other(Name::from(name.as_str())),
-                                    ptr: Vec::new(),
-                                    tail: ast::Tail::None,
                                     loc: loc.clone(),
+                                    ..Default::default()
                                 })),
                             });
                             if nuargpos.unwrap() == 0 {
@@ -883,9 +877,8 @@ impl Stack {
                 op: ast::PrefixOperator::AddressOf,
                 expr: Box::new(ast::Expression::Name(ast::Typed {
                     t: ast::Type::Other(name.clone()),
-                    ptr: Vec::new(),
                     loc: loc.clone(),
-                    tail: ast::Tail::None,
+                    ..Default::default()
                 })),
             };
             //r.extend(self.drop_local(loc, &storage.typed, accesslocal, format!("(&{})", name))?);

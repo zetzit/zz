@@ -5,6 +5,9 @@ using mem;
 using log;
 
 
+export theory item(Vec self) type;
+
+
 export theory integrity(Vec * self) bool (
     len(self->items) == self->capacity &&
     len(self->owned) == self->capacity &&
@@ -112,6 +115,7 @@ fn grow(Vec mut* self) bool
 /// append owned value
 /// returns false if there is no memory left in the pool
 export fn push(Vec mut* self, void+vt * val) bool
+    where !constrained(item(*self)) || typeof(*val) == item(*self)
     where integrity(self)
     model integrity(self)
 {
@@ -120,12 +124,12 @@ export fn push(Vec mut* self, void+vt * val) bool
     static_attest(len(owned_val) == vt);
     mem::copy(val, owned_val, vt);
 
-    let item = slice::slice::Slice {
+    let i = slice::slice::Slice {
          mem: owned_val,
          size: vt,
     };
 
-    if !self->push_i(item, true) {
+    if !self->push_i(i, true) {
         self->pool.free(owned_val);
         return false;
     }
@@ -139,11 +143,11 @@ export fn push_b(Vec mut* self, void+vt * val) bool
     where integrity(self)
     model integrity(self)
 {
-    let item = slice::slice::Slice {
+    let i = slice::slice::Slice {
         mem: val,
         size: vt,
     };
-    return self->push_i(item, false);
+    return self->push_i(i, false);
 }
 
 fn push_i(Vec mut* self, slice::slice::Slice i, bool owned) bool

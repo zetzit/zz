@@ -200,8 +200,7 @@ pub fn sieve(md: &ast::Module) -> Vec<ast::Module> {
                         typed: ast::Typed {
                             t: ast::Type::Int,
                             loc: local.loc.clone(),
-                            ptr: Vec::new(),
-                            tail: ast::Tail::None,
+                            ..Default::default()
                         },
                     }),
                     args: Vec::new(),
@@ -212,6 +211,7 @@ pub fn sieve(md: &ast::Module) -> Vec<ast::Module> {
                     callassert: Vec::new(),
                     calleffect: Vec::new(),
                     callattests: Vec::new(),
+                    argsexpanded: false,
                 };
                 nl.name = "main".to_string();
 
