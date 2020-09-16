@@ -20,9 +20,9 @@ export struct List+ {
 /// create a new list
 ///
 ///     new+1000 l = list::make();
-export fn make(List+lt mut new* self) {
+export fn make(List mut new* self, usize lt = static(len(self->pool.pmem))) {
     mem::zero(self);
-    self->pool.make(sizeof(Item));
+    self->pool.make(sizeof(Item), lt);
 }
 
 /// create a new list with an additional pool
@@ -33,9 +33,9 @@ export fn make(List+lt mut new* self) {
 ///     new+1000 p = pool::make(8);
 ///     new+0 l = list::make_with_pool(&p);
 ///
-export fn make_with_pool(List+lt mut new* self, pool::Pool mut * pool) {
+export fn make_with_pool(List mut new* self, pool::Pool mut * pool, usize lt = static(len(self->pool.pmem))) {
     mem::zero(self);
-    self->pool.make(sizeof(Item));
+    self->pool.make(sizeof(Item), lt);
     self->pool.extra = pool;
 }
 

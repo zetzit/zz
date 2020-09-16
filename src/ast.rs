@@ -5,6 +5,8 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 
+
+#[serde(rename_all = "snake_case")]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Location {
     pub file: String,
@@ -44,9 +46,11 @@ impl std::fmt::Display for Location {
     }
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Tags(pub HashMap<String, HashMap<String, Location>>);
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Storage {
     Static,
@@ -54,6 +58,7 @@ pub enum Storage {
     Atomic,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Visibility {
     Shared,
@@ -61,6 +66,7 @@ pub enum Visibility {
     Export,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Import {
     pub name: Name,
@@ -72,6 +78,7 @@ pub struct Import {
     pub needs: Vec<(Typed, Location)>,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Tail {
     None,
@@ -86,6 +93,7 @@ impl Default for Tail {
     }
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Derive {
     pub loc: Location,
@@ -93,6 +101,7 @@ pub struct Derive {
     pub args: Vec<Box<Expression>>,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Array {
     None,
@@ -100,6 +109,7 @@ pub enum Array {
     Sized(Expression),
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Def {
     Static {
@@ -177,6 +187,7 @@ pub enum Def {
     }
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Local {
     pub name: String,
@@ -186,12 +197,14 @@ pub struct Local {
     pub doc: String,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pointer {
     pub loc: Location,
     pub tags: Tags,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Type {
     Void,
@@ -276,6 +289,7 @@ impl Default for Type {
     }
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Typed {
     pub t:      Type,
@@ -294,7 +308,7 @@ impl std::fmt::Display for Typed {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.t {
             Type::Void => write!(f, "void"),
-            Type::Char => write!(f, "i8"), 
+            Type::Char => write!(f, "char"),
             Type::New => write!(f, "new"),
             Type::Elided => write!(f, "elided"),
             Type::U8 => write!(f, "u8"),
@@ -333,6 +347,7 @@ impl std::fmt::Display for Typed {
     }
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Module {
     pub name: Name,
@@ -342,19 +357,23 @@ pub struct Module {
     pub sources: HashSet<PathBuf>,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnonArg {
     pub typed: Typed,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct NamedArg {
-    pub typed: Typed,
-    pub name: String,
-    pub tags: Tags,
-    pub loc: Location,
+    pub typed:      Typed,
+    pub name:       String,
+    pub tags:       Tags,
+    pub loc:        Location,
+    pub assign:     Option<Expression>,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Field {
     pub typed: Typed,
@@ -364,6 +383,7 @@ pub struct Field {
     pub loc: Location,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum InfixOperator {
     Equals,
@@ -457,6 +477,7 @@ impl InfixOperator {
     }
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PrefixOperator {
     Boolnot,
@@ -467,12 +488,14 @@ pub enum PrefixOperator {
     Deref,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PostfixOperator {
     Increment,
     Decrement,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AssignOperator {
     Bitor,
@@ -482,6 +505,7 @@ pub enum AssignOperator {
     Eq,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EmitBehaviour {
     Default,
@@ -489,6 +513,7 @@ pub enum EmitBehaviour {
     Error { loc: Location, message: String },
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Expression {
     Name(Typed),
@@ -591,6 +616,7 @@ impl Expression {
     }
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Statement {
     Mark {
@@ -663,11 +689,13 @@ pub enum Statement {
     },
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConditionalBlock {
     pub branches: Vec<(Location, Option<Expression>, Block)>,
 }
 
+#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Block {
     pub end: Location,

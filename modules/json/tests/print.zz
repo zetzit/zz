@@ -122,7 +122,7 @@ test _object_in_array {
 
 
 
-fn pop(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p)
+fn pop(json::U *u, err::Err mut *e, json::Parser mut* p)
     where err::checked(*e)
 {
     char mut *k = u->user1;
@@ -133,7 +133,7 @@ fn pop(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p)
     printf("</%s>\n", k);
     free(k);
 }
-fn pretty(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn pretty(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
 {
     usize depth = u->user2;

@@ -5,7 +5,7 @@ using <stdlib.h>::{free};
 
 export fn main() -> int {
     buffer::Buffer+50 mut s = {0};
-    buffer::clear(&s);
+    buffer::make(&s);
 
     for (uint mut i =0; i < 100; i++) {
         buffer::push(&s, ' ');

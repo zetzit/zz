@@ -926,10 +926,15 @@ pub fn abs(
 
 
 
-    // round one, get all local defs
+
+
     let mut working_on_locals = std::mem::replace(&mut md.locals, Vec::new());
     let mut more_locals = Vec::new();
     loop {
+
+
+        // step one, get all local defs into scope
+
         for ast in &mut working_on_locals {
             let mut ns = md.name.clone();
             ns.0.push(ast.name.clone());
@@ -980,6 +985,163 @@ pub fn abs(
             };
         }
 
+
+        // step two, make all dependencies absolute
+        for ast in &mut working_on_locals {
+            match &mut ast.def {
+                ast::Def::Static { typed, expr, .. } => {
+                    abs_expr(expr, &scope, false, all_modules, &md.name);
+                    scope.abs(all_modules, &md.name ,typed, false);
+                    if let ast::Type::Other(ref mut name) = &mut typed.t {
+                        check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
+                    }
+                }
+                ast::Def::Const { typed, expr, .. } => {
+                    abs_expr(expr, &scope, false, all_modules, &md.name);
+                    scope.abs(all_modules, &md.name,typed, false);
+                    if let ast::Type::Other(ref mut name) = &mut typed.t {
+                        check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
+                    }
+                }
+                ast::Def::Function {
+                    ret,
+                    args,
+                    ref mut body,
+                    callassert,
+                    calleffect,
+                    ref mut argsexpanded,
+                    ..
+                } => {
+
+                    for (_,expr, _) in &mut body.branches {
+                        if let Some(expr) = expr {
+                            abs_expr(expr, &scope, false, all_modules, &md.name);
+                        }
+                    }
+
+                    scope.push();
+                    if let Some(ret) = ret {
+                        scope.abs(all_modules, &md.name,&mut ret.typed, false);
+                        if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
+                            check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                        }
+                    }
+
+                    if !*argsexpanded {
+                        abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
+                        *argsexpanded = true;
+                    }
+
+                    for calleffect in calleffect {
+                        abs_expr(calleffect, &scope, true, all_modules, &md.name);
+                    }
+                    for callassert in callassert {
+                        abs_expr(callassert, &scope, true, all_modules, &md.name);
+                    }
+                    for (_,expr,block) in &mut body.branches {
+                        if let Some(expr) = expr {
+                            abs_expr(expr, &scope, false, all_modules, &md.name);
+                        }
+                        abs_block(block, &scope, all_modules, &md.name);
+                    }
+                    scope.pop();
+                }
+                ast::Def::Closure { ret, args, .. } => {
+                    if let Some(ret) = ret {
+                        scope.abs(all_modules, &md.name,&mut ret.typed, false);
+                        if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
+                            check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                        }
+                    }
+                    scope.push();
+                    abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
+                    scope.pop();
+                }
+                ast::Def::Theory { ret, args, body, .. } => {
+                    if let Some(ret) = ret {
+                        scope.abs(all_modules, &md.name,&mut ret.typed, false);
+                        if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
+                            check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
+                        }
+                    }
+                    for arg in args {
+                        scope.abs(all_modules, &md.name,&mut arg.typed, false);
+                        scope.tags(&mut arg.tags);
+                        if let ast::Type::Other(ref mut name) = &mut arg.typed.t {
+                            check_abs_available(name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
+                        }
+                    }
+                    if let Some(body) = body {
+                        abs_expr(body, &scope, true, all_modules, &md.name);
+                    }
+                }
+                ast::Def::Struct { fields, .. } => {
+                    let fieldslen = fields.len();
+                    for (i, field) in fields.iter_mut().enumerate() {
+                        scope.abs(all_modules, &md.name,&mut field.typed, false);
+                        if let ast::Type::Other(ref mut name) = &mut field.typed.t {
+                            check_abs_available(
+                                name,
+                                &ast.vis,
+                                all_modules,
+                                &field.typed.loc,
+                                &md.name,
+                            );
+                        }
+                        if let ast::Array::Sized(ref mut array) = &mut field.array {
+                            abs_expr(array, &scope, false, all_modules, &md.name);
+                        }
+
+                        match field.typed.tail {
+                            ast::Tail::None | ast::Tail::Static(_, _) => {}
+                            ast::Tail::Bind(_, _) | ast::Tail::Dynamic(_) => {
+                                if i != fieldslen - 1 {
+                                    emit_error(
+                                        format!("nested tail must be last field"),
+                                        &[(
+                                            field.loc.clone(),
+                                            format!(
+                                                "field {} is non static tail, but not the last field",
+                                                field.name
+                                            ),
+                                        )],
+                                    );
+                                    std::process::exit(9);
+                                }
+                            }
+                        }
+                    }
+                }
+                ast::Def::Type { ref mut alias, .. } => {
+                    scope.abs(all_modules, &md.name, alias, false);
+                }
+                ast::Def::Symbol { .. } => {}
+                ast::Def::Enum { .. } => {}
+                ast::Def::Macro { body, .. } => {
+                    abs_block(body, &scope, all_modules, &md.name);
+                }
+                ast::Def::Flags { body, .. } => {
+                    for (_,expr,block) in &mut body.branches {
+                        if let Some(expr) = expr {
+                            abs_expr(expr, &scope, false, all_modules, &md.name);
+                        }
+                        abs_block(block, &scope, all_modules, &md.name);
+                    }
+                }
+                ast::Def::Testcase { fields, .. } => {
+                    for (_, expr) in fields {
+                        abs_expr(expr, &scope, false, all_modules, &md.name);
+                    }
+                }
+                ast::Def::Include { needs, .. } => {
+                    for (t, _) in needs {
+                        scope.abs(all_modules, &md.name,t, false);
+                    }
+                }
+            }
+        }
+
+        // step 3, execute any derive macros
         for ast in &mut working_on_locals {
             let mut ns = md.name.clone();
             ns.0.push(ast.name.clone());
@@ -1032,162 +1194,8 @@ pub fn abs(
 
 
 
-    // round two, make all dependencies absolute
-    for ast in &mut md.locals {
-        match &mut ast.def {
-            ast::Def::Static { typed, expr, .. } => {
-                abs_expr(expr, &scope, false, all_modules, &md.name);
-                scope.abs(all_modules, &md.name ,typed, false);
-                if let ast::Type::Other(ref mut name) = &mut typed.t {
-                    check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
-                }
-            }
-            ast::Def::Const { typed, expr, .. } => {
-                abs_expr(expr, &scope, false, all_modules, &md.name);
-                scope.abs(all_modules, &md.name,typed, false);
-                if let ast::Type::Other(ref mut name) = &mut typed.t {
-                    check_abs_available(name, &ast.vis, all_modules, &typed.loc, &md.name);
-                }
-            }
-            ast::Def::Function {
-                ret,
-                args,
-                ref mut body,
-                callassert,
-                calleffect,
-                ref mut argsexpanded,
-                ..
-            } => {
 
-                for (_,expr, _) in &mut body.branches {
-                    if let Some(expr) = expr {
-                        abs_expr(expr, &scope, false, all_modules, &md.name);
-                    }
-                }
-
-                scope.push();
-                if let Some(ret) = ret {
-                    scope.abs(all_modules, &md.name,&mut ret.typed, false);
-                    if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
-                        check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
-                    }
-                }
-
-                if !*argsexpanded {
-                    abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
-                    *argsexpanded = true;
-                }
-
-                for calleffect in calleffect {
-                    abs_expr(calleffect, &scope, true, all_modules, &md.name);
-                }
-                for callassert in callassert {
-                    abs_expr(callassert, &scope, true, all_modules, &md.name);
-                }
-                for (_,expr,block) in &mut body.branches {
-                    if let Some(expr) = expr {
-                        abs_expr(expr, &scope, false, all_modules, &md.name);
-                    }
-                    abs_block(block, &scope, all_modules, &md.name);
-                }
-                scope.pop();
-            }
-            ast::Def::Closure { ret, args, .. } => {
-                if let Some(ret) = ret {
-                    scope.abs(all_modules, &md.name,&mut ret.typed, false);
-                    if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
-                        check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
-                    }
-                }
-                scope.push();
-                abs_args(args, &mut scope, &ast.vis, all_modules, &md.name);
-                scope.pop();
-            }
-            ast::Def::Theory { ret, args, body, .. } => {
-                if let Some(ret) = ret {
-                    scope.abs(all_modules, &md.name,&mut ret.typed, false);
-                    if let ast::Type::Other(ref mut name) = &mut ret.typed.t {
-                        check_abs_available(name, &ast.vis, all_modules, &ret.typed.loc, &md.name);
-                    }
-                }
-                for arg in args {
-                    scope.abs(all_modules, &md.name,&mut arg.typed, false);
-                    scope.tags(&mut arg.tags);
-                    if let ast::Type::Other(ref mut name) = &mut arg.typed.t {
-                        check_abs_available(name, &ast.vis, all_modules, &arg.typed.loc, &md.name);
-                    }
-                }
-                if let Some(body) = body {
-                    abs_expr(body, &scope, true, all_modules, &md.name);
-                }
-            }
-            ast::Def::Struct { fields, .. } => {
-                let fieldslen = fields.len();
-                for (i, field) in fields.iter_mut().enumerate() {
-                    scope.abs(all_modules, &md.name,&mut field.typed, false);
-                    if let ast::Type::Other(ref mut name) = &mut field.typed.t {
-                        check_abs_available(
-                            name,
-                            &ast.vis,
-                            all_modules,
-                            &field.typed.loc,
-                            &md.name,
-                        );
-                    }
-                    if let ast::Array::Sized(ref mut array) = &mut field.array {
-                        abs_expr(array, &scope, false, all_modules, &md.name);
-                    }
-
-                    match field.typed.tail {
-                        ast::Tail::None | ast::Tail::Static(_, _) => {}
-                        ast::Tail::Bind(_, _) | ast::Tail::Dynamic(_) => {
-                            if i != fieldslen - 1 {
-                                emit_error(
-                                    format!("nested tail must be last field"),
-                                    &[(
-                                        field.loc.clone(),
-                                        format!(
-                                            "field {} is non static tail, but not the last field",
-                                            field.name
-                                        ),
-                                    )],
-                                );
-                                std::process::exit(9);
-                            }
-                        }
-                    }
-                }
-            }
-            ast::Def::Type { ref mut alias, .. } => {
-                scope.abs(all_modules, &md.name, alias, false);
-            }
-            ast::Def::Symbol { .. } => {}
-            ast::Def::Enum { .. } => {}
-            ast::Def::Macro { body, .. } => {
-                abs_block(body, &scope, all_modules, &md.name);
-            }
-            ast::Def::Flags { body, .. } => {
-                for (_,expr,block) in &mut body.branches {
-                    if let Some(expr) = expr {
-                        abs_expr(expr, &scope, false, all_modules, &md.name);
-                    }
-                    abs_block(block, &scope, all_modules, &md.name);
-                }
-            }
-            ast::Def::Testcase { fields, .. } => {
-                for (_, expr) in fields {
-                    abs_expr(expr, &scope, false, all_modules, &md.name);
-                }
-            }
-            ast::Def::Include { needs, .. } => {
-                for (t, _) in needs {
-                    scope.abs(all_modules, &md.name,t, false);
-                }
-            }
-        }
-    }
-
-    // round three, create ext types
+    // step 4, create ext types
     for import in &mut md.imports {
         for (name, _) in &mut import.needs {
             scope.abs(all_modules, &md.name,name, false);
@@ -1307,9 +1315,10 @@ fn abs_args(
                         loc: loc.clone(),
                         ..Default::default()
                     },
-                    name: s.clone(),
-                    tags: tags,
-                    loc: loc.clone(),
+                    name:   s.clone(),
+                    tags:   tags,
+                    loc:    loc.clone(),
+                    assign: None,
                 });
             }
         }

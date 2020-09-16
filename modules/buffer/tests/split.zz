@@ -31,13 +31,13 @@ test test5 {
 export fn main() -> int {
 
     buffer::Buffer+100 mut a;
-    buffer::clear(&a);
+    buffer::make(&a);
     buffer::fgets(&a, stdin);
 
 
     usize mut iterator = 0;
     buffer::Buffer+100 mut part;
-    buffer::clear(&part);
+    buffer::make(&part);
     while (buffer::split(&a, ':', &iterator, &part)) {
         printf(">%.*s<\n", (int)part.at, part.mem);
         buffer::clear(&part);

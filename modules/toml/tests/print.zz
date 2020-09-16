@@ -83,7 +83,7 @@ test test_array {
 "#
 }
 
-fn pretty(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p, char *k, toml::Value v)
+fn pretty(toml::U * self, err::Err mut *e, toml::Parser mut* p, char *k, toml::Value v)
     where err::checked(*e)
 {
     for (usize mut i = 0; i < self->user2 * 2; i++) {
@@ -122,7 +122,7 @@ fn pretty(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p, char *k, t
     }
 }
 
-fn pop_array(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p)
+fn pop_array(toml::U * self, err::Err mut *e, toml::Parser mut* p)
 {
     for (usize mut i = 0; i < (self->user2 - 1) * 2; i++) {
         printf(" ");
@@ -130,7 +130,7 @@ fn pop_array(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p)
     printf("]\n");
 }
 
-fn pop_object(toml::U * self, err::Err+et mut *e, toml::Parser+pt mut* p)
+fn pop_object(toml::U * self, err::Err mut *e, toml::Parser mut* p)
 {
     for (usize mut i = 0; i < (self->user2  - 1) * 2; i++) {
         printf(" ");

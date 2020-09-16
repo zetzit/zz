@@ -1,5 +1,5 @@
 using <stdio.h>::{printf, snprintf, vsnprintf, fprintf, vfprintf, stderr, FILE};
-using <string.h>::{memset, strncat, strlen};
+using <string.h>::{strncat, strlen};
 using <errno.h>::{errno, strerror};
 using <stdarg.h>::{va_list, va_start, va_end};
 using buffer;
@@ -22,23 +22,25 @@ export struct Err+ {
 };
 
 
-/// create a new error
-export fn make(Err+tail mut new*self)
-    model   checked(*self)
+/// create a new error with tail memory
+export fn make(Err mut new*self, usize tail = static(len(self->trace.mem)))
+    model checked(*self)
 {
     assert(tail > 0);
-    memset(self, 0, sizeof(Err));
-    buffer::clear(&(self->trace));
+    self->error     = 0;
+    self->system    = 0;
+    buffer::make(&self->trace, tail);
     static_attest(checked(*self));
 }
 
 /// ignore any previous errors and reset error state
-export fn ignore(Err+tail mut *self)
+export fn ignore(Err mut *self)
     model checked(*self)
 {
-    assert(tail > 0);
-    memset(self, 0, sizeof(Err));
-    buffer::clear(&self->trace);
+    self->error     = 0;
+    self->system    = 0;
+    static_attest(buffer::integrity(&self->trace));
+    self->trace.clear();
     static_attest(checked(*self));
 }
 
@@ -46,7 +48,7 @@ export fn ignore(Err+tail mut *self)
 ///
 /// returns true if error was set
 export  fn check(
-        Err+tail mut* self,
+        Err mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
@@ -61,14 +63,14 @@ export  fn check(
     return false;
 }
 
-export fn backtrace(Err+tail mut* self, char * unsafe file, char * unsafe scope, usize line)
+export fn backtrace(Err mut* self, char * unsafe file, char * unsafe scope, usize line)
 {
-    static_attest(buffer::integrity(&self->trace, tail));
+    static_attest(buffer::integrity(&self->trace));
     self->trace.format("  - %s:%zu \t%s\n", file, line, scope);
 }
 
 export fn fail_with_errno(
-        Err+tail mut* self,
+        Err mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
@@ -78,18 +80,18 @@ export fn fail_with_errno(
     where   nullterm(fmt)
     model   checked(*self)
 {
-    static_attest(buffer::integrity(&self->trace, tail));
+    static_attest(buffer::integrity(&self->trace));
     self->error  = SystemError;
     self->system = (int)errno;
 
-    if tail > 2 && self->trace.at > 0 {
+    if self->trace.size > 2 && self->trace.at > 0 {
         self->trace.push('\n');
     }
     self->trace.format("%s : ", strerror(errno));
 
     va_list mut vargs;
     va_start(vargs, fmt);
-    static_attest((self->trace).at < tail);
+    static_attest((self->trace).at < self->trace.size);
     self->trace.vformat(fmt, vargs);
     va_end(vargs);
 
@@ -99,7 +101,7 @@ export fn fail_with_errno(
 }
 
 export fn fail_with_system_error(
-        Err+tail mut* self,
+        Err mut* self,
         int merrno,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
@@ -110,18 +112,18 @@ export fn fail_with_system_error(
     where   nullterm(fmt)
     model   checked(*self)
 {
-    static_attest(buffer::integrity(&self->trace, tail));
+    static_attest(buffer::integrity(&self->trace));
     self->error  = SystemError;
     self->system = merrno;
 
-    if tail > 2 && self->trace.at > 0 {
+    if self->trace.size > 2 && self->trace.at > 0 {
         self->trace.push('\n');
     }
     self->trace.format("%s : ", strerror(merrno));
 
     va_list mut vargs;
     va_start(vargs, fmt);
-    static_attest((self->trace).at < tail);
+    static_attest((self->trace).at < self->trace.size);
     self->trace.vformat(fmt, vargs);
     va_end(vargs);
 
@@ -131,7 +133,7 @@ export fn fail_with_system_error(
 }
 
 export fn fail(
-        Err+tail mut* self,
+        Err mut* self,
         usize e,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
@@ -143,10 +145,10 @@ export fn fail(
     where   symbol(e)
     model   checked(*self)
 {
-    static_attest(buffer::integrity(&self->trace, tail));
+    static_attest(buffer::integrity(&self->trace));
     self->error = e;
 
-    if tail > 2 && self->trace.at > 0 {
+    if self->trace.size > 2 && self->trace.at > 0 {
         self->trace.push('\n');
     }
     if symbols::nameof_checked(self->error) == 0 {
@@ -166,7 +168,7 @@ export fn fail(
 }
 
 export fn abort(
-        Err+tail mut* self,
+        Err mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
@@ -184,15 +186,15 @@ export fn abort(
     static_attest(checked(*self));
 }
 
-export fn elog(Err+tail * self)
+export fn elog(Err * self)
 {
-    static_attest(buffer::integrity(&self->trace, tail));
+    static_attest(buffer::integrity(&self->trace));
     log::error("%s\n", self->trace.cstr());
 }
 
-export fn eprintf(Err+tail * self, FILE mut * unsafe out)
+export fn eprintf(Err * self, FILE mut * unsafe out)
 {
-    static_attest(buffer::integrity(&self->trace, tail));
+    static_attest(buffer::integrity(&self->trace));
     fprintf(out, "%s\n", self->trace.cstr());
 }
 
@@ -202,7 +204,7 @@ export fn to_str(
     usize dest_len,
 )
 {
-    static_attest(buffer::integrity(&self->trace, et));
+    static_attest(buffer::integrity(&self->trace));
     snprintf(dest, dest_len, "%s\n", self->trace.cstr());
 }
 
@@ -290,7 +292,7 @@ export fn assert_safe(
 }
 
 export fn fail_with_win32(
-        Err+tail mut* self,
+        Err mut* self,
         char* callsite_source<file>      unsafe file,
         char* callsite_source<function>  unsafe scope,
         usize callsite_source<line>      line,
@@ -302,7 +304,7 @@ export fn fail_with_win32(
     model checked(*self)
     if #(os::defined(os::_WIN32))
 {
-    static_attest(buffer::integrity(&self->trace, tail));
+    static_attest(buffer::integrity(&self->trace));
     self->system = (int)os::GetLastError();
     self->error  = SystemError;
 
@@ -318,7 +320,7 @@ export fn fail_with_win32(
             self->system,
             os::MAKELANGID(os::LANG_NEUTRAL, os::SUBLANG_DEFAULT), 
             buf,
-            tail - as<usize>(strlen(self->trace.mem)),
+            self->trace.size - as<usize>(strlen(self->trace.mem)),
             0
             );
 

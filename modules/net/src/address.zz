@@ -50,8 +50,8 @@ export fn valid(Address * self) -> bool {
 ///  - [2001:4860:4860::8888]:9000
 ///  - [10f::]:9000
 ///  - 2003:fb:ef05:6000:6000:9a6a:dd59:1234
-export fn from_buffer(Address mut new * self, buffer::Buffer+st *s)
-    where buffer::integrity(s, st)
+export fn from_buffer(Address mut new * self, buffer::Buffer *s)
+    where buffer::integrity(s)
 {
     from_str(self, s->mem, s->at);
 }
@@ -245,10 +245,9 @@ export fn from_str_ipv4(Address mut new* self, char *s, usize slen) -> bool
 }
 
 /// append ip address to buffer, excluding port
-export fn ip_to_buffer(Address * self, buffer::Buffer+st mut*to)
-    where   buffer::integrity(to,st)
-    model   buffer::integrity(to,st)
-    where   st>2
+export fn ip_to_buffer(Address * self, buffer::Buffer mut*to)
+    where   buffer::integrity(to)
+    model   buffer::integrity(to)
 {
     OsAddress mut *osa = (OsAddress mut *)self->os;
 
@@ -323,10 +322,9 @@ export fn ip_to_buffer(Address * self, buffer::Buffer+st mut*to)
 }
 
 /// append ip address to buffer, including port
-export fn to_buffer(Address * self, buffer::Buffer+st mut*to)
-    where   buffer::integrity(to,st)
-    model   buffer::integrity(to,st)
-    where   st>2
+export fn to_buffer(Address * self, buffer::Buffer mut*to)
+    where   buffer::integrity(to)
+    model   buffer::integrity(to)
 {
     OsAddress mut *osa = (OsAddress mut *)self->os;
 

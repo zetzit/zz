@@ -10,7 +10,7 @@ test blah {
 
 export fn main() -> int {
     buffer::Buffer+10 mut s;
-    buffer::clear(&s);
+    buffer::make(&s);
 
     buffer::append_cstr(&s, "hello");
     buffer::format(&s, "%d%d%d%d", 2, 3, 66,9);

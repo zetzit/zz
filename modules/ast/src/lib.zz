@@ -172,11 +172,11 @@ export struct Ast+
     pool::Pool+     mut pl;
 }
 
-pub fn from_macro(Ast+t mut new *self)
-    where t > t/64
+pub fn from_macro(Ast mut new *self, usize tail = static(len(self->pl.pmem)))
+    where tail > tail/64
     model(vec::integrity(&self->args))
 {
-    self->pl.make(64);
+    self->pl.make(64, tail);
     self->args.make_with_pool(&self->pl);
     new+1000 e = err::make();
     new+1000 p = json::parser(&e, json::U{

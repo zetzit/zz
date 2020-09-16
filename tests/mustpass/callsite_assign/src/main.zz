@@ -1,0 +1,13 @@
+using log;
+
+
+
+export fn twice(int a , int b = 2 * a) int
+{
+    return b;
+}
+
+export fn main() int {
+    log::info("hello %d", twice(2));
+    return 0;
+}

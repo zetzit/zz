@@ -168,6 +168,7 @@ pub(crate) fn parse_module(
                             attr.insert(part.as_str().into(), loc);
                         }
                         Rule::fn_args => {
+                            let mut last_assign_arg_loc = None;
                             for arg in part.into_inner() {
                                 let argloc = Location::from_span(n.into(), &arg.as_span());
 
@@ -181,12 +182,27 @@ pub(crate) fn parse_module(
                                     }
                                     vararg = true;
                                 } else {
-                                    let TypedName { typed, name, tags } = parse_named_type(n, arg);
+                                    let mut arg = arg.into_inner();
+                                    let TypedName { typed, name, tags } = parse_named_type(n, arg.next().unwrap());
+
+                                    let mut assign = None;
+                                    if let Some(expr) = arg.next() {
+                                        assign = Some(parse_expr(n, expr));
+                                        last_assign_arg_loc = Some(argloc.clone());
+                                    } else if let Some(last) = last_assign_arg_loc {
+                                        emit_error(
+                                            "assign arguments can not be followed by non assign argument".to_string(),
+                                            &[(last, "assign arguments must be last"),
+                                            (argloc, "and cannot be followed by non-assign arguments")],
+                                        );
+                                        std::process::exit(9);
+                                    }
 
                                     args.push(NamedArg {
                                         name,
                                         typed,
                                         tags,
+                                        assign,
                                         loc: argloc,
                                     });
                                 }

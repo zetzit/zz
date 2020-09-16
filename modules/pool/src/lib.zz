@@ -38,7 +38,7 @@ export struct Pool+ {
 /// mypool.alloc(); // get a single block of 10 bytes
 /// mypool.malloc(22); // get a continuous memory span of 22 bytes (less efficient)
 ///
-export fn make(Pool+pt mut new*self, usize mut blocksize)
+export fn make(Pool mut new*self, usize mut blocksize, usize pt = static(len(self->pmem)))
     model continuous(*self)
 {
     mem::zero(self);

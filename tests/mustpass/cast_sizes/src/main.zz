@@ -1,10 +1,19 @@
 using <stdio.h>::{printf};
 
+
+struct A{
+    u64 a;
+}
+
+fn bah(u8 mut *a) {
+    u64 b = 33;
+    *a = (u8)b;
+}
+
 export fn main() -> int {
 
     u8 a = 128;
     static_assert(a != 12);
     static_assert(a == 128);
-
     return 0;
 }

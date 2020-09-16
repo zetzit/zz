@@ -16,7 +16,7 @@ test overflow{
 
 export fn main() -> int {
     buffer::Buffer+50 mut s = {0};
-    buffer::clear(&s);
+    buffer::make(&s);
 
     for (;;) {
         char mut * mut line = 0;

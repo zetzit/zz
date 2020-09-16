@@ -5,9 +5,11 @@ using err;
 
 
 export struct A {
+    int d;
 }
 
 export struct B {
+    int d;
 }
 
 export fn main() int {
@@ -18,16 +20,27 @@ export fn main() int {
 
     new+0 l = vec::make_with_pool(&p);
 
+
+
     err::assert(l.push("hello"));
     err::assert(l.push_b("bob"));
 
 
-    err::assert(l.count == 2);
+
+
+    int ar[2] = {0};
+    err::assert(l.push(ar));
+
+    u8 o = 12;
+    l.push(&o);
+
+    err::assert(l.count == 4);
+
     let mut v = l.items[0];
     log::info(">%.*s<", v.size, v.mem);
-
     v = l.items[1];
     log::info(">%.*s<", v.size, v.mem);
+
 
 
     new[vec::item = A, +0] l2 = vec::make_with_pool(&p);
@@ -35,13 +48,28 @@ export fn main() int {
 
     A a;
     l2.push(&a);
-    A a2;
+    A a2 = A{d:99};
     l2.push(&a2);
+
+    err::assert(l2.count == 2);
+    A * a3 = (A*)l2.get(1);
+    err::assert(a3->d == 99);
 
 
     // must not compile
     //B b;
     //l2.push(&b);
+
+
+    new[vec::item = u64, +1000] l3 = vec::make();
+    u64 val = 9;
+    l3.push(&val);
+    err::assert(l3.count == 1);
+    static_assert(typeof(*l3.get(0)) == typeof(u64));
+    u64 val_back = *((u64*)l3.get(0));
+    err::assert(val_back == val);
+
+
 
 
     return 0;

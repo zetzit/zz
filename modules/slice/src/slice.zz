@@ -59,6 +59,18 @@ export fn make(Slice mut new *self, u8 *mem, usize size)
     static_attest(len(self->mem) == self->size);
 }
 
+export fn from_cstr(char *cs) Slice
+    where nullterm(cs)
+    model integrity(&return)
+{
+    let r = Slice {
+        size : (usize)c_string::strlen(cs) + 1,
+        mem  :  (u8*)cs,
+    };
+    static_attest(integrity(&r));
+    return r;
+}
+
 /// split this slice by a token
 export fn split(Slice *self, u8 token, usize mut *iterator,  Slice new mut *other) -> bool
     where   integrity(self)

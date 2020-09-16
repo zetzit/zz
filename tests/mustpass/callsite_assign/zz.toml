@@ -1,0 +1,13 @@
+[project]
+version = "0.1.0"
+name = "callsite_assign"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+
+[dependencies]
+log = "1"
+mem = "1"
+
+[repos]

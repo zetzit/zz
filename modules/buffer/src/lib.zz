@@ -10,45 +10,83 @@ using <string.h>::{memset};
 /// a byte buffer, with guaranted terminating null byte
 export struct Buffer+ {
     usize   at;
+    usize   size;
     char    mem[];
 }
 
-pub theory integrity(Buffer*self, usize tail) -> bool
+pub theory integrity(Buffer*self) -> bool
 (
     safe(self)
-    && len(self->mem) >= tail
+    && len(self->mem) >= self->size
     && self->at < len(self->mem)
+    && self->at < self->size
     && nullterm(self->mem)
 )
 
 /// make an empty buffer
-export fn make(Buffer+tail mut new* self)
+export fn make(Buffer mut new* self, usize tail = static(len(self->mem)))
     where tail > 0
-    model integrity(self, tail)
+    model integrity(self)
+    model self->size == tail
 {
-    clear(self)
+    self->size = tail;
+    self->at = 0;
+    mem::set(self->mem, 0, self->size);
+    static_attest(nullterm(self->mem));
 }
 
+/// make a buffer by copying a c string
+export fn from_cstr(Buffer new mut* self, char *s, usize tail = static(len(self->mem)))
+    where   tail > 0
+    where   nullterm(s)
+    model   integrity(self)
+{
+    make(self, tail);
+    self->append_cstr(s)
+}
+
+/// make a buffer by copying raw bytes with given len
+export fn from_bytes(Buffer new mut* self, u8* bytes, usize mut inlen, usize tail = static(len(self->mem)))
+    where   tail > 0
+    where   len(bytes) >= inlen
+    model   integrity(self)
+{
+    make(self, tail);
+    self->append_bytes(bytes, inlen);
+}
+
+/// make a buffer by copying a slice
+export fn from_slice(Buffer new mut* self, Slice slice, usize tail = static(len(self->mem)))
+    where   tail > 0
+    where   slicem::slice::integrity(&slice)
+    model   integrity(self)
+{
+    make(self, tail);
+    self->append_slice(slice)
+}
+
+
+
 /// clear the buffer
-export fn clear(Buffer+tail mut new* self)
-    where tail > 0
-    model integrity(self, tail)
+export fn clear(Buffer mut new* self)
+    where integrity(self)
+    model integrity(self)
 {
     self->at = 0;
-    mem::set(self->mem, 0, tail);
+    mem::set(self->mem, 0, self->size);
     static_attest(nullterm(self->mem));
 }
 
 /// length of buffer (excluding null terminator)
-export fn slen(Buffer+tail * self) -> usize
-    where integrity(self, tail)
+export fn slen(Buffer * self) -> usize
+    where integrity(self)
 {
     return self->at;
 }
 
 /// buffer as null terminated c buffer
-export fn cstr(Buffer+tail * self) -> char *
-    where integrity(self, tail)
+export fn cstr(Buffer * self) -> char *
+    where integrity(self)
     model safe(return)
     model nullterm(return)
 {
@@ -56,8 +94,8 @@ export fn cstr(Buffer+tail * self) -> char *
 }
 
 /// create slice pointing to used memory of this buffer, excluding null terminator
-export fn as_slice(Buffer+tail * self) -> Slice
-    where integrity(self, tail)
+export fn as_slice(Buffer * self) -> Slice
+    where integrity(self)
     model slicem::slice::integrity(&return)
 {
     new sl = slicem::slice::make((u8*)self->mem, self->at);
@@ -72,20 +110,20 @@ export fn as_slice(Buffer+tail * self) -> Slice
 /// you need to manually attest that the mutslice does not cause
 /// the last byte to be overwritten and then call static_attest(buffer::integrity(buf))
 ///
-export fn as_mut_slice(Buffer+tail mut * self) -> MutSlice
-    where integrity(self, tail)
+export fn as_mut_slice(Buffer mut * self) -> MutSlice
+    where integrity(self)
     model slicem::mut_slice::integrity(&return)
 {
-    new sl = slicem::mut_slice::make((u8 mut*)self->mem, tail, &self->at);
+    new sl = slicem::mut_slice::make((u8 mut*)self->mem, self->size, &self->at);
     return sl;
 }
 
 /// push a single byte
-export fn push(Buffer+t mut * self, char b) -> bool
-    where   integrity(self, t)
-    model   integrity(self, t)
+export fn push(Buffer mut * self, char b) -> bool
+    where   integrity(self)
+    model   integrity(self)
 {
-    if t < 2 || self->at > t - 2 {
+    if self->size < 2 || self->at > self->size - 2 {
         return false;
     }
 
@@ -98,9 +136,9 @@ export fn push(Buffer+t mut * self, char b) -> bool
 /// remove the last byte
 ///
 /// returns false if buffer was empty
-export fn pop(Buffer+t mut * self) -> bool
-    where   integrity(self, t)
-    model   integrity(self, t)
+export fn pop(Buffer mut * self) -> bool
+    where   integrity(self)
+    model   integrity(self)
 {
     if self->at == 0 {
         return false;
@@ -131,19 +169,19 @@ export fn strlen(char * mut s) -> usize
 /// returns the amount of bytes still left in the tail
 ///
 /// note that one byte is always reserved for null terminator
-export fn available(Buffer+tail *self) -> usize
-    where integrity(self, tail)
-    model return == tail - self->at - 1
-    model return < tail
+export fn available(Buffer *self) -> usize
+    where integrity(self)
+    model return == self->size - self->at - 1
+    model return < self->size
 {
-    return tail - self->at - 1;
+    return self->size - self->at - 1;
 }
 
 /// append a null terminated c buffer
-export fn append_cstr(Buffer+t mut * self, char * cstr)
+export fn append_cstr(Buffer mut * self, char * cstr)
     where   nullterm(cstr)
-    where   integrity(self, t)
-    model   integrity(self, t)
+    where   integrity(self)
+    model   integrity(self)
 {
 
     usize rest = self->available();
@@ -158,10 +196,10 @@ export fn append_cstr(Buffer+t mut * self, char * cstr)
 }
 
 /// append a slice
-export fn append_slice(Buffer+t mut* self, Slice slice)
+export fn append_slice(Buffer mut* self, Slice slice)
     where   slicem::slice::integrity(&slice)
-    where   integrity(self, t)
-    model   integrity(self, t)
+    where   integrity(self)
+    model   integrity(self)
 {
     usize rest = self->available();
     usize mut inlen = slice.size;
@@ -175,10 +213,10 @@ export fn append_slice(Buffer+t mut* self, Slice slice)
 }
 
 /// append raw bytes with given len
-export fn append_bytes(Buffer+t mut* self, u8* bytes, usize mut inlen)
+export fn append_bytes(Buffer mut* self, u8* bytes, usize mut inlen)
     where   len(bytes) >= inlen
-    where   integrity(self, t)
-    model   integrity(self, t)
+    where   integrity(self)
+    model   integrity(self)
 {
     usize rest = self->available();
     if (inlen > rest) {
@@ -191,10 +229,10 @@ export fn append_bytes(Buffer+t mut* self, u8* bytes, usize mut inlen)
 }
 
 /// append formated string with vsnprintf
-export fn format(Buffer+tail mut * self, char *fmt, ...) -> int
+export fn format(Buffer mut * self, char *fmt, ...) -> int
     where   nullterm(fmt)
-    where   integrity(self, tail)
-    model   integrity(self, tail)
+    where   integrity(self)
+    model   integrity(self)
 {
     va_list mut args;
     va_start (args, fmt);
@@ -204,10 +242,10 @@ export fn format(Buffer+tail mut * self, char *fmt, ...) -> int
     return r;
 }
 
-export fn vformat(Buffer+tail mut * self, char *fmt, va_list mut args) -> int
+export fn vformat(Buffer mut * self, char *fmt, va_list mut args) -> int
     where   nullterm(fmt)
-    where   integrity(self, tail)
-    model   integrity(self, tail)
+    where   integrity(self)
+    model   integrity(self)
 {
     usize isfree = self->available();
 
@@ -233,16 +271,18 @@ export fn vformat(Buffer+tail mut * self, char *fmt, va_list mut args) -> int
 }
 
 /// test if this buffer is equal with a c string
-export fn eq_cstr(Buffer+tail* self, char * unsafe b) -> bool
+export fn eq_cstr(Buffer * self, char * unsafe b) -> bool
     where   nullterm(b)
-    where   integrity(self, tail)
+    where   integrity(self)
 {
+    let l1 = strlen(self->mem);
+
     if b == 0 {
         return self->at == 0;
     }
     static_attest(safe(b));
     let l2 = strlen(b);
-    if l2 != self->at {
+    if l2 != l1 {
         return false;
     }
     return mem::eq(self->mem, b, l2);
@@ -267,9 +307,9 @@ export fn cstr_eq(char *unsafe a, char * unsafe b) -> bool
 }
 
 /// test if this buffer begins with some c string
-export fn starts_with_cstr(Buffer+tail* self, char *unsafe a) -> bool
+export fn starts_with_cstr(Buffer * self, char *unsafe a) -> bool
     where   a == 0 || nullterm(a)
-    where   integrity(self, tail)
+    where   integrity(self)
 {
     if a == 0 {
         return self->at == 0;
@@ -283,9 +323,9 @@ export fn starts_with_cstr(Buffer+tail* self, char *unsafe a) -> bool
 }
 
 /// test if self ends with other buffer
-export fn ends_with_cstr(Buffer+tail *self, char *unsafe a) -> bool
+export fn ends_with_cstr(Buffer *self, char *unsafe a) -> bool
     where   a == 0 || nullterm(a)
-    where   integrity(self, tail)
+    where   integrity(self)
 {
     if a == 0 {
         return self->at == 0;
@@ -301,10 +341,10 @@ export fn ends_with_cstr(Buffer+tail *self, char *unsafe a) -> bool
 }
 
 /// append to this buffer by reading a line from a FILE
-export fn fgets(Buffer+tail mut* self, FILE mut * unsafe stream) -> bool
-    where   integrity(self, tail)
+export fn fgets(Buffer mut* self, FILE mut * unsafe stream) -> bool
+    where   integrity(self)
 {
-    char *rr = unsafe<char*>(native::xN_fgets(self->mem + self->at, tail - self->at, stream));
+    char *rr = unsafe<char*>(native::xN_fgets(self->mem + self->at, self->size - self->at, stream));
     if rr == 0 {
         return false;
     }
@@ -317,11 +357,11 @@ export fn fgets(Buffer+tail mut* self, FILE mut * unsafe stream) -> bool
 }
 
 /// append parts of this buffer to other buffer
-export fn substr(Buffer+tail *self, usize from, usize mut size, Buffer+tail2 mut * other)
-    where   integrity(self, tail)
-    where   integrity(other, tail2)
-    model   integrity(self, tail)
-    model   integrity(other, tail2)
+export fn substr(Buffer *self, usize from, usize mut size, Buffer mut * other)
+    where   integrity(self)
+    where   integrity(other)
+    model   integrity(self)
+    model   integrity(other)
 {
     if self->at == 0 {
         return;
@@ -339,11 +379,11 @@ export fn substr(Buffer+tail *self, usize from, usize mut size, Buffer+tail2 mut
     //printf("A len1: %zu, len2: %zu, from: %zu, size: %zu\n",
     //    self->islice.at, other->islice.at, from, size);
 
-    if other->at + size + 1 >= tail2 {
-        if other->at + 1 >= tail2 {
+    if other->at + size + 1 >= other->size {
+        if other->at + 1 >= other->size {
             return;
         }
-        size = tail2 - 1 - other->at;
+        size = other->size - 1 - other->at;
     }
 
 
@@ -355,7 +395,7 @@ export fn substr(Buffer+tail *self, usize from, usize mut size, Buffer+tail2 mut
     }
 
     //TODO i'm not sure what ssa is confused about
-    static_attest(size + other->at < tail2);
+    static_attest(size + other->at < other->size);
 
     unsafe { mem::copy(self->mem + from, other->mem + other->at, size); }
 
@@ -364,13 +404,13 @@ export fn substr(Buffer+tail *self, usize from, usize mut size, Buffer+tail2 mut
 }
 
 /// split this buffer by token and copy the subbuffer into other
-export fn split(Buffer+tail *self, char token, usize mut *iterator, Buffer+tail2 mut new* other) -> bool
-    where   integrity(self, tail)
+export fn split(Buffer *self, char token, usize mut *iterator, Buffer mut new* other, usize tail2 = static(len(other->mem))) -> bool
+    where   integrity(self)
     where   tail2 > 0
-    model   integrity(self, tail)
-    model   integrity(other, tail2)
+    model   integrity(self)
+    model   integrity(other)
 {
-    make(other);
+    make(other, tail2);
 
     usize start = *iterator;
 
@@ -394,32 +434,3 @@ export fn split(Buffer+tail *self, char token, usize mut *iterator, Buffer+tail2
     return true;
 }
 
-/// make a buffer by copying raw bytes with given len
-export fn copy_bytes(Buffer+t new mut* self, u8* bytes, usize mut inlen)
-    where   t > 0
-    where   len(bytes) >= inlen
-    model   integrity(self, t)
-{
-    make(self);
-    self->append_bytes(bytes, inlen);
-}
-
-/// make a buffer by copying a slice
-export fn copy_slice(Buffer+t new mut* self, Slice slice)
-    where   t > 0
-    where   slicem::slice::integrity(&slice)
-    model   integrity(self, t)
-{
-    make(self);
-    self->append_slice(slice)
-}
-
-/// make a buffer by copying a c string
-export fn copy_cstr(Buffer+t new mut* self, char *s)
-    where   t > 0
-    where   nullterm(s)
-    model   integrity(self, t)
-{
-    make(self);
-    self->append_cstr(s)
-}

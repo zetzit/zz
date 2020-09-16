@@ -11,6 +11,7 @@ lflags = []
 err  = "1"
 pool = "1"
 ast  = "1"
+map  = "1"
 
 [variants]
 default = []

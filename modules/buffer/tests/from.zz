@@ -19,9 +19,9 @@ export fn main() -> int {
         static_attest(safe(line));
         static_attest(nullterm(line));
         static_attest(len(line) == (usize) nread);
-        new+50 mut s         = buffer::copy_bytes((u8 *)line, (usize)nread);
-        new+50 mut copy      = buffer::copy_slice(s.as_slice());
-        new+50 mut cstr_copy = buffer::copy_cstr(copy.cstr());
+        new+50 mut s         = buffer::from_bytes((u8 *)line, (usize)nread);
+        new+50 mut copy      = buffer::from_slice(s.as_slice());
+        new+50 mut cstr_copy = buffer::from_cstr(copy.cstr());
         free(line);
         printf("%.*s", s.slen(), s.mem);
         printf("%.*s", copy.slen(), copy.mem);

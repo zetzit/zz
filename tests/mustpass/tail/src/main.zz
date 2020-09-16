@@ -8,6 +8,7 @@ struct Bob+ {
 }
 
 
+// old style generated arg
 fn whutup(Bob+t * bob)
     where t > 10
 {
@@ -16,9 +17,40 @@ fn whutup(Bob+t * bob)
     printf(" the %zu'th integer is %d\n", t-1, x);
 }
 
+// as callsite assign of len
+fn broccoli(Bob * bob, usize t = static(len(bob->b)))
+    where t > 10
+{
+    printf("hello bob and a %zu integers\n", t);
+    int x = (bob->b)[t-1];
+    printf(" the %zu'th integer is %d\n", t-1, x);
+}
+
+// as callsite assign of tailof
+fn yahl(Bob * bob, usize t = static(tailof(*bob)))
+    where t > 10
+{
+    // this would be needed if we did not do type_params_into_ssa earlier
+    //static_attest(t == len(bob->b));
+
+    printf("hello bob and a %zu integers\n", t);
+    int x = (bob->b)[t-1];
+    printf(" the %zu'th integer is %d\n", t-1, x);
+}
+
 export fn main() -> int {
+
     Bob+100 mut b = {0};
+    static_assert(tailof(b) == 100);
+
     (b.b)[99] = 99;
+    static_assert(tailof(b) == 100);
+
+
+
     whutup(&b);
+    broccoli(&b);
+    static_assert(tailof(b) == 100);
+    yahl(&b);
     return 0;
 }

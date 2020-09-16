@@ -42,7 +42,7 @@ test t7{
 
 export fn main() -> int {
     buffer::Buffer+20 mut sub;
-    buffer::clear(&sub);
+    buffer::make(&sub);
 
     char mut * mut line = 0;
     usize mut l = 0;
@@ -54,7 +54,7 @@ export fn main() -> int {
 
 
     buffer::Buffer+20 mut s;
-    buffer::clear(&s);
+    buffer::make(&s);
 
     nread = as<int>(getline(&line, &l, stdin));
     if nread < 1 { return 1; }

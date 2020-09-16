@@ -12,7 +12,7 @@ using <string.h>::{memcpy, strncat};
 
 export symbol ParseError;
 
-fn parse_v_string_array(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_v_string_array(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
 {
     let pl = (pool::Pool mut*)u->user2;
     static_attest(safe(pl));
@@ -39,7 +39,7 @@ fn parse_v_string_array(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, 
     }
 }
 
-fn parse_v(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_v(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -82,7 +82,7 @@ fn parse_v(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json
     }
 }
 
-fn parse_t(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_t(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -94,6 +94,16 @@ fn parse_t(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json
 
     if buffer::cstr_eq(k, "t") {
         switch v.t {
+            json::ValueType::String => {
+                static_attest(safe(v.string));
+                static_attest(nullterm(v.string));
+                char mut * dup = pl->malloc(buffer::strlen(v.string) + 1);
+                memcpy(dup, v.string, buffer::strlen(v.string));
+                arg->v.string = slice::slice::Slice{
+                    mem:    (u8*)dup,
+                    size:   buffer::strlen(v.string) + 1,
+                };
+            }
             json::ValueType::Object => {
                 json::next(p,  e, json::U{
                     it: parse_t_other,
@@ -110,7 +120,7 @@ fn parse_t(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json
     }
 }
 
-fn parse_t_other(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_t_other(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -120,7 +130,7 @@ fn parse_t_other(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k
     let arg = (ast::Expression mut*)u->user1;
     static_attest(safe(arg));
 
-    if buffer::cstr_eq(k, "Other") {
+    if buffer::cstr_eq(k, "other") {
         switch v.t {
             json::ValueType::Array => {
                 json::next(p,  e, json::U{
@@ -138,7 +148,7 @@ fn parse_t_other(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k
     }
 }
 
-fn parse_t_other_value(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_t_other_value(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -183,7 +193,7 @@ fn parse_t_other_value(json::U *u, err::Err+et mut *e, json::Parser+pt mut* p, c
     }
 }
 
-fn parse_expression_infix(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_expression_infix(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -232,7 +242,7 @@ fn parse_expression_infix(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* 
     }
 }
 
-fn parse_expression_call(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_expression_call(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -264,7 +274,7 @@ fn parse_expression_call(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p
 
 }
 
-fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_expression(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -276,7 +286,7 @@ fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, cha
 
     switch v.t {
         json::ValueType::Object => {
-            if buffer::cstr_eq(k, "Literal") {
+            if buffer::cstr_eq(k, "literal") {
                 arg->t = ast::ExpressionType::Literal;
                 json::next(p,  e, json::U{
                     it:parse_v,
@@ -286,7 +296,7 @@ fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, cha
                 if err::check(e) {
                     return;
                 }
-            } else if buffer::cstr_eq(k, "LiteralString") {
+            } else if buffer::cstr_eq(k, "literal_string") {
                 arg->t = ast::ExpressionType::LiteralString;
                 json::next(p,  e, json::U{
                     it:     parse_v,
@@ -296,7 +306,7 @@ fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, cha
                 if err::check(e) {
                     return;
                 }
-            } else if buffer::cstr_eq(k, "Name") {
+            } else if buffer::cstr_eq(k, "name") {
                 arg->t = ast::ExpressionType::Name;
                 json::next(p,  e, json::U{
                     it:     parse_t,
@@ -306,7 +316,7 @@ fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, cha
                 if err::check(e) {
                     return;
                 }
-            } else if buffer::cstr_eq(k, "Infix") {
+            } else if buffer::cstr_eq(k, "infix") {
                 arg->t = ast::ExpressionType::Infix;
                 arg->v.infix.make_infix_expression(pl);
                 json::next(p,  e, json::U{
@@ -317,7 +327,7 @@ fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, cha
                 if err::check(e) {
                     return;
                 }
-            } else if buffer::cstr_eq(k, "Call") {
+            } else if buffer::cstr_eq(k, "call") {
                 arg->t = ast::ExpressionType::Call;
                 arg->v.call.make_call_expression(pl);
                 json::next(p,  e, json::U{
@@ -333,13 +343,13 @@ fn parse_expression(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, cha
             }
         }
         default => {
-            err::fail(e, ParseError, "got %s expected Literal | LiteralString ", k);
+            err::fail(e, ParseError, "unable to parse %s ", k);
         }
     }
 }
 
 
-fn parse_arglist(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_arglist(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -378,7 +388,7 @@ fn parse_arglist(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *
 }
 
 
-fn parse_typed_other(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_typed_other(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -413,7 +423,7 @@ fn parse_typed_other(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, ch
     }
 }
 
-fn parse_typed_ptr(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_typed_ptr(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -429,7 +439,7 @@ fn parse_typed_ptr(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char
     }
 }
 
-fn parse_typed_params(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_typed_params(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -462,7 +472,7 @@ fn parse_typed_params(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, c
 }
 
 
-fn parse_typed(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_typed(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -487,7 +497,7 @@ fn parse_typed(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k,
         if err::check(e) {
             return;
         }
-    } else if buffer::cstr_eq(k, "Other") && v.t == json::ValueType::Array {
+    } else if buffer::cstr_eq(k, "other") && v.t == json::ValueType::Array {
         json::next(p,  e, json::U{
             it: parse_typed_other,
             user1: u->user1,
@@ -517,7 +527,7 @@ fn parse_typed(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k,
     }
 }
 
-fn parse_field(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_field(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -551,7 +561,7 @@ fn parse_field(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k,
     }
 }
 
-fn parse_struct_fields(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_struct_fields(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -582,7 +592,7 @@ fn parse_struct_fields(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, 
     }
 }
 
-fn parse_struct(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_struct(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -598,7 +608,7 @@ fn parse_struct(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k
     }
 }
 
-fn parse_enum_name(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_enum_name(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -619,7 +629,7 @@ fn parse_enum_name(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char
     }
 }
 
-fn parse_enum_names(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_enum_names(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -649,7 +659,7 @@ fn parse_enum_names(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, cha
     }
 }
 
-fn parse_enum(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_enum(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -665,7 +675,7 @@ fn parse_enum(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, 
     }
 }
 
-fn parse_typealias(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_typealias(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -687,7 +697,7 @@ fn parse_typealias(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char
     }
 }
 
-fn parse_def(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_def(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -697,7 +707,7 @@ fn parse_def(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, j
     let aa = (ast::Ast mut*)u->user1;
     static_attest(safe(aa));
 
-    if buffer::cstr_eq(k, "Struct") && v.t == json::ValueType::Object {
+    if buffer::cstr_eq(k, "struct") && v.t == json::ValueType::Object {
         aa->local.t = ast::DefType::Struct;
         aa->local.v.dstruct.make_def_struct(pl);
         json::next(p,  e, json::U{
@@ -708,7 +718,7 @@ fn parse_def(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, j
         if err::check(e) {
             return;
         }
-    } else if buffer::cstr_eq(k, "Enum") && v.t == json::ValueType::Object {
+    } else if buffer::cstr_eq(k, "enum") && v.t == json::ValueType::Object {
         aa->local.t = ast::DefType::Enum;
         aa->local.v.denum.make_def_enum(pl);
         json::next(p,  e, json::U{
@@ -719,7 +729,7 @@ fn parse_def(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, j
         if err::check(e) {
             return;
         }
-    } else if buffer::cstr_eq(k, "Type") && v.t == json::ValueType::Object {
+    } else if buffer::cstr_eq(k, "type") && v.t == json::ValueType::Object {
         aa->local.t = ast::DefType::Type;
         aa->local.v.dalias.make_def_alias(pl);
         json::next(p,  e, json::U{
@@ -733,7 +743,7 @@ fn parse_def(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, j
     }
 }
 
-fn parse_local(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+fn parse_local(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
@@ -762,7 +772,7 @@ fn parse_local(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k,
     }
 }
 
-pub fn parse_doc(json::U *u,  err::Err+et mut *e, json::Parser+pt mut* p, char *k, json::Value v)
+pub fn parse_doc(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
     where err::checked(*e)
     where nullterm(k)
 {
