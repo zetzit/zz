@@ -1,0 +1,29 @@
+using log;
+
+
+struct  A{
+    int dummy;
+};
+
+
+
+export fn blah(void *x ) {
+    static_attest(typeof(*x) == typeof(void));
+    static_assert(typeof(*x) == typeof(void));
+
+    A mut *a = (A mut *)x;
+    static_attest(safe(a));
+    a->dummy = 3;
+
+    static_assert(typeof(*a) == typeof(A));
+
+    // TODO once asserted, that's kinda it
+    //static_assert(typeof(*x) == typeof(void));
+
+}
+
+export fn main() int {
+
+    log::info("hello %s", "cast_clears_assigned");
+    return 0;
+}

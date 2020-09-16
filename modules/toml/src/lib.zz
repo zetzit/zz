@@ -35,8 +35,8 @@ enum ParserState {
     PostVal,
 }
 
-export closure Iter      (U *u, err::Err+et mut *e, Parser+pt mut* p, char *k, Value v);
-export closure Pop       (U *u, err::Err+et mut *e, Parser+pt mut* p);
+export closure Iter      (U *u, err::Err mut *e, Parser mut* p, char *k, Value v);
+export closure Pop       (U *u, err::Err mut *e, Parser mut* p);
 
 export struct U {
     Iter    it;
@@ -66,21 +66,21 @@ export struct Parser+ {
     buffer::Buffer+ mut capture;
 }
 
-export fn parser(Parser+tail mut new *self, err::Err+et mut *e, U u)
+export fn parser(Parser mut new *self, err::Err mut *e, U u, usize tail = static(len(self->capture.mem)))
     where err::checked(*e)
     where tail > 1
     where safe(u.it)
 
 {
     memset(self, 0, sizeof(Parser));
-    buffer::clear(&self->capture);
+    buffer::make(&self->capture, tail);
 
     self->line  = 1;
 
     ((self->state)[0]).user   = u;
 }
 
-export fn next(Parser+tail mut*self, err::Err+et mut *e, U u)
+export fn next(Parser mut*self, err::Err mut *e, U u)
     where err::checked(*e)
     where safe(u.it)
 
@@ -100,7 +100,7 @@ export fn next(Parser+tail mut*self, err::Err+et mut *e, U u)
     ((self->state)[self->depth]).user   = u;
 }
 
-export fn close(Parser+tail mut *self, err::Err+et mut *e)
+export fn close(Parser mut *self, err::Err mut *e)
 {
     for (;;) {
         static_attest(self->depth < len(self->state));
@@ -119,12 +119,11 @@ export fn close(Parser+tail mut *self, err::Err+et mut *e)
     }
 }
 
-export fn push(Parser+tail mut *self, err::Err+et mut *e, char *str, usize strlen)
-    @solver("yices2")
+export fn push(Parser mut *self, err::Err mut *e, char *str, usize strlen)
     where err::checked(*e)
     where len(str) >= strlen
-    where tail > 2
 {
+    static_attest(buffer::integrity(&self->capture));
     for (usize mut at = 0; at < strlen; at++) {
         self->col += 1;
 

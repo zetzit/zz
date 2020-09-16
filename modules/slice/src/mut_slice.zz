@@ -20,7 +20,7 @@ pub theory integrity(MutSlice mut*self) -> bool (
 export fn make(MutSlice new mut*self, u8 mut*mem, usize size, usize mut *at)
     where len(mem) >= size
     where safe(at)
-    where *at < size
+    where *at <= size
     model integrity(self)
     model len(mem) == len(self->mem)
     model *at == *self->at

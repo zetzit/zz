@@ -1,0 +1,26 @@
+using log;
+using buffer;
+
+struct A {
+    int a;
+    int b[];
+}
+
+
+
+fn a() {
+    static_attest(buffer::integrity(&stringbuf));
+    stringbuf.push(1);
+}
+
+
+
+static buffer::Buffer+1000 mut stringbuf = {0};
+
+export fn main() int {
+    stringbuf.make();
+
+
+    log::info("hello %s", "tail_of_static");
+    return 0;
+}

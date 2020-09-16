@@ -5,7 +5,8 @@ using err;
 using buffer;
 using mem;
 using slice;
-using vec::{Vec, item};
+using vec;
+using map;
 using vec;
 
 
@@ -27,7 +28,14 @@ struct Window  @json::des::impl()
     bool open;
 }
 
-type WindowList @json::des::impl() = Vec[item = Window];
+struct Person @json::des::impl()
+{
+    u64 seat;
+}
+
+type WindowList @json::des::impl() = vec::Vec[vec::item = Window];
+type IntList    @json::des::impl() = vec::Vec[vec::item = u64];
+type PeopleMap  @json::des::impl() = map::Map[map::key  = char, map::val = Person];
 
 struct Car @json::des::impl()
 {
@@ -36,6 +44,8 @@ struct Car @json::des::impl()
     Engine      engine;
     Window*     sunroof;
     WindowList  windows;
+    IntList     ints;
+    PeopleMap   people;
 }
 
 
@@ -67,16 +77,21 @@ pub fn main() {
             "open": true
         },
         "windows": [
-        {
-            "open": true
-        },
-        {
-            "open": false
-        },
-        {
-            "open": true
-        },
-        ]
+            {
+                "open": true
+            },
+            {
+                "open": false
+            },
+            {
+                "open": true
+            },
+        ],
+        "ints": [1,2,3,4,4,5,6,7,7],
+        "people": {
+            "mum" :     { "seat": 1},
+            "the cat":      { "seat": 2},
+        }
     }"#, &p);
     e.abort();
 
@@ -93,5 +108,14 @@ pub fn main() {
         let window = (Window *)iter.val.mem;
         err::assert_safe(window);
         log::info("car.windows[].open = %d", window->open);
+    }
+    for let mut iter = vec::iter(&car.ints); iter.next(); {
+        u64 v = unsafe<u64>(*(u64 *)iter.val.mem);
+        log::info("car.ints[] = %d", v);
+    }
+    for let mut iter = map::keys(&car.people); iter.next(); {
+        Person *v = (Person*)map::get(&car.people, iter.key.mem, iter.key.size);
+        err::assert_safe(v);
+        log::info("car.people[%s].seat = %d", iter.key.mem, v->seat);
     }
 }

@@ -3,6 +3,7 @@ use super::parser::{self, emit_debug, emit_warn};
 use super::Error;
 use crate::ast;
 use crate::flatten;
+use crate::expand;
 use crate::name::Name;
 use crate::smt::{self, Solver};
 use ast::Tags;
@@ -123,6 +124,8 @@ pub struct Symbolic {
     current_call: Vec<ast::Location>,
     in_loop: bool,
     in_model: bool,
+    in_callassign_body: bool,
+
 
     macros_available: bool,
     incomplete: bool,
@@ -138,6 +141,25 @@ impl Symbolic {
         debug!("~~~~~\nexecuting {}", module.name);
 
         self.current_module_name = module.name.human_name();
+
+
+        // built in types
+        for t in [
+            ast::Type::Void,    ast::Type::U8,
+            ast::Type::U16,     ast::Type::U32, ast::Type::U64,     ast::Type::U128,
+            ast::Type::Char,    ast::Type::I8,  ast::Type::I16,     ast::Type::I32,
+            ast::Type::I64,     ast::Type::I128,ast::Type::Int,     ast::Type::UInt,
+            ast::Type::ISize,   ast::Type::USize,ast::Type::Bool,   ast::Type::F32,
+            ast::Type::F64,     ast::Type::Typeid,
+        ].iter() {
+            let t = ast::Typed {
+                t: t.clone(),
+                loc: ast::Location::builtin(),
+                ..Default::default()
+            };
+            self.alloc(Name::from(&t.to_string()), t, ast::Location::builtin(), Tags::new())?;
+        }
+
 
         // built in len theory
         let sym = self.alloc(
@@ -162,8 +184,8 @@ impl Symbolic {
                     ..Default::default()
                 },
                 name: "array".to_string(),
-                tags: ast::Tags::new(),
                 loc: ast::Location::builtin(),
+                ..Default::default()
             }],
             ret: ast::Typed {
                 t: ast::Type::USize,
@@ -205,6 +227,7 @@ impl Symbolic {
                 name: "pointer".to_string(),
                 tags: ast::Tags::new(),
                 loc: ast::Location::builtin(),
+                ..Default::default()
             }],
             ret: ast::Typed {
                 t: ast::Type::Bool,
@@ -242,6 +265,7 @@ impl Symbolic {
                 name: "cstr".to_string(),
                 tags: ast::Tags::new(),
                 loc: ast::Location::builtin(),
+                ..Default::default()
             }],
             ret: ast::Typed {
                 t: ast::Type::Bool,
@@ -283,6 +307,7 @@ impl Symbolic {
                 name: "cstr".to_string(),
                 tags: ast::Tags::new(),
                 loc: ast::Location::builtin(),
+                ..Default::default()
             }],
             ret: ast::Typed {
                 t: ast::Type::Bool,
@@ -324,6 +349,7 @@ impl Symbolic {
                 name: "pointer".to_string(),
                 tags: ast::Tags::new(),
                 loc: ast::Location::builtin(),
+                ..Default::default()
             }],
             ret: ast::Typed {
                 t: ast::Type::Typeid,
@@ -341,6 +367,53 @@ impl Symbolic {
             smt::Type::Unsigned(64),
         );
         self.builtin.insert("typeof".to_string(), sym);
+
+
+
+
+        // built in tailof theory
+        let sym = self.alloc(
+            Name::from("tailof"),
+            ast::Typed {
+                t: ast::Type::Other(Name::from("theory")),
+                loc: ast::Location::builtin(),
+                ..Default::default()
+            },
+            ast::Location::builtin(),
+            Tags::new(),
+        )?;
+        self.memory[sym].value = Value::Theory {
+            args: vec![ast::NamedArg {
+                typed: ast::Typed {
+                    t: ast::Type::Void,
+                    ptr: vec![ast::Pointer {
+                        tags: ast::Tags::new(),
+                        loc: ast::Location::builtin(),
+                    }],
+                    loc: ast::Location::builtin(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ret: ast::Typed {
+                t: ast::Type::USize,
+                ptr: Vec::new(),
+                loc: ast::Location::builtin(),
+                tail: ast::Tail::None,
+                ..Default::default()
+            },
+            body: None,
+        };
+        self.ssa.theory(
+            sym,
+            vec![smt::Type::Unsigned(64)],
+            "tailof",
+            smt::Type::Unsigned(64),
+        );
+        self.builtin.insert("tailof".to_string(), sym);
+
+
+
 
 
         // built in sizeof
@@ -525,8 +598,8 @@ impl Symbolic {
                     if !tags.contains("mut") {
                         let esym = self.execute_expr(expr)?;
                         self.copy(sym, esym, &d.loc)?;
-                        self.type_params_into_ssa(sym, &d.loc)?;
                     }
+                    self.type_params_into_ssa(sym, &d.loc)?;
                 }
                 ast::Def::Const { typed, expr } => {
                     let sym = self.alloc(
@@ -735,6 +808,7 @@ impl Symbolic {
         self.current_function_name = name.clone();
         self.current_function_model = calleffect.clone();
 
+        let mut argsyms = Vec::new();
         let mut prev: Option<Symbol> = None;
         for i in 0..args.len() {
             let argname = Name::from(&args[i].name);
@@ -744,8 +818,42 @@ impl Symbolic {
                 args[i].loc.clone(),
                 args[i].tags.clone(),
             )?;
+            argsyms.push(sym);
             self.memory[sym].value =
                 Value::Unconstrained(format!("passed by value as {}", argname));
+
+
+            // attest assigned value
+            if let Some(assign) = &args[i].assign {
+                let mut eq = ast::Expression::Infix {
+                    loc: assign.loc().clone(),
+                    lhs: Box::new(ast::Expression::Name(ast::Typed{
+                        loc: args[i].loc.clone(),
+                        t: ast::Type::Other(Name::from(&args[i].name)),
+                        ..Default::default()
+                    })),
+                    rhs: Box::new(assign.clone()),
+                    op: ast::InfixOperator::Equals,
+                };
+
+                let in_model = self.in_model;
+                self.in_model = true;
+                self.in_callassign_body = true;
+                let sym = self.execute_expr(&mut eq)?;
+                self.in_model = in_model;
+                self.in_callassign_body = false;
+
+                if !self.ssa.attest((sym, self.memory[sym].temporal), true) {
+                    return Err(self.trace(
+                        format!("callsite assign broke ssa"),
+                        vec![(
+                            assign.loc().clone(),
+                            format!("there may be conflicting constraints"),
+                        )],
+                    ));
+                }
+            }
+
 
             if args[i].tags.contains("tail") {
                 let prev = match prev {
@@ -880,10 +988,12 @@ impl Symbolic {
                     (sym, self.memory[sym].temporal),
                     self.memory[tmp].t.clone(),
                 );
-            }
+            } // if contains tail
 
             prev = Some(sym);
         }
+
+
 
         for callassert in callassert.iter_mut().chain(callattests.iter_mut()) {
             let sym = self.execute_expr(callassert)?;
@@ -904,6 +1014,19 @@ impl Symbolic {
                         format!("there may be conflicting constraints"),
                     )],
                 ));
+            }
+        }
+
+        //TODO the only use case is in tests/mustpass/tail/src/main.zz / yahl
+        //     not sure if its worth the side effects
+        for i in 0..args.len() {
+            let sym = argsyms[i];
+            if self.memory[sym].typed.ptr.len() > 0  {
+                if let Ok(sym) = self.deref(sym, &args[i].loc) {
+                    self.type_params_into_ssa(sym, &args[i].loc);
+                }
+            } else {
+                self.type_params_into_ssa(sym, &args[i].loc);
             }
         }
 
@@ -940,9 +1063,10 @@ impl Symbolic {
         let mut locs = Vec::new();
 
         for callsite_effect in &mut self.current_function_model.clone() {
+            let in_model = self.in_model;
             self.in_model = true;
             let casym = self.execute_expr(callsite_effect)?;
-            self.in_model = false;
+            self.in_model = in_model;
 
             if self.memory[casym].t != smt::Type::Bool {
                 return Err(self.trace(
@@ -1087,23 +1211,29 @@ impl Symbolic {
             // pointers to structs can be used as pointers to their first field
             // this is valid C, where you would use cast,
             // but we use member access to avoid confusing the prover
-            if let ast::Type::Other(n) = &self.memory[symbol].typed.t {
-                if let Some(ast::Def::Struct { fields, .. }) = self.defs.get(&n) {
+
+            if  (expected_type.t != ast::Type::Void) // if void is expected, anything goes
+                && !self.in_model // not allowed inside models. this creates unexpected side effects
+            {
+                if let ast::Type::Other(n) = &self.memory[symbol].typed.t
+                {
+                    if let Some(ast::Def::Struct { fields, .. }) = self.defs.get(&n) {
 
 
-                    if let Some(field) = fields.get(0) {
-                        if field.typed.t == expected_type.t {
-                            *expr = ast::Expression::UnaryPre {
-                                loc: expr.loc().clone(),
-                                op: ast::PrefixOperator::AddressOf,
-                                expr: Box::new(ast::Expression::MemberAccess {
+                        if let Some(field) = fields.get(0) {
+                            if field.typed.t == expected_type.t {
+                                *expr = ast::Expression::UnaryPre {
                                     loc: expr.loc().clone(),
-                                    lhs: Box::new(expr.clone()),
-                                    op: "->".to_string(),
-                                    rhs: field.name.clone(),
-                                }),
-                            };
-                            symbol = self.execute_expr(expr)?;
+                                    op: ast::PrefixOperator::AddressOf,
+                                    expr: Box::new(ast::Expression::MemberAccess {
+                                        loc: expr.loc().clone(),
+                                        lhs: Box::new(expr.clone()),
+                                        op: "->".to_string(),
+                                        rhs: field.name.clone(),
+                                    }),
+                                };
+                                symbol = self.execute_expr(expr)?;
+                            }
                         }
                     }
                 }
@@ -1173,9 +1303,18 @@ impl Symbolic {
             return Ok((self.memory[a].typed.clone(), a, b));
         }
 
-        // if the lhs is a typeid and the rhs is a definition
+        // if the lhs is a typeid and the rhs is a definition or builtin
         if self.memory[a].typed.t == ast::Type::Typeid {
-            if let Some(d) = self.defs.get(&self.memory[b].name) {
+            let mut matched = false;
+            if self.defs.get(&self.memory[b].name).is_some() {
+                matched = true;
+            }
+            if let ast::Type::Other(_) = self.memory[b].typed.t {
+            } else {
+                matched = true;
+            }
+
+            if matched {
                 let r = self.literal(
                     here,
                     Value::Integer(parser::Integer::Unsigned(b as u64)),
@@ -1715,8 +1854,73 @@ impl Symbolic {
         callloc: &ast::Location,
         for_a_theory: bool,
     ) -> Result<(), Error> {
+
+        let mut has_assign_argument = false;
+        if called.len() < defined.len() {
+            for i in called.len()..defined.len() {
+                if let Some(mut assign) = defined[i].assign.clone() {
+
+
+
+
+                    // hygiene check. making sure expression doesnt capture anything thats not an arg
+                    let mut captured = Vec::new();
+                    for i in 0..called.len() {
+                        captured.push((
+                            Name::from(&defined[i].name),
+                            self.execute_expr(&mut called[i])?,
+                        ))
+                    }
+
+                    let global_only = vec![self.stack[0].clone()];
+                    let stack_original = std::mem::replace(&mut self.stack, global_only);
+
+                    self.push("callsite_assign".to_string());
+                    self.ssa.debug("callsite_assign");
+
+                    for (name, sym) in captured {
+                        self.cur().locals.insert(
+                            name,
+                            sym,
+                        );
+                    }
+
+                    let in_model = self.in_model;
+                    self.in_model = true;
+                    self.execute_expr(&mut assign)?;
+                    self.in_model = in_model;
+
+                    self.ssa.debug("end of callsite_assign");
+                    self.pop();
+                    self.stack = stack_original;
+
+
+
+
+                    for i in 0..called.len() {
+                        expand::replace_named(&mut assign,
+                            &ast::Type::Other(Name::from(&defined[i].name)),
+                            &called[i]
+                        );
+                    }
+
+                    called.push(Box::new(assign));
+                    has_assign_argument = true;
+
+
+                } else {
+                    break;
+                }
+            }
+        }
+
+        //if has_assign_argument {
+        //    return Ok(());
+        //}
+
+
+        // old style generated arguments
         let mut callargs = std::mem::replace(called, Vec::new());
-        // generated arguments
         for i in 0..defined.len() {
             if let Some(cs) = defined[i].tags.get("callsite_source") {
                 let (v, loc) = cs.iter().next().unwrap();
@@ -1973,6 +2177,7 @@ impl Symbolic {
                 ptr:    vec![ast::Pointer{loc:nameloc.clone(), tags: ast::Tags::new()}],
                 ..Default::default()
             },
+            ..Default::default()
         });
 
         let fns = self.temporary(
@@ -2224,7 +2429,7 @@ impl Symbolic {
                 _ => {
                     return Err(self.trace(
                         format!(
-                            "{} is not accessible as struct. it is {}",
+                            "{} is not accessible as struct. it is typeof({})",
                             self.memory[lhs_sym].name, self.memory[lhs_sym].typed
                         ),
                         vec![(loc.clone(), format!("cannot use as struct here"))],
@@ -2400,15 +2605,7 @@ impl Symbolic {
                 )?;
                 Ok(r)
             }
-            ast::Expression::Name(name) => match &name.t {
-                ast::Type::Other(n) => self.name(&n, &name.loc),
-                _ => {
-                    return Err(self.trace(
-                        format!("builtin type '{}' is  not an object", name),
-                        vec![(name.loc.clone(), format!("cannot use builtin here"))],
-                    ));
-                }
-            },
+            ast::Expression::Name(name) => self.name(&Name::from(&name.to_string()), &name.loc),
             ast::Expression::MemberAccess {
                 loc, lhs, rhs, op, ..
             } => {
@@ -2474,7 +2671,7 @@ impl Symbolic {
                 let tmp = self.temporary(
                     format!("literal string \"{}\"", String::from_utf8_lossy(&v)),
                     ast::Typed {
-                        t: ast::Type::U8,
+                        t: ast::Type::Char,
                         loc: loc.clone(),
                         ptr: vec![ast::Pointer {
                             tags: ast::Tags::new(),
@@ -2757,11 +2954,24 @@ impl Symbolic {
                 )?;
 
                 self.memory[tmp].value = self.memory[rhs].value.clone();
+
                 self.ssa.assign(
                     (tmp, self.memory[tmp].temporal),
                     (rhs, self.memory[rhs].temporal),
                     Self::smt_type(into),
                 );
+
+                // if the value was created by a previous deref, cast the value as well.
+                // this is more of a bug compat thing because assigned args force an early eval,
+                // but some existing code relies on deref not happening before cast
+                if let Value::Address(to) = self.memory[tmp].value {
+                    if let Value::Uninitialized = self.memory[to].value {
+                        self.memory[to].typed = into.clone();
+                        self.memory[to].typed.ptr.pop();
+                        self.memory[to].t = Self::smt_type(&self.memory[to].typed);
+                    }
+                }
+
                 Ok(tmp)
             }
             ast::Expression::UnaryPost { expr, op, loc } => {
@@ -3025,8 +3235,7 @@ impl Symbolic {
         match static_name.as_ref().map(|s| s.as_str()) {
             Some("sizeof") => {
                 for arg in args {
-                    // ignore any errors because sizeof(type) is legal
-                    self.execute_expr(arg).ok();
+                    self.execute_expr(arg)?;
                 }
                 let tmp = self.temporary(
                     format!("sizeof"),
@@ -3075,7 +3284,33 @@ impl Symbolic {
                     }
                 }
 
-                // fallthrough means typeof() is done to ssa
+                // typeof() through ssa
+
+                let tmp = self.temporary(
+                    format!("typeof({})", self.memory[sym].name),
+                    ast::Typed {
+                        t: ast::Type::Typeid,
+                        loc: loc.clone(),
+                        ..Default::default()
+                    },
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+                self.memory[tmp].value = Value::Unconstrained(self.memory[tmp].name.to_string());
+
+                let typeofsym = self
+                    .builtin
+                    .get("typeof")
+                    .expect("ICE: typeof theory not built in");
+                self.ssa.meta_invocation(
+                    *typeofsym,
+                    vec![sym],
+                    (tmp, 0),
+                );
+
+                self.current_call.pop();
+                return Ok(tmp);
+
             }
             Some("len") => {
                 if args.len() != 1 {
@@ -3211,7 +3446,9 @@ impl Symbolic {
                 return r;
             }
             Some("static") => {
-                if args.len() != 1 {
+
+
+                if args.len() < 1 {
                     return Err(self.trace(
                         "call argument count mismatch".to_string(),
                         vec![(
@@ -3221,6 +3458,14 @@ impl Symbolic {
                     ));
                 }
                 let sym = self.execute_expr(&mut args[0])?;
+
+                // special case, inside a function body, an assign argument can never be static
+                // but the user may have specified static in the expression to indicate its static
+                // in the callsite
+                if self.in_callassign_body {
+                    self.current_call.pop();
+                    return Ok(sym);
+                }
                 let val = self.ssa.value((sym, self.memory[sym].temporal), |a,model|match a{
                    smt::Assertion::Unsolveable => {
                        Err(self.trace(format!("static is not solveable"), vec![
@@ -3236,7 +3481,31 @@ impl Symbolic {
                    smt::Assertion::Constrained(val) => {
                        Ok(val)
                    }
-               })?;
+                });
+
+                let val = if let Ok(v) = val {
+                    v
+                } else if args.len() > 1 {
+                    let sym = self.execute_expr(&mut args[1])?;
+                    self.ssa.value((sym, self.memory[sym].temporal), |a,model|match a{
+                       smt::Assertion::Unsolveable => {
+                           Err(self.trace(format!("static default value is not solveable"), vec![
+                               (loc.clone(), format!("there may be conflicting constraints"))
+                           ]))
+                       }
+                       smt::Assertion::Unconstrained(_) => {
+                           let mut estack = vec![(loc.clone(),
+                           format!("you may need an if condition or callsite_assert to increase confidence"))];
+                           estack.extend(self.demonstrate(model.as_ref().unwrap(), (sym, self.memory[sym].temporal), 0));
+                           Err(self.trace(format!("static default value is unconstrained"), estack))
+                       }
+                       smt::Assertion::Constrained(val) => {
+                           Ok(val)
+                       }
+                    })?
+                } else {
+                    val?
+                };
 
                 let r = self.literal(
                     loc,
@@ -3267,9 +3536,7 @@ impl Symbolic {
                 let sym = self.execute_expr(&mut args[0])?;
                 let v = self.ssa.value((sym, self.memory[sym].temporal), |a,model|match a{
                    smt::Assertion::Unsolveable => {
-                       Err(self.trace(format!("static is not solveable"), vec![
-                           (loc.clone(), format!("there may be conflicting constraints"))
-                       ]))
+                        Ok(0)
                    }
                    smt::Assertion::Unconstrained(_) => {
                         Ok(0)
@@ -3417,9 +3684,9 @@ impl Symbolic {
                 } else {
                     let tmp = self.temporary(
                         format!(
-                            "interpretation of theory {} over {}",
+                            "{}({})",
                             self.memory[name_sym].name,
-                            debug_arg_names.join(" , ")
+                            debug_arg_names.join(", ")
                         ),
                         ret.clone(),
                         loc.clone(),
@@ -3983,32 +4250,142 @@ impl Symbolic {
     }
 
     fn type_params_into_ssa(&mut self, sym: Symbol, loc: &ast::Location) -> Result<(), Error> {
+        self.ssa.debug(&format!("type_params_into_ssa {}", self.memory[sym].name));
         self.ssa.debug_loc(loc);
 
         self.attached_params_into_ssa(sym,loc)?;
 
 
-        if let Ok(typesym) = self.name(&Name::from(&self.memory[sym].typed.to_string()), loc) {
+        //TODO this creates chaos, because it is applied pre and post cast on a symbol meta
+        //if let Ok(typesym) = self.name(&Name::from(&self.memory[sym].typed.to_string()), loc) {
 
-            let r = self.literal(
-                loc,
-                Value::Integer(parser::Integer::Unsigned(typesym as u64)),
-                ast::Typed {
-                    t: ast::Type::ULiteral,
-                    loc: loc.clone(),
-                    ..Default::default()
-                },
-            )?;
+        //    let r = self.literal(
+        //        loc,
+        //        Value::Integer(parser::Integer::Unsigned(typesym as u64)),
+        //        ast::Typed {
+        //            t: ast::Type::ULiteral,
+        //            loc: loc.clone(),
+        //            ..Default::default()
+        //        },
+        //    )?;
 
-            let typeofsym = self
-                .builtin
-                .get("typeof")
-                .expect("ICE: typeof theory not built in");
-            self.ssa.invocation(
-                *typeofsym,
-                vec![(sym, self.memory[sym].temporal)],
-                (r, self.memory[r].temporal),
-            );
+        //    let typeofsym = self
+        //        .builtin
+        //        .get("typeof")
+        //        .expect("ICE: typeof theory not built in");
+        //    self.ssa.meta_invocation(
+        //        *typeofsym,
+        //        vec![sym],
+        //        (r, self.memory[r].temporal),
+        //    );
+        //}
+
+
+        if self.memory[sym].typed.ptr.len() != 0 {
+            return Ok(());
+        }
+
+
+        let (sized_sym, is_nested) = match &self.memory[sym].typed.t {
+            /// tail of void * equals its len
+            ast::Type::Void => {
+                (Some(sym), false)
+            }
+            ast::Type::Other(n) => match self.defs.get(n) {
+                Some(ast::Def::Struct { fields, .. }) => {
+                    if fields.len() < 1 {
+                        (None, false)
+                    } else {
+                        let field = fields.last().unwrap();
+                        if let ast::Array::Unsized = field.array{
+                            let fieldname = field.name.clone();
+                            (Some(self.member_access(sym, &fieldname, loc)?), false)
+                        } else if let ast::Tail::Dynamic(_) = field.typed.tail {
+                            let fieldname = field.name.clone();
+                            (Some(self.member_access(sym, &fieldname, loc)?), true)
+                        } else {
+                            (None, false)
+                        }
+                    }
+                }
+                o => {
+                    (None, false)
+                }
+            },
+            o => {
+                (None, false)
+            }
+        };
+
+
+        let lensym = self
+            .builtin
+            .get("len")
+            .expect("ICE: len theory not built in")
+            .clone();
+
+        let tailofsym = self
+            .builtin
+            .get("tailof")
+            .expect("ICE: tailof theory not built in")
+            .clone();
+
+        if is_nested {
+            // transfer tailof(tail member) == tailof(obj)
+            if let Some(sized_sym) = &sized_sym {
+                let tmp_transfer = self.temporary(
+                    format!(
+                        "tailof({}) == tailof({})",
+                        self.memory[*sized_sym].name, self.memory[sym].name
+                    ),
+                    ast::Typed {
+                        t: ast::Type::USize,
+                        loc: loc.clone(),
+                        ..Default::default()
+                    },
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+
+                self.ssa.invocation(
+                    tailofsym,
+                    vec![(sym, self.memory[sym].temporal)],
+                    (tmp_transfer, self.memory[tmp_transfer].temporal),
+                );
+                self.ssa.invocation(
+                    tailofsym,
+                    vec![(*sized_sym, self.memory[*sized_sym].temporal)],
+                    (tmp_transfer, self.memory[tmp_transfer].temporal),
+                );
+            }
+        } else {
+            // transfer len(tail member) == tailof(obj)
+            if let Some(sized_sym) = &sized_sym {
+                let tmp_transfer = self.temporary(
+                    format!(
+                        "len({}) == tailof({})",
+                        self.memory[*sized_sym].name, self.memory[sym].name
+                    ),
+                    ast::Typed {
+                        t: ast::Type::USize,
+                        loc: loc.clone(),
+                        ..Default::default()
+                    },
+                    loc.clone(),
+                    Tags::new(),
+                )?;
+
+                self.ssa.invocation(
+                    tailofsym,
+                    vec![(sym, self.memory[sym].temporal)],
+                    (tmp_transfer, self.memory[tmp_transfer].temporal),
+                );
+                self.ssa.invocation(
+                    lensym,
+                    vec![(*sized_sym, self.memory[*sized_sym].temporal)],
+                    (tmp_transfer, self.memory[tmp_transfer].temporal),
+                );
+            }
         }
 
 
@@ -4039,45 +4416,20 @@ impl Symbolic {
             }
         };
 
-        self.ssa.debug_loc(loc);
-
-        let sized_sym = match &self.memory[sym].typed.t {
-            /// tail of void * equals its len
-            ast::Type::Void => {
-                sym
-            }
-            ast::Type::Other(n) => match self.defs.get(n) {
-                Some(ast::Def::Struct { fields, .. }) => {
-                    if fields.len() < 1 {
-                        return Err(self.trace(
-                            format!("tail binding on struct with no members"),
-                            vec![(loc.clone(), format!("this struct must have members"))],
-                        ));
-                    }
-                    let field_name = fields.last().unwrap().name.clone();
-                    self.member_access(sym, &field_name, loc)?
-                }
-                o => {
-                    return Err(self.trace(
-                        format!("tail value on non struct {:?}", o),
-                        vec![(loc.clone(), format!("cannot emit tail binding to ssa"))],
-                    ));
-                }
-            },
-            o => {
+        let sized_sym = match sized_sym {
+            Some(v) => v,
+            None => {
                 return Err(self.trace(
-                    format!("tail value on non struct {:?}", o),
+                    format!("tail value on non struct"),
                     vec![(loc.clone(), format!("cannot emit tail binding to ssa"))],
                 ));
             }
         };
 
-        let lensym = self
-            .builtin
-            .get("len")
-            .expect("ICE: len theory not built in");
+        self.ssa.debug_loc(loc);
+
         self.ssa.invocation(
-            *lensym,
+            tailofsym,
             vec![(sized_sym, self.memory[sized_sym].temporal)],
             (tailsym, self.memory[tailsym].temporal),
         );
@@ -4179,6 +4531,7 @@ impl Symbolic {
         self.memory[lhs].temporal += 1;
         let tt = self.memory[lhs].temporal;
         self.memory[lhs].assignments.insert(tt, used_here.clone());
+        self.type_params_into_ssa(lhs, used_here)?;
 
         match self.memory[rhs].value.clone() {
             Value::Void => {
@@ -4295,8 +4648,8 @@ impl Symbolic {
                 vec![(
                     used_here.clone(),
                     format!(
-                        "lhs is {} but rhs is {}",
-                        self.memory[lhs].typed, self.memory[rhs].typed
+                        "lhs is {:?} but rhs is {:?}",
+                        self.memory[lhs].t, self.memory[rhs].t
                     ),
                 )],
             ));
@@ -4320,6 +4673,7 @@ impl Symbolic {
             );
 
         }
+
 
         Ok(())
     }
@@ -4450,6 +4804,7 @@ impl Symbolic {
             current_call: Vec::new(),
             in_loop: false,
             in_model: false,
+            in_callassign_body: false,
             macros_available,
             incomplete: false,
         }
@@ -4547,6 +4902,12 @@ impl Symbolic {
                         } else {
                             "false".to_string()
                         }
+                    } else if self.memory[sym.0].typed.t == ast::Type::Typeid {
+                        if let Some(s) = self.memory.get(v as usize) {
+                            format!("tyepof({})", s.name)
+                        } else {
+                            format!("invalid typeid 0x{:x}", v)
+                        }
                     } else {
                         format!("0x{:x}", v)
                     };
@@ -4582,6 +4943,12 @@ impl Symbolic {
                             "true".into()
                         } else {
                             "false".into()
+                        }
+                    } else if self.memory[sym.0].typed.t == ast::Type::Typeid {
+                        if let Some(s) = self.memory.get(v as usize) {
+                            format!("tyepof({})", s.name)
+                        } else {
+                            format!("invalid typeid 0x{:x}", v)
                         }
                     } else {
                         format!("0x{:x}", v)

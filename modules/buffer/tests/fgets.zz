@@ -20,7 +20,7 @@ test limiter {
 
 pub fn main() -> int {
     buffer::Buffer+10 mut s = {0};
-    buffer::clear(&s);
+    buffer::make(&s);
     if !buffer::fgets(&s, stdin) {
         return 2;
     }

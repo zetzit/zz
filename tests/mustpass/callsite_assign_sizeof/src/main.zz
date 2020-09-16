@@ -1,0 +1,28 @@
+using log;
+using err;
+
+fn dump(void * obj, usize expect, usize actual = sizeof(*obj))
+{
+    log::info("dumping object of size %d", actual);
+    err::assert(expect == actual);
+}
+
+struct A {
+    u64 dummy;
+    u64 b[];
+}
+
+export fn main() int {
+
+    u8 a;
+    dump(&a, 1);
+
+    A+1000 b;
+    dump(&b, 8008);
+
+
+    dump(&b, 1000, 1000);
+
+    log::info("hello %s", "callsite_assign_sizeof");
+    return 0;
+}

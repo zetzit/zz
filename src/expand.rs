@@ -393,69 +393,10 @@ pub fn expand(module: &mut flatten::Module) -> Result<(), Error> {
                 args,
                 body,
                 callassert,
-                callattests,
-                calleffect,
                 ..
             } => {
                 for farg in args.iter_mut() {
                     if farg.typed.ptr.len() > 0 {
-                        if Name::from(&d.name).0.last() != Some(&"borrow".to_string()) {
-                            if let ast::Type::Other(name) = &farg.typed.t {
-                                if let Some(ast::Def::Struct { impls, .. }) = stack.defs.get(name) {
-                                    if let Some((fnname, _)) = impls.get("borrow") {
-                                        if let Some(ast::Def::Function {
-                                            calleffect: calleffect2,
-                                            callassert: callassert2,
-                                            ..
-                                        }) = stack.defs.get(fnname)
-                                        {
-                                            // borrow where clauses are checked by expression expansion
-                                            // but copy them to the body as asserts
-                                            for effect in callassert2 {
-                                                let mut effect = effect.clone();
-                                                replace_named(
-                                                    &mut effect,
-                                                    &ast::Type::Other(Name::from("self")),
-                                                    &ast::Type::Other(Name::from(&farg.name)),
-                                                );
-                                                replace_named(
-                                                    &mut effect,
-                                                    &ast::Type::Other(Name::from("return")),
-                                                    &ast::Type::Other(Name::from(&farg.name)),
-                                                );
-                                                callattests.insert(0, effect.clone());
-                                            }
-
-                                            // functions borrowing something must behave like the  borrow
-                                            for effect in calleffect2 {
-                                                let mut effect = effect.clone();
-                                                replace_named(
-                                                    &mut effect,
-                                                    &ast::Type::Other(Name::from("self")),
-                                                    &ast::Type::Other(Name::from(&farg.name)),
-                                                );
-                                                replace_named(
-                                                    &mut effect,
-                                                    &ast::Type::Other(Name::from("return")),
-                                                    &ast::Type::Other(Name::from(&farg.name)),
-                                                );
-                                                calleffect.insert(0, effect);
-                                            }
-                                        } else {
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // if the function is an attestation of borrow
-                            // make sure we don't expand its args recursively
-                            farg.tags.insert(
-                                "no-borrow-expand".to_string(),
-                                String::new(),
-                                ast::Location::builtin(),
-                            );
-                        }
-
                         // safe is implicit unless the arg is marked unsafe
                         if !farg.tags.contains("unsafe") {
                             let loc = farg.typed.ptr[0].loc.clone();
@@ -900,11 +841,11 @@ impl Stack {
     }
 }
 
-fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewith: &ast::Type) {
+pub fn replace_named(expr: &mut ast::Expression, replacefrom: &ast::Type, replacewith: &ast::Expression ) {
     match expr {
         ast::Expression::Name(ref mut t) => {
             if &t.t == replacefrom {
-                t.t = replacewith.clone();
+                *expr = replacewith.clone();
             }
         }
         ast::Expression::MemberAccess { ref mut lhs, .. } => {

@@ -45,6 +45,8 @@ export fn main() int {
     static_attest(typeof(*a) == bob());
     static_assert(constrained(typeof(*a)));
 
+    static_assert(typeof(u8) == typeof(u8));
+    static_assert(typeof(u8) != typeof(i8));
 
     log::info("hello %s", "typeof");
     return 0;

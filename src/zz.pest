@@ -103,8 +103,10 @@ named_typei = _{ type_part  ~ named_typei | ident }
 macro_ident = ${"@" ~ type_name}
 macrocall   = {macro_ident ~ "(" ~ call_args? ~ ")" }
 fn_attr     = {"inline" | "extern"}
-fn_args     = { named_type ~ ( "," ~ named_type )* ~ ( "," ~ vararg)? ~  ","? }
+fn_arg      = { named_type ~ ( "=" ~ expr)? }
+fn_args     = { fn_arg ~ ( "," ~ fn_arg )* ~ ( "," ~ vararg)? ~  ","? }
 ret_arg     = {"->"? ~ anon_type }
+
 call_assert = {"where" ~ expr }
 call_effect = {"model" ~ expr }
 function    = { ( exported | key_shared)? ~ fn_attr* ~ "fn" ~ ident ~ "(" ~ fn_args? ~")" ~ ret_arg? ~ ( macrocall | call_assert | call_effect)* ~ gblock }

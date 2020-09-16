@@ -221,6 +221,33 @@ impl Solver {
         self.checkpoint();
     }
 
+    // an invocation using a symbol as literal integer rather than value
+    // this is really just for typeof
+    pub fn meta_invocation(&mut self, theory: Symbol, args: Vec<Symbol>, tmp: TemporalSymbol) {
+        let mut debug_args = Vec::new();
+        for arg in &args {
+            debug_args.push(format!("(_ bv{} 64)\n", arg));
+        }
+
+        let debug_args = debug_args.join(" ");
+        let tmp_debug = self.var(&tmp);
+
+        let theory = &self.theories[&theory];
+
+        if debug_args.len() > 0 {
+            self.solver
+                .borrow_mut()
+                .assert(&format!("(= {} ({} {}) )", tmp_debug, theory, debug_args))
+                .expect(&format!("invocation failed: (= {} ({} {}) )", tmp_debug, theory, debug_args));
+        } else {
+            self.solver
+                .borrow_mut()
+                .assert(&format!("(= {} {})", tmp_debug, theory))
+                .expect(&format!("invocation failed: (= {} {})", tmp_debug, theory));
+        }
+        self.checkpoint();
+    }
+
     pub fn declare(&mut self, sym: Symbol, name: &str, typ: Type) {
         let smtname = format!(
             "var{}_{}",

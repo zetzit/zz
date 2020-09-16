@@ -1,0 +1,22 @@
+using log;
+
+
+
+struct A{
+    int dummy;
+};
+
+theory booze(void _) bool;
+
+export type B = A[booze = true];
+
+export fn main() int {
+
+    B mut b;
+    b.dummy = 3;
+
+    static_assert(booze(b));
+
+    log::info("hello %s", "alias");
+    return 0;
+}
