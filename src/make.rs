@@ -145,17 +145,27 @@ impl Make {
             Ok(s) => s.split(" ").map(|s| s.to_string()).collect(),
         };
 
-        let host_cc = std::env::var("CC").unwrap_or("clang".to_string());
+        let mut defaultcc = "gcc".to_string();
+        if which::which("clang").is_ok() {
+            defaultcc = "clang".to_string();
+        }
+
+        let mut defaultcxx = "g++".to_string();
+        if which::which("clang++").is_ok() {
+            defaultcxx = "clang++".to_string();
+        }
+
+        let host_cc = std::env::var("CC").unwrap_or(defaultcc.clone());
 
         let mut cc = std::env::var("TARGET_CC")
             .or(std::env::var("CC"))
-            .unwrap_or("clang".to_string());
+            .unwrap_or(defaultcc.clone());
 
         let host_cxx = std::env::var("CXX").unwrap_or("clang++".to_string());
 
         let mut cxx = std::env::var("TARGET_CXX")
             .or(std::env::var("CXX"))
-            .unwrap_or("clang++".to_string());
+            .unwrap_or(defaultcxx);
 
         if let Some(std) = config.project.std {
             cflags.push(format!("-std={}", std));

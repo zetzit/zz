@@ -649,7 +649,8 @@ pub enum Statement {
         loc: Location,
     },
     Break {
-        loc: Location,
+        loc:    Location,
+        label:  Option<String>,
     },
     Return {
         loc: Location,
@@ -668,10 +669,11 @@ pub enum Statement {
         body: Block,
     },
     For {
-        e1: Vec<Box<Statement>>,
-        e2: Option<Expression>,
-        e3: Vec<Box<Statement>>,
-        body: Block,
+        label:  Option<String>,
+        e1:     Vec<Box<Statement>>,
+        e2:     Option<Expression>,
+        e3:     Vec<Box<Statement>>,
+        body:   Block,
     },
     If {
         branches: Vec<(Location, Option<Expression>, Block)>,

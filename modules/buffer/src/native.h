@@ -7,6 +7,7 @@
     #define HAVE_INTTYPES_H 1
     #include <stdio.h>
     #define xN_fgets        fgets
+    #define xN_fread        fread
     #define xN_vsnprintf    rpl_vsnprintf
 	#define DO_RPL_IMPL 1
 
@@ -25,6 +26,7 @@
 
     #include <stdio.h>
     #define xN_fgets        fgets
+    #define xN_fread        fread
     #define xN_vsnprintf    vsnprintf
 
 #endif

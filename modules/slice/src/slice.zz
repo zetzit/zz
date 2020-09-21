@@ -5,7 +5,7 @@ export struct Slice {
     usize   size;
 }
 
-pub theory integrity(Slice *self) -> bool
+export theory integrity(Slice *self) -> bool
 (
     safe(self->mem)
     && len(self->mem) >= self->size

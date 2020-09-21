@@ -1750,7 +1750,7 @@ impl Symbolic {
                 ast::Statement::Continue { loc } => {
                     return Ok(ScopeReturn::Return(loc.clone()));
                 }
-                ast::Statement::Break { loc } => {
+                ast::Statement::Break { loc,.. } => {
                     return Ok(ScopeReturn::Return(loc.clone()));
                 }
                 ast::Statement::Block(block) => {
@@ -1758,7 +1758,7 @@ impl Symbolic {
                     self.execute_scope(&mut block.statements)?;
                     self.pop();
                 }
-                ast::Statement::For { e1, e2, e3, body } => {
+                ast::Statement::For { e1, e2, e3, body, ..} => {
                     self.push("for loop".to_string());
                     //self.ssa.push("for loop");
 

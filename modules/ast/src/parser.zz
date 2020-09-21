@@ -12,789 +12,341 @@ using <string.h>::{memcpy, strncat};
 
 export symbol ParseError;
 
-fn parse_v_string_array(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let arg = (ast::Expression mut*)u->user1;
-    static_attest(safe(arg));
-
-    if v.t == json::ValueType::Integer {
-
-        usize nulen = arg->v.string.size + 1;
-        char mut * dup = pl->malloc(nulen);
-        if arg->v.string.size > 0 {
-            memcpy(dup, arg->v.string.mem, arg->v.string.size);
-        }
-        unsafe { dup[arg->v.string.size] = v.integer; };
-
-        static_attest(pool::member(arg->v.string.mem, pl));
-        pl->free(arg->v.string.mem);
-
-        arg->v.string = slice::slice::Slice{
-            mem:    (u8*)dup,
-            size:   nulen,
-        };
-    }
-}
-
-fn parse_v(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
+pub fn parse_typed(ast::Ast mut* self, ast::Typed mut *typed, err::Err mut *e, json::Decoder mut*dec)
     where err::checked(*e)
-    where nullterm(k)
 {
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
+    while dec->next(e) {
+        if dec->item == json::Item::String && dec->key.eq_cstr("t") {
+            typed->name = dec->val;
+        } else if dec->item == json::Item::Map && dec->key.eq_cstr("t") {
+            while dec->next(e) {
+                if dec->item == json::Item::Array && dec->key.eq_cstr("other") {
+                    while dec->next(e) {
+                        if dec->item == json::Item::String {
+                            let nulen = typed->name.size + dec->val.size  + 3;
+                            char mut * dup = self->pl.malloc(nulen);
+                            if dup == 0 {
+                                return;
+                            }
+                            static_attest(safe(dup));
+                            if typed->name.mem != 0 {
+                                strncat(dup, (char*)typed->name.mem, typed->name.size);
+                                strncat(dup, "::", 2);
+                            }
+                            strncat(dup, (char*)dec->val.mem, dec->val.size);
 
-    let arg = (ast::Expression mut*)u->user1;
-    static_attest(safe(arg));
-
-    if buffer::cstr_eq(k, "v") {
-        switch v.t {
-            json::ValueType::Array => {
-                arg->v.string = slice::slice::Slice{
-                    mem:    0,
-                    size:   0,
-                };
-                json::next(p,  e, json::U{
-                    it:     parse_v_string_array,
-                    user1:  arg,
-                    user2:  pl,
-                });
-                if err::check(e) {
-                    return;
+                            if typed->name.mem!= 0 {
+                                static_attest(pool::member(typed->name.mem, &self->pl));
+                                self->pl.free(typed->name.mem);
+                            }
+                            typed->name.mem  = (u8*)dup;
+                            typed->name.size = nulen;
+                        } else {
+                            dec->skip(e);
+                        }
+                    }
+                    if err::check(e) { return; }
+                } else {
+                    dec->skip(e);
                 }
             }
-            json::ValueType::String => {
-
-                static_attest(safe(v.string));
-                static_attest(nullterm(v.string));
-                char mut * dup = pl->malloc(buffer::strlen(v.string) + 1);
-                memcpy(dup, v.string, buffer::strlen(v.string));
-                arg->v.string = slice::slice::Slice{
-                    mem:    (u8*)dup,
-                    size:   buffer::strlen(v.string) + 1,
-                };
+            if err::check(e) { return; }
+        } else if dec->item == json::Item::Array && dec->key.eq_cstr("ptr") {
+            while dec->next(e) {
+                static_attest(vec::integrity(&typed->ptr));
+                typed->ptr.push("TODO");
+                dec->skip(e);
             }
-            default => {
-            }
-        }
-    }
-}
-
-fn parse_t(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let arg = (ast::Expression mut*)u->user1;
-    static_attest(safe(arg));
-
-    if buffer::cstr_eq(k, "t") {
-        switch v.t {
-            json::ValueType::String => {
-                static_attest(safe(v.string));
-                static_attest(nullterm(v.string));
-                char mut * dup = pl->malloc(buffer::strlen(v.string) + 1);
-                memcpy(dup, v.string, buffer::strlen(v.string));
-                arg->v.string = slice::slice::Slice{
-                    mem:    (u8*)dup,
-                    size:   buffer::strlen(v.string) + 1,
-                };
-            }
-            json::ValueType::Object => {
-                json::next(p,  e, json::U{
-                    it: parse_t_other,
-                    user1:  (void mut*)arg,
-                    user2:  pl,
-                });
-                if err::check(e) {
-                    return;
+        } else if dec->item == json::Item::Array && dec->key.eq_cstr("params") {
+            while dec->next(e) {
+                if dec->item == json::Item::Map {
+                    let m = (ast::Expression mut *)self->pl.malloc(sizeof(ast::Expression));
+                    if m == 0 {
+                        return;
+                    }
+                    static_attest(safe(m));
+                    m->make_expression(&self->pl);
+                    static_attest(vec::integrity(&typed->params));
+                    typed->params.push_b(m);
+                    parse_expression(self, m, e, dec);
+                } else {
+                    dec->skip(e);
                 }
             }
-            default => {
-            }
+        } else {
+            dec->skip(e);
         }
     }
 }
 
-fn parse_t_other(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
+pub fn parse_expression_infix(ast::Ast mut* self, ast::InfixExpression mut *arg, err::Err mut *e, json::Decoder mut*dec)
     where err::checked(*e)
-    where nullterm(k)
 {
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let arg = (ast::Expression mut*)u->user1;
-    static_attest(safe(arg));
-
-    if buffer::cstr_eq(k, "other") {
-        switch v.t {
-            json::ValueType::Array => {
-                json::next(p,  e, json::U{
-                    it:         parse_t_other_value,
-                    user1:      (void mut*)arg,
-                    user2:      pl,
-                });
-                if err::check(e) {
-                    return;
-                }
-            }
-            default => {
-            }
-        }
-    }
-}
-
-fn parse_t_other_value(json::U *u, err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let arg = (ast::Expression mut*)u->user1;
-    static_attest(safe(arg));
-
-    switch v.t {
-        json::ValueType::String => {
-
-            new+2000 b = buffer::make();
-
-            if arg->v.string.mem != 0 {
-                static_attest(slice::slice::integrity(&arg->v.string));
-                b.append_slice(arg->v.string);
-                b.append_cstr("::");
-            }
-
-            static_attest(safe(v.string));
-            static_attest(nullterm(v.string));
-            b.append_cstr(v.string);
-            let bs = b.as_slice();
-            void *dup = pl->copy(bs);
-            if dup == 0 {
+    while dec->next(e) {
+        if dec->item == json::Item::Map && dec->key.eq_cstr("rhs") {
+            arg->rhs = (ast::Expression mut *)self->pl.malloc(sizeof(ast::Expression));
+            if arg->rhs == 0 {
                 return;
             }
-            static_attest(safe(dup));
-
-            if arg->v.string.mem != 0 {
-                static_attest(pool::member(arg->v.string.mem, pl));
-                pl->free(arg->v.string.mem);
+            static_attest(safe(arg->rhs));
+            arg->rhs->make_expression(&self->pl);
+            parse_expression(self, arg->rhs, e, dec);
+            if err::check(e) { return; }
+        } else if dec->item == json::Item::Map && dec->key.eq_cstr("lhs") {
+            arg->lhs = (ast::Expression mut *)self->pl.malloc(sizeof(ast::Expression));
+            if arg->lhs == 0 {
+                return;
             }
-            arg->v.string = slice::slice::Slice{
-                mem:    (u8*)dup,
-                size:   bs.size,
-            };
-        }
-        default => {
-        }
-    }
-}
+            static_attest(safe(arg->lhs));
+            arg->lhs->make_expression(&self->pl);
+            parse_expression(self, arg->lhs, e, dec);
+            if err::check(e) { return; }
 
-fn parse_expression_infix(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let arg = (ast::InfixExpression mut*)u->user1;
-    static_attest(safe(arg));
-
-    if buffer::cstr_eq(k, "rhs") && v.t == json::ValueType::Object{
-
-        arg->rhs = (ast::Expression mut *)pl->malloc(sizeof(ast::Expression));
-        if arg->rhs == 0 {
-            return;
-        }
-        static_attest(safe(arg->rhs));
-       arg->rhs->make_expression(pl);
-
-        json::next(p,  e, json::U{
-            it:     parse_expression,
-            user1:  arg->rhs,
-            user2:  u->user2
-        });
-
-        if err::check(e) {
-            return;
-        }
-    } else if buffer::cstr_eq(k, "lhs") && v.t == json::ValueType::Object{
-
-        arg->lhs = (ast::Expression mut *)pl->malloc(sizeof(ast::Expression));
-        if arg->lhs == 0 {
-            return;
-        }
-        static_attest(safe(arg->lhs));
-        arg->lhs->make_expression(pl);
-
-        json::next(p,  e, json::U{
-            it:     parse_expression,
-            user1:  arg->lhs,
-            user2:  u->user2
-        });
-
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_expression_call(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let arg = (ast::CallExpression mut*)u->user1;
-    static_attest(safe(arg));
-
-    if buffer::cstr_eq(k, "name") && v.t == json::ValueType::Object{
-
-        arg->name = (ast::Expression mut *)pl->malloc(sizeof(ast::Expression));
-        if arg->name == 0 {
-            return;
-        }
-        static_attest(safe(arg->name));
-        arg->name->make_expression(pl);
-
-        json::next(p,  e, json::U{
-            it:     parse_expression,
-            user1:  arg->name,
-            user2:  u->user2
-        });
-
-        if err::check(e) {
-            return;
+        } else {
+            dec->skip(e);
         }
     }
 
 }
 
-fn parse_expression(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
+pub fn parse_expression_call(ast::Ast mut* self, ast::CallExpression mut *arg, err::Err mut *e, json::Decoder mut*dec)
     where err::checked(*e)
-    where nullterm(k)
 {
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
+    while dec->next(e) {
+        if dec->item == json::Item::Map && dec->key.eq_cstr("name") {
+            arg->name = (ast::Expression mut *)self->pl.malloc(sizeof(ast::Expression));
+            if arg->name == 0 {
+                return;
+            }
+            static_attest(safe(arg->name));
+            arg->name->make_expression(&self->pl);
+            parse_expression(self, arg->name, e, dec);
+            if err::check(e) { return; }
+        } else {
+            dec->skip(e);
+        }
+    }
+}
 
-    let arg = (ast::Expression mut*)u->user1;
-    static_attest(safe(arg));
+pub fn parse_literal(ast::Ast mut* self, slice::slice::Slice mut *name, err::Err mut *e, json::Decoder mut*dec)
+    where err::checked(*e)
+{
+    name->mem  = 0;
+    name->size = 0;
 
-    switch v.t {
-        json::ValueType::Object => {
-            if buffer::cstr_eq(k, "literal") {
+    while dec->next(e) {
+        if dec->item == json::Item::Array && dec->key.eq_cstr("v") {
+            while dec->next(e) {
+                if dec->item == json::Item::Uint {
+                    usize nulen = name->size + 1;
+                    char mut * dup = self->pl.malloc(nulen);
+                    if dup == 0 {
+                        return;
+                    }
+                    if name->size > 0 {
+                        memcpy(dup, name->mem, name->size);
+                    }
+                    dup[name->size] = (char)dec->val.atoi(10);
+                    static_attest(pool::member(name->mem, &self->pl));
+                    self->pl.free(name->mem);
+                    name->mem = (u8*)dup;
+                    name->size = nulen;
+                } else {
+                    dec->skip(e);
+                }
+            }
+            if err::check(e) { return; }
+        } else if dec->item == json::Item::String && dec->key.eq_cstr("v") {
+            *name = dec->val;
+        } else {
+            dec->skip(e);
+        }
+    }
+}
+
+
+pub fn parse_expression(ast::Ast mut* self, ast::Expression mut *arg, err::Err mut *e, json::Decoder mut*dec)
+    where err::checked(*e)
+{
+    while dec->next(e) {
+        if dec->item == json::Item::Map {
+            if dec->key.eq_cstr("literal") {
                 arg->t = ast::ExpressionType::Literal;
-                json::next(p,  e, json::U{
-                    it:parse_v,
-                    user1: arg,
-                    user2: pl,
-                });
-                if err::check(e) {
-                    return;
-                }
-            } else if buffer::cstr_eq(k, "literal_string") {
+                parse_literal(self, &arg->v.literal, e, dec);
+            } else if dec->key.eq_cstr("literal_string") {
                 arg->t = ast::ExpressionType::LiteralString;
-                json::next(p,  e, json::U{
-                    it:     parse_v,
-                    user1:  arg,
-                    user2:  pl,
-                });
-                if err::check(e) {
-                    return;
-                }
-            } else if buffer::cstr_eq(k, "name") {
+                parse_literal(self, &arg->v.literal, e, dec);
+            } else if dec->key.eq_cstr("name") {
                 arg->t = ast::ExpressionType::Name;
-                json::next(p,  e, json::U{
-                    it:     parse_t,
-                    user1:  arg,
-                    user2:  pl,
-                });
-                if err::check(e) {
-                    return;
-                }
-            } else if buffer::cstr_eq(k, "infix") {
+                parse_typed(self, &arg->v.name, e , dec);
+            } else if dec->key.eq_cstr("infix") {
                 arg->t = ast::ExpressionType::Infix;
-                arg->v.infix.make_infix_expression(pl);
-                json::next(p,  e, json::U{
-                    it:     parse_expression_infix,
-                    user1:  &arg->v.infix,
-                    user2:  pl,
-                });
-                if err::check(e) {
-                    return;
-                }
-            } else if buffer::cstr_eq(k, "call") {
+                arg->v.infix.make_infix_expression(&self->pl);
+                parse_expression_infix(self, &arg->v.infix, e , dec);
+            } else if dec->key.eq_cstr("call") {
                 arg->t = ast::ExpressionType::Call;
-                arg->v.call.make_call_expression(pl);
-                json::next(p,  e, json::U{
-                    it:     parse_expression_call,
-                    user1:  &arg->v.call,
-                    user2:  pl,
-                });
-                if err::check(e) {
-                    return;
-                }
+                arg->v.call.make_call_expression(&self->pl);
+                parse_expression_call(self, &arg->v.call, e , dec);
             } else {
-                err::fail(e, ParseError, "unable to parse expression %s ", k);
+                err::fail(e, ParseError, "unable to parse expression '%.*s' ", dec->key.size, dec->key.mem);
             }
-        }
-        default => {
-            err::fail(e, ParseError, "unable to parse %s ", k);
+        } else {
+            dec->skip(e);
         }
     }
+    if err::check(e) { return; }
 }
 
-
-fn parse_arglist(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
+pub fn decode_struct(ast::Ast mut*self,err::Err mut *e, json::Decoder mut*dec)
     where err::checked(*e)
-    where nullterm(k)
 {
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
+    self->local.t = ast::DefType::Struct;
+    self->local.v.dstruct.make_def_struct(&self->pl);
 
-    let aa = (ast::Ast mut*)u->user1;
-    static_attest(safe(aa));
-    static_attest(vec::integrity(&aa->args));
+    while dec->next(e) {
+        if dec->item == json::Item::Array && dec->key.eq_cstr("fields") {
+            while dec->next(e) {
+                if dec->item == json::Item::Map {
+                    let m = (ast::Field mut *)self->pl.malloc(sizeof(ast::Field));
+                    if m == 0 {
+                        return;
+                    }
+                    static_attest(safe(m));
+                    m->make_field(&self->pl);
+                    static_attest(vec::integrity(&self->local.v.dstruct.fields));
+                    self->local.v.dstruct.fields.push_b(m);
 
-    switch v.t {
-        json::ValueType::Object => {
-
-            let m = (ast::Expression mut *)pl->malloc(sizeof(ast::Expression));
-            if m == 0 {
-                return;
+                    while dec->next(e) {
+                        if dec->item == json::Item::Map && dec->key.eq_cstr("typed") {
+                            parse_typed(self, &m->typed, e , dec);
+                        } else if dec->item == json::Item::String && dec->key.eq_cstr("name") {
+                            m->name = dec->val;
+                        } else {
+                            dec->skip(e);
+                        }
+                    }
+                    if err::check(e) { return; }
+                } else {
+                    dec->skip(e);
+                }
             }
-            static_attest(safe(m));
-            m->make_expression(pl);
-            aa->args.push_b(m);
+            if err::check(e) { return; }
+        } else {
+            dec->skip(e);
+        }
+    }
+}
 
-            json::next(p,  e, json::U{
-                it:     parse_expression,
-                user1:  m,
-                user2:  u->user2
-            });
+pub fn decode_enum(ast::Ast mut*self,err::Err mut *e, json::Decoder mut*dec)
+    where err::checked(*e)
+{
+    self->local.t = ast::DefType::Enum;
+    self->local.v.dstruct.make_def_struct(&self->pl);
 
-            if err::check(e) {
-                return;
+    while dec->next(e) {
+        if dec->item == json::Item::Array && dec->key.eq_cstr("names") {
+            while dec->next(e) {
+                if dec->item == json::Item::Array {
+                    while dec->next(e) {
+                        if dec->item == json::Item::String {
+                            let m = (ast::EnumItem mut *)self->pl.malloc(sizeof(ast::EnumItem));
+                            if m == 0 {
+                                return;
+                            }
+                            static_attest(safe(m));
+                            static_attest(vec::integrity(&self->local.v.denum.items));
+                            m->name = dec->val;
+                            if !self->local.v.denum.items.push_b(m) {
+                                e->fail(err::OutOfTail,"oom");
+                                return;
+                            }
+                        } else {
+                            dec->skip(e);
+                        }
+                    }
+                } else {
+                    dec->skip(e);
+                }
             }
-        }
-        default => {
-            err::fail(e, ParseError, "got %s expected arg object", k);
+        } else {
+            dec->skip(e);
         }
     }
 }
 
-
-fn parse_typed_other(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
+pub fn decode_type(ast::Ast mut*self,err::Err mut *e, json::Decoder mut*dec)
     where err::checked(*e)
-    where nullterm(k)
 {
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
+    self->local.t = ast::DefType::Type;
+    self->local.v.dalias.make_def_alias(&self->pl);
 
-    let typed = (ast::Typed mut*)u->user1;
-    static_attest(safe(typed));
-
-    if v.t == json::ValueType::String {
-        static_attest(safe(v.string));
-        static_attest(nullterm(v.string));
-        static_attest(safe(typed->name));
-        static_attest(nullterm(typed->name));
-        let nulen = buffer::strlen(typed->name) + buffer::strlen(v.string) + 3;
-        char mut * dup = pl->malloc(nulen);
-        if dup == 0 {
-            return;
+    while dec->next(e) {
+        if dec->item == json::Item::Map && dec->key.eq_cstr("alias") {
+            parse_typed(self, &self->local.v.dalias.alias, e , dec);
+        } else {
+            dec->skip(e);
         }
-        static_attest(safe(dup));
-        if typed->name != 0 {
-            strncat(dup, typed->name, buffer::strlen(typed->name));
-            strncat(dup, "::", 2);
-        }
-        strncat(dup, v.string, buffer::strlen(v.string));
-
-        if typed->name != 0 {
-            static_attest(pool::member(typed->name, pl));
-            pl->free(typed->name);
-        }
-        typed->name = dup;
     }
 }
 
-fn parse_typed_ptr(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
+pub fn decode_ast(ast::Ast mut*self,err::Err mut *e, json::Decoder mut*dec)
     where err::checked(*e)
-    where nullterm(k)
 {
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let typed = (ast::Typed mut*)u->user1;
-    static_attest(safe(typed));
-
-    if v.t == json::ValueType::Object {
-        static_attest(vec::integrity(&typed->ptr));
-        typed->ptr.push("TODO");
+    if !dec->next(e) {
+        err::panic("ICE: empty ast?");
     }
-}
-
-fn parse_typed_params(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let typed = (ast::Typed mut*)u->user1;
-    static_attest(safe(typed));
-
-    if v.t == json::ValueType::Object {
-        let m = (ast::Expression mut *)pl->malloc(sizeof(ast::Expression));
-        if m == 0 {
-            return;
-        }
-        static_attest(safe(m));
-        m->make_expression(pl);
-        static_attest(vec::integrity(&typed->params));
-        typed->params.push_b(m);
-
-        json::next(p,  e, json::U{
-            it:     parse_expression,
-            user1:  m,
-            user2:  u->user2
-        });
-
-        if err::check(e) {
-            return;
-        }
-    }
-}
+    if err::check(e) { return; }
+    err::assert2(dec->item == json::Item::Map, "ICE: expected map");
 
 
-fn parse_typed(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
+    while dec->next(e) {
+        if dec->item == json::Item::Array && dec->key.eq_cstr("args") {
+            while dec->next(e) {
+                if dec->item == json::Item::Map {
+                    let m = (ast::Expression mut *)self->pl.malloc(sizeof(ast::Expression));
+                    if m == 0 {
+                        e->fail(err::OutOfTail,"oom");
+                        return;
+                    }
+                    static_attest(safe(m));
+                    m->make_expression(&self->pl);
+                    if !self->args.push_b(m) {
+                        e->fail(err::OutOfTail,"oom");
+                        return;
+                    }
+                    parse_expression(self, m, e , dec);
+                } else {
+                    dec->skip(e);
+                }
 
-    let typed = (ast::Typed mut*)u->user1;
-    static_attest(safe(typed));
-
-    if buffer::cstr_eq(k, "t") && v.t == json::ValueType::String{
-        static_attest(safe(v.string));
-        static_attest(nullterm(v.string));
-        char mut * dup = pl->malloc(buffer::strlen(v.string) + 1);
-        memcpy(dup, v.string, buffer::strlen(v.string));
-        typed->name = dup;
-    } else if buffer::cstr_eq(k, "t") && v.t == json::ValueType::Object {
-        json::next(p,  e, json::U{
-            it: parse_typed,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    } else if buffer::cstr_eq(k, "other") && v.t == json::ValueType::Array {
-        json::next(p,  e, json::U{
-            it: parse_typed_other,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    } else if buffer::cstr_eq(k, "ptr") && v.t == json::ValueType::Array {
-        json::next(p,  e, json::U{
-            it: parse_typed_ptr,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    } else if buffer::cstr_eq(k, "params") && v.t == json::ValueType::Array {
-        json::next(p,  e, json::U{
-            it:    parse_typed_params,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
+            }
+            if err::check(e) { return; }
+        } else if dec->item == json::Item::Map && dec->key.eq_cstr("local") {
+            while dec->next(e) {
+                if dec->item == json::Item::Map && dec->key.eq_cstr("def") {
+                    while dec->next(e) {
+                        if dec->item == json::Item::Map {
+                            if dec->key.eq_cstr("struct") {
+                                decode_struct(self, e, dec);
+                            } else if dec->key.eq_cstr("enum") {
+                                decode_enum(self, e, dec);
+                            } else if dec->key.eq_cstr("type") {
+                                decode_type(self, e, dec);
+                            } else {
+                                dec->skip(e);
+                            }
+                        }
+                        if err::check(e) { return; }
+                    }
+                } else if dec->item == json::Item::String && dec->key.eq_cstr("name") {
+                    self->local.name = dec->val;
+                } else {
+                    dec->skip(e);
+                }
+            }
+            if err::check(e) { return; }
+        } else {
+            dec->skip(e);
         }
     }
 }
-
-fn parse_field(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let field = (ast::Field mut*)u->user1;
-    static_attest(safe(field));
-
-    if buffer::cstr_eq(k, "typed") && v.t == json::ValueType::Object {
-        json::next(p,  e, json::U{
-            it: parse_typed,
-            user1: &field->typed,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    }
-    if buffer::cstr_eq(k, "name") && v.t == json::ValueType::String {
-
-        static_attest(safe(v.string));
-        static_attest(nullterm(v.string));
-        char mut * dup = pl->malloc(buffer::strlen(v.string) + 1);
-        memcpy(dup, v.string, buffer::strlen(v.string));
-        field->name = dup;
-
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_struct_fields(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let aa = (ast::Ast mut*)u->user1;
-    static_attest(safe(aa));
-
-    if v.t == json::ValueType::Object {
-        let m = (ast::Field mut *)pl->malloc(sizeof(ast::Field));
-        if m == 0 {
-            return;
-        }
-        static_attest(safe(m));
-        m->make_field(pl);
-        static_attest(vec::integrity(&aa->local.v.dstruct.fields));
-        aa->local.v.dstruct.fields.push_b(m);
-
-        json::next(p,  e, json::U{
-            it: parse_field,
-            user1: m,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_struct(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    if buffer::cstr_eq(k, "fields") && v.t == json::ValueType::Array{
-        json::next(p,  e, json::U{
-            it: parse_struct_fields,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_enum_name(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let aa = (ast::EnumItem mut*)u->user1;
-    static_attest(safe(aa));
-
-    if v.t == json::ValueType::String {
-        static_attest(safe(v.string));
-        static_attest(nullterm(v.string));
-        let sli = slice::slice::Slice  {
-            mem:  (u8*)v.string,
-            size: buffer::strlen(v.string) + 1,
-        };
-        aa->name = pl->copy(sli);
-    }
-}
-
-fn parse_enum_names(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let aa = (ast::Ast mut*)u->user1;
-    static_attest(safe(aa));
-
-    if v.t == json::ValueType::Array {
-        let m = (ast::EnumItem mut *)pl->malloc(sizeof(ast::EnumItem));
-        if m == 0 {
-            return;
-        }
-        static_attest(safe(m));
-        static_attest(vec::integrity(&aa->local.v.denum.items));
-        aa->local.v.denum.items.push_b(m);
-
-        json::next(p,  e, json::U{
-            it: parse_enum_name,
-            user1: m,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_enum(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    if buffer::cstr_eq(k, "names") && v.t == json::ValueType::Array{
-        json::next(p,  e, json::U{
-            it: parse_enum_names,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_typealias(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let aa = (ast::Ast mut*)u->user1;
-    static_attest(safe(aa));
-
-    if buffer::cstr_eq(k, "alias") && v.t == json::ValueType::Object{
-        json::next(p,  e, json::U{
-            it: parse_typed,
-            user1: &aa->local.v.dalias.alias,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_def(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let aa = (ast::Ast mut*)u->user1;
-    static_attest(safe(aa));
-
-    if buffer::cstr_eq(k, "struct") && v.t == json::ValueType::Object {
-        aa->local.t = ast::DefType::Struct;
-        aa->local.v.dstruct.make_def_struct(pl);
-        json::next(p,  e, json::U{
-            it: parse_struct,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    } else if buffer::cstr_eq(k, "enum") && v.t == json::ValueType::Object {
-        aa->local.t = ast::DefType::Enum;
-        aa->local.v.denum.make_def_enum(pl);
-        json::next(p,  e, json::U{
-            it: parse_enum,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    } else if buffer::cstr_eq(k, "type") && v.t == json::ValueType::Object {
-        aa->local.t = ast::DefType::Type;
-        aa->local.v.dalias.make_def_alias(pl);
-        json::next(p,  e, json::U{
-            it: parse_typealias,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-    }
-}
-
-fn parse_local(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-    let pl = (pool::Pool mut*)u->user2;
-    static_attest(safe(pl));
-
-    let aa = (ast::Ast mut*)u->user1;
-    static_attest(safe(aa));
-
-    if buffer::cstr_eq(k, "def") && v.t == json::ValueType::Object {
-        json::next(p,  e, json::U{
-            it: parse_def,
-            user1: u->user1,
-            user2: u->user2,
-        });
-        if err::check(e) {
-            return;
-        }
-
-    } else if buffer::cstr_eq(k, "name") && v.t == json::ValueType::String {
-        static_attest(safe(v.string));
-        static_attest(nullterm(v.string));
-        char mut * dup = pl->malloc(buffer::strlen(v.string) + 1);
-        memcpy(dup, v.string, buffer::strlen(v.string));
-        aa->local.name = dup;
-    }
-}
-
-pub fn parse_doc(json::U *u,  err::Err mut *e, json::Parser mut* p, char *k, json::Value v)
-    where err::checked(*e)
-    where nullterm(k)
-{
-   if buffer::cstr_eq(k, "local") && v.t == json::ValueType::Object {
-       json::next(p,  e, json::U{
-           it: parse_local,
-           user1: u->user1,
-           user2: u->user2,
-       });
-       if err::check(e) {
-           return;
-       }
-   } else if buffer::cstr_eq(k, "args") && v.t == json::ValueType::Array {
-       json::next(p,  e, json::U{
-           it: parse_arglist,
-           user1: u->user1,
-           user2: u->user2,
-       });
-       if err::check(e) {
-           return;
-       }
-   }
-}
-
-

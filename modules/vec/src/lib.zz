@@ -2,8 +2,6 @@ using pool;
 using err;
 using slice;
 using mem;
-using log;
-
 
 export theory item(Vec self) type;
 
@@ -35,6 +33,9 @@ export fn make(Vec mut new* self, usize lt = static(len(self->pool.pmem)))
     mem::zero(self);
     self->pool.make(sizeof(slice::Slice), lt);
     self->capacity = lt/unsafe<usize>(sizeof(slice::Slice) + sizeof(bool))/10;
+    if self->capacity == 0 {
+        self->capacity = 1;
+    }
 
     u8 mut* themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
     err::assert_safe(themem);
@@ -59,6 +60,9 @@ export fn make_with_pool(Vec mut new* self, pool::Pool mut * pool, usize lt = st
     self->pool.make(sizeof(slice::Slice), lt);
     self->pool.extra = pool;
     self->capacity = lt/unsafe<usize>(sizeof(slice::Slice) + sizeof(bool))/10;
+    if self->capacity == 0 {
+        self->capacity = 1;
+    }
 
     u8 mut * themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
     err::assert_safe(themem);
@@ -69,6 +73,7 @@ export fn make_with_pool(Vec mut new* self, pool::Pool mut * pool, usize lt = st
 }
 
 fn grow(Vec mut* self) bool
+    @solver("z3")
     where integrity(self)
     model integrity(self)
 {
@@ -86,20 +91,17 @@ fn grow(Vec mut* self) bool
     let mut prev_memsize = unsafe<usize>(sizeof(slice::Slice)) * self->capacity;
     let mut new_memsize  = unsafe<usize>(sizeof(slice::Slice)) * nucap;
     let mut prev_mem     = (u8*)self->items;
-    static_attest(safe(numem));
-    static_attest(safe(prev_mem));
-    static_attest(len(numem) > prev_memsize);
-    static_attest(len(prev_mem) == prev_memsize);
-    mem::copy(prev_mem, numem, prev_memsize);
+
+    unsafe {
+        mem::copy(prev_mem, numem, prev_memsize);
+    }
 
     let prev_owned  = unsafe<u8*>(prev_mem + prev_memsize);
     let prev_owned_size  = unsafe<usize>(sizeof(bool)) * nucap;
     u8 mut* nuowned     = unsafe<u8*>(numem + new_memsize);
-    static_attest(safe(prev_owned));
-    static_attest(safe(nuowned));
-    static_attest(len(prev_owned) > prev_owned_size);
-    static_attest(len(nuowned) > prev_owned_size);
-    mem::copy(prev_owned, nuowned, prev_owned_size);
+    unsafe {
+        mem::copy(prev_owned, nuowned, prev_owned_size);
+    }
 
     static_attest(pool::member(self->items, &self->pool));
     self->pool.free(self->items);
@@ -120,6 +122,9 @@ export fn push(Vec mut* self, void * val, usize vt = static(len(val), 1) * sizeo
     model integrity(self)
 {
     u8 mut * owned_val = self->pool.malloc(vt);
+    if owned_val == 0 {
+        return false;
+    }
     static_attest(safe(owned_val));
     static_attest(len(owned_val) == vt);
     static_attest(len(val) == vt);

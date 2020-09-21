@@ -1207,7 +1207,16 @@ pub(crate) fn parse_statement(
             into.push(Box::new(Statement::Continue { loc }));
         }
         Rule::break_stm => {
-            into.push(Box::new(Statement::Break { loc }));
+            let mut label = None;
+            for stm in stm.into_inner() {
+                match stm.as_rule() {
+                    Rule::ident => {
+                        label = Some(stm.as_str().into());
+                    }
+                    _ => ()
+                }
+            }
+            into.push(Box::new(Statement::Break {label, loc }));
         }
         Rule::block => into.push(Box::new(Statement::Block(Box::new(parse_block(
             n, stage, stm,
@@ -1311,11 +1320,17 @@ pub(crate) fn parse_statement(
             let mut expr2 = None;
             let mut expr3 = Vec::new();
             let mut block = None;
+            let mut label = None;
 
             let mut cur = 1;
 
             for part in stm {
                 match part.as_rule() {
+                    Rule::label => {
+                        let mut s : String = part.as_str().into();
+                        s.pop();
+                        label = Some(s);
+                    }
                     Rule::semicolon => {
                         cur += 1;
                     }
@@ -1338,6 +1353,7 @@ pub(crate) fn parse_statement(
             }
 
             into.push(Box::new(Statement::For {
+                label,
                 e1: expr1,
                 e2: expr2,
                 e3: expr3,

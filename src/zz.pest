@@ -254,7 +254,7 @@ vardecl     = { named_type  ~ array? ~ ( "=" ~ expr )? }
 semicolon   = { ";" }
 stm_list    = _{ expr_stm ~ "," ~ stm_list | expr_stm }
 for_stm     = {
-    (
+    label? ~ (
         ("for" ~ "(" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list? ~ ")") |
         ("for" ~ stm_list? ~ semicolon ~ expr? ~ semicolon ~ stm_list?)
     ) ~ block
@@ -271,7 +271,7 @@ elseif_stm  = { "else" ~ "if" ~ expr  ~ block }
 else_stm    = { "else" ~  block }
 return_stm  = { key_return ~ expr_stm? }
 continue_stm  = { key_continue }
-break_stm   = { key_break }
+break_stm   = !{ key_break ~ ident?}
 label       = ${ ident ~ ":"}
 mark_stm    = ${ expr ~ WHITESPACE+ ~ "is" ~ WHITESPACE+ ~ tag_name }
 unsafe_block = {"unsafe" ~ block }
@@ -311,7 +311,7 @@ statement = _{
     (term_statement ~ ";")
 }
 
-block = { "{" ~ (statement | label)* ~ expr_stm? ~ "}" ~ ";"? }
+block = { "{" ~ statement* ~ expr_stm? ~ "}" ~ ";"? }
 
 macro_expanded_to_statements = { WHITESPACE* ~ statement*  ~ WHITESPACE*}
 

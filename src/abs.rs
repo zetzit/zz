@@ -657,7 +657,7 @@ fn abs_statement(
         ast::Statement::Unsafe(b2) => {
             abs_block(b2, &scope, all_modules, self_md_name);
         }
-        ast::Statement::For { e1, e2, e3, body } => {
+        ast::Statement::For { e1, e2, e3, body, ..} => {
             abs_block(body, &scope, all_modules, self_md_name);
             for s in e1 {
                 abs_statement(s, scope, inbody, all_modules, self_md_name);

@@ -80,6 +80,7 @@ export fn clear(Buffer mut new* self)
 /// length of buffer (excluding null terminator)
 export fn slen(Buffer * self) -> usize
     where integrity(self)
+    model return <= len(self->mem)
 {
     return self->at;
 }
@@ -89,6 +90,7 @@ export fn cstr(Buffer * self) -> char *
     where integrity(self)
     model safe(return)
     model nullterm(return)
+    model len(return) <= len(self->mem)
 {
     return self->mem;
 }
@@ -344,7 +346,7 @@ export fn ends_with_cstr(Buffer *self, char *unsafe a) -> bool
 export fn fgets(Buffer mut* self, FILE mut * unsafe stream) -> bool
     where   integrity(self)
 {
-    char *rr = unsafe<char*>(native::xN_fgets(self->mem + self->at, self->size - self->at, stream));
+    char *rr = unsafe<char*>(native::xN_fgets(self->mem + self->at, self->size - self->at , stream));
     if rr == 0 {
         return false;
     }
@@ -353,6 +355,23 @@ export fn fgets(Buffer mut* self, FILE mut * unsafe stream) -> bool
     static_attest(safe(extmem));
     static_attest(nullterm(extmem));
     self->at += strlen(extmem);
+    return true;
+}
+
+/// append to this buffer by reading a FILE to the end
+export fn fread(Buffer mut* self, FILE mut * unsafe stream) -> bool
+    where   integrity(self)
+{
+    usize rr = unsafe<usize>(native::xN_fread(self->mem + self->at, 1, self->size - self->at - 1, stream));
+    if rr == 0 {
+        return false;
+    }
+
+    self->at += rr;
+    unsafe {
+        self->mem[self->at] = 0;
+    }
+
     return true;
 }
 
@@ -433,4 +452,3 @@ export fn split(Buffer *self, char token, usize mut *iterator, Buffer mut new* o
     substr(self, start, size, other);
     return true;
 }
-
