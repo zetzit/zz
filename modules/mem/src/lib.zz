@@ -27,7 +27,7 @@ pub fn eq(void * a, void * b, usize n) -> bool
     return libc::memcmp(a,b, n) == 0;
 }
 
-pub fn zero(void+vt mut * dst)
+pub fn zero(void mut * dst, usize vt = sizeof(*dst))
     model *dst == 0
 {
     libc::memset(dst, 0, vt);

@@ -1,102 +1,67 @@
-using log;
 using json;
 using pool;
 using err;
-using buffer;
-using mem;
 using slice;
-using vec;
+using <stdio.h>::{printf};
 using map;
+using log;
 using vec;
 
+pub fn main(int argc, char ** argv) int {
 
-enum FuelType @json::des::impl()
+    new+1000 e  = err::make();
+
+    char * inp = r#"
 {
-    Invalid,
-    StinkyGoo,
-    Electric,
-}
-
-struct Engine @json::des::impl()
-{
-    FuelType    fuel_type;
-    bool        running;
-}
-
-struct Window  @json::des::impl()
-{
-    bool open;
-}
-
-struct Person @json::des::impl()
-{
-    u64 seat;
-}
-
-type WindowList @json::des::impl() = vec::Vec[vec::item = Window];
-type IntList    @json::des::impl() = vec::Vec[vec::item = u64];
-type PeopleMap  @json::des::impl() = map::Map[map::key  = char, map::val = Person];
-
-struct Car @json::des::impl()
-{
-    int         tires;
-    char*       brand;
-    Engine      engine;
-    Window*     sunroof;
-    WindowList  windows;
-    IntList     ints;
-    PeopleMap   people;
-}
-
-
-export fn from_json(Car mut new * self, err::Err+et mut *e, char *js, pool::Pool mut* pt)
-    where err::checked(*e)
-    where nullterm(js)
-{
-    mem::zero(self);
-    json::U u = @json::des::use(Car, self, pt);
-    static_attest(safe(u.it));
-    new+1000 p = json::parser(e, u);
-    if err::check(e) { return ; }
-    json::push(&p, e, js, buffer::strlen(js));
-}
-
-pub fn main() {
-    new+1000  e = err::make();
-
-    new+10000 p = pool::make(32);
-    new car = from_json(&e, r#"{
-        "tires": 3,
-        "brand": "We Hate The Environment Inc.",
-        "wut": 1,
-        "engine": {
-            "fuel_type": "Electric",
-            "running":true
-        },
-        "sunroof": {
+  "tires": 3,
+  "brand": "We Hate The Environment Inc.",
+  "wut": 1,
+  "engine": {
+    "fuel_type": "stinky_dinosaur_goo",
+    "running":true
+  },
+  "sunroof": {
+    "open": true
+  },
+  "windows": [
+    [
+        {
             "open": true
         },
-        "windows": [
-            {
-                "open": true
-            },
-            {
-                "open": false
-            },
-            {
-                "open": true
-            },
-        ],
-        "ints": [1,2,3,4,4,5,6,7,7],
-        "people": {
-            "mum" :     { "seat": 1},
-            "the cat":      { "seat": 2},
-        }
-    }"#, &p);
+    ],
+    [
+        {
+            "open": false
+        },
+        {
+            "open": true
+        },
+    ]
+  ],
+  "sensors": [1,2,3,4,4,5,6,7,7],
+  "people": {
+    "mum" :         { "seat": 1},
+    "the cat":      { "seat": 2},
+  },
+  "stickers": [
+    "honk if you're a goose",
+    "escape the \"\\\""
+  ],
+}
+"#;
+    new+800 decoder = json::decode(inp);
+    decoder.next(&e);
     e.abort();
 
 
-    log::info("car.brand = %s", car.brand);
+
+    new+10000 pl = pool::make(32);
+
+    Car mut car;
+    (@json::from(Car))(&car, &e, &decoder, &pl);
+    e.abort();
+
+    log::info("car.brand = %.*s", car.brand.size, car.brand.mem);
     log::info("car.tires = %d", car.tires);
     log::info("car.engine.running = %d", car.engine.running);
     log::info("car.engine.fuel_type = %d", car.engine.fuel_type);
@@ -104,18 +69,71 @@ pub fn main() {
         static_attest(safe(car.sunroof));
         log::info("car.sunroof.open = %d", car.sunroof->open);
     }
-    for let mut iter = vec::iter(&car.windows); iter.next(); {
-        let window = (Window *)iter.val.mem;
-        err::assert_safe(window);
-        log::info("car.windows[].open = %d", window->open);
+    for let mut iter = vec::iter((vec::Vec mut*)&car.windows); iter.next(); {
+        let windowlist = (WindowList *)iter.val.mem;
+        err::assert_safe(windowlist);
+        for let mut iter = vec::iter((vec::Vec mut*)windowlist); iter.next(); {
+            let window = (Window *)iter.val.mem;
+            err::assert_safe(window);
+            log::info("car.windows[][].open = %d", window->open);
+        }
     }
-    for let mut iter = vec::iter(&car.ints); iter.next(); {
-        u64 v = unsafe<u64>(*(u64 *)iter.val.mem);
-        log::info("car.ints[] = %d", v);
+    for let mut iter = vec::iter(&car.sensors); iter.next(); {
+        u8  v = unsafe<u8>(*(u8 *)iter.val.mem);
+        log::info("car.sensors[] = %d", v);
+    }
+    for let mut iter = vec::iter(&car.stickers); iter.next(); {
+        let v = (slice::slice::Slice *)iter.val.mem;
+        err::assert_safe(v);
+        log::info("car.stickers[] = %.*s", v->size, v->mem);
     }
     for let mut iter = map::keys(&car.people); iter.next(); {
         Person *v = (Person*)map::get(&car.people, iter.key.mem, iter.key.size);
         err::assert_safe(v);
-        log::info("car.people[%s].seat = %d", iter.key.mem, v->seat);
+        log::info("car.people[%.*s].seat = %d", iter.key.size, iter.key.mem, v->seat);
     }
+
+    return 0;
 }
+
+
+struct Person @json::from()
+{
+    u64 seat;
+}
+
+enum FuelType @json::from()
+{
+    invalid,
+    electric,
+    stinky_dinosaur_goo,
+}
+
+struct Engine @json::from() {
+    bool        running;
+    FuelType    fuel_type;
+}
+
+struct Window  @json::from()
+{
+    bool open;
+}
+
+type WindowListList @json::from() = vec::Vec[vec::item = WindowList];
+type WindowList     @json::from() = vec::Vec[vec::item = Window, +200];
+type SensorList     @json::from() = vec::Vec[vec::item = u8];
+type StringList     @json::from() = vec::Vec[vec::item = slice::slice::Slice];
+type PeopleMap      @json::from() = map::Map[map::key  = char, map::val = Person];
+
+
+struct Car @json::from() {
+    int             tires;
+    slice::Slice    brand;
+    Engine          engine;
+    Window *        sunroof;
+    WindowListList  windows;
+    SensorList      sensors;
+    StringList      stickers;
+    PeopleMap       people;
+}
+

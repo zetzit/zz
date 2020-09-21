@@ -210,6 +210,8 @@ export fn malloc(Pool mut *self, usize want) -> void mut*
                 pmem[2] = 0x00;
                 pmem[3] = blocks;
                 ASAN_POISON_MEMORY_REGION(pmem, ALIGN);
+            }
+            unsafe {
                 pmem = pmem + ALIGN;
             }
 
@@ -232,7 +234,9 @@ export fn malloc(Pool mut *self, usize want) -> void mut*
 
         unsafe {
             u8 mut * hm = pmem - ALIGN;
+            ASAN_UNPOISON_MEMORY_REGION(hm, ALIGN);
             hm[2] += 1;
+            ASAN_POISON_MEMORY_REGION(hm, ALIGN);
         }
         static_attest(member(pmem, self));
 

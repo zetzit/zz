@@ -1178,7 +1178,7 @@ impl Emitter {
                 has_default = true;
                 write!(self.f, "#else\n").unwrap();
             }
-            self.emit_zblock(&body, true);
+            self.emit_zblock(&body, true, None);
         }
 
         if !has_default {
@@ -1253,9 +1253,13 @@ impl Emitter {
     fn emit_statement(&mut self, stm: &ast::Statement) -> bool /* ends with semicolon */ {
         match stm {
             ast::Statement::Mark { .. } => false,
-            ast::Statement::Break { loc } => {
+            ast::Statement::Break { loc, label } => {
                 self.emit_loc(&loc);
-                write!(self.f, "break").unwrap();
+                if let Some(label) = label {
+                    write!(self.f, "goto ___EXIT_HERE_{}", label).unwrap();
+                } else {
+                    write!(self.f, "break").unwrap();
+                }
                 true
             }
             ast::Statement::Label { loc, label } => {
@@ -1269,7 +1273,7 @@ impl Emitter {
                 false
             }
             ast::Statement::Unsafe(b2) => {
-                self.emit_zblock(b2, true);
+                self.emit_zblock(b2, true, None);
                 false
             }
             ast::Statement::CBlock { loc, lit } => {
@@ -1278,10 +1282,10 @@ impl Emitter {
                 false
             }
             ast::Statement::Block(b2) => {
-                self.emit_zblock(b2, true);
+                self.emit_zblock(b2, true, None);
                 false
             }
-            ast::Statement::For { e1, e2, e3, body } => {
+            ast::Statement::For {label, e1, e2, e3, body } => {
                 write!(self.f, "  for (").unwrap();
                 let mut first = true;
                 for expr in e1 {
@@ -1319,14 +1323,14 @@ impl Emitter {
                     self.emit_statement(expr);
                 }
                 write!(self.f, ")").unwrap();
-                self.emit_zblock(body, true);
+                self.emit_zblock(body, true, label.clone());
                 false
             }
             ast::Statement::While { expr, body } => {
                 write!(self.f, "while (").unwrap();
                 self.emit_expr(expr);
                 write!(self.f, ")").unwrap();
-                self.emit_zblock(body, true);
+                self.emit_zblock(body, true, None);
                 false
             }
             ast::Statement::If { branches } => {
@@ -1339,7 +1343,7 @@ impl Emitter {
                 let ifc = branches.next().unwrap();
                 self.emit_expr(ifc.1.as_ref().unwrap());
                 write!(self.f, ")").unwrap();
-                self.emit_zblock(&ifc.2, true);
+                self.emit_zblock(&ifc.2, true, None);
 
                 for branch in branches {
                     if let Some(expr) = &branch.1 {
@@ -1349,7 +1353,7 @@ impl Emitter {
                     } else {
                         write!(self.f, " else ").unwrap();
                     }
-                    self.emit_zblock(&branch.2, true);
+                    self.emit_zblock(&branch.2, true, None);
                 }
 
                 false
@@ -1440,12 +1444,12 @@ impl Emitter {
                         write!(self.f, ":\n").unwrap();
                     }
                     write!(self.f, "{{\n").unwrap();
-                    self.emit_zblock(block, true);
+                    self.emit_zblock(block, true, None);
                     write!(self.f, "break;}}\n").unwrap();
                 }
                 if let Some(default) = default {
                     write!(self.f, "default: {{\n").unwrap();
-                    self.emit_zblock(default, true);
+                    self.emit_zblock(default, true, None);
                     write!(self.f, "break;}}\n").unwrap();
                 }
                 write!(self.f, "}}\n").unwrap();
@@ -1455,7 +1459,7 @@ impl Emitter {
         }
     }
 
-    fn emit_zblock(&mut self, v: &ast::Block, realblock: bool) {
+    fn emit_zblock(&mut self, v: &ast::Block, realblock: bool, exitlabel: Option<String>) {
         if realblock {
             if self.inside_macro {
                 write!(self.f, "{{\\\n").unwrap();
@@ -1475,12 +1479,20 @@ impl Emitter {
             }
         }
 
+        if let Some(label) = &exitlabel {
+            write!(self.f, "___CONTINUE_HERE_{}: ((void)0);\n", label).unwrap();
+        }
+
         if realblock {
             if self.inside_macro {
                 write!(self.f, "}}\\\n").unwrap();
             } else {
                 write!(self.f, "\n}}\n").unwrap();
             }
+        }
+
+        if let Some(label) = &exitlabel {
+            write!(self.f, "___EXIT_HERE_{}: ((void)0);\n", label).unwrap();
         }
     }
 

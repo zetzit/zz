@@ -968,12 +968,16 @@ impl Solver {
         }
     }
 
-    pub fn new(module_name: String, _solver: Option<String>) -> Self {
+    pub fn new(module_name: String, solver: Option<String>) -> Self {
         //Config::set_global_param_value(":model.partial", "true");
         //Config::set_global_param_value(":parallel.enable", "true");
         //config.set_model_generation(true);
 
-        let conf = if which::which("yices_smt2_mt").is_ok() {
+        let want_z3 = if let Some(s) = solver.as_ref() { s == "z3"  } else {false};
+
+        let conf = if want_z3 && which::which("z3").is_ok() {
+            rsmt2::SmtConf::z3()
+        } else if which::which("yices_smt2_mt").is_ok() {
             let mut conf = rsmt2::SmtConf::yices_2();
             conf.incremental();
             conf.cmd("yices_smt2_mt");

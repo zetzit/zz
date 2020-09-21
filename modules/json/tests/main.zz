@@ -1,0 +1,166 @@
+using json;
+using pool;
+using err;
+using slice;
+using buffer;
+using log;
+using <stdio.h>::{stdin, stderr, fprintf, printf};
+
+
+
+test {
+    stdin = r#"
+{
+  "user": {
+    "url": null,
+    "entities": {
+      "description": {
+      }
+    },
+    "protected": false,
+    "followers_count": 262,
+    "friends_count": 252,
+  }
+}"#
+    stdout = r#"{
+  "user" : {
+    "url" : null,
+    "entities" : {
+      "description" : {
+
+      }
+    },
+    "protected" : false,
+    "followers_count" : 262,
+    "friends_count" : 252
+  }
+}"#
+}
+
+test {
+    stdin = r#"{"text": "\n\"", "source": "<a href=\"http://twitter.com/download/android\" rel=\"nofollow\">Twitter for Android</a>", }"#
+    stdout = r#"{
+  "text" : "\n\"",
+  "source" : "<a href=\"http://twitter.com/download/android\" rel=\"nofollow\">Twitter for Android</a>"
+}"#
+}
+
+
+static bool mut debug = true;
+
+pub fn main(int argc, char ** argv) int {
+
+    new+1000000 s = buffer::make();
+    for (; s.fread(stdin) ; ) {}
+
+
+    uint mut iterations = 1;
+
+    if argc > 1 {
+        iterations = 1000000;
+        debug = false;
+    }
+
+
+    new+1000 e  = err::make();
+    new+10000 pl = pool::make(32);
+    for uint mut i = 0; i < iterations ;i++ {
+        new+200000 decoder  = json::decode(s.cstr(), s.slen());
+        print_object(&decoder, &e, 0);
+        e.abort();
+    }
+
+    return 0;
+}
+
+fn print_object(json::Decoder mut *dec, err::Err mut *e, usize indent)
+    where err::checked(*e)
+{
+    bool mut has_previous = false;
+    while dec->next(e) {
+
+        if has_previous {
+            printf(",\n");
+        }
+        has_previous = true;
+
+        for usize mut i = 0; i < indent; i++ {
+            if debug {
+                printf("  ");
+            }
+        }
+
+        if dec->key.mem != 0 {
+            if debug {
+                printf("\"%.*s\" : ", dec->key.size, dec->key.mem);
+            }
+        }
+
+        switch dec->item {
+            json::Item::Array => {
+                if debug {
+                    printf("[\n");
+                }
+                print_object(dec, e, indent + 1);
+                if err::check(e) { return; }
+
+                if debug {
+                    printf("\n");
+                    for usize mut i = 0; i < indent; i++ {
+                        printf("  ");
+                    }
+                    printf("]");
+                }
+            }
+            json::Item::Map => {
+                if debug {
+                    printf("{\n");
+                }
+                print_object(dec, e, indent + 1);
+                if err::check(e) { return; }
+
+                if debug {
+                    printf("\n");
+                    for usize mut i = 0; i < indent; i++ {
+                        printf("  ");
+                    }
+                    printf("}");
+                }
+            }
+            json::Item::DirtyString => {
+                if debug {
+                    printf("\"%.*s\"", dec->val.size, dec->val.mem);
+                }
+            }
+            json::Item::String => {
+                if debug {
+                    printf("\"%.*s\"", dec->val.size, dec->val.mem);
+                }
+            }
+            json::Item::Uint => {
+                if debug {
+                    printf("%.*s", dec->val.size, dec->val.mem);
+                }
+            }
+            json::Item::False => {
+                if debug {
+                    printf("false");
+                }
+            }
+            json::Item::True => {
+                if debug {
+                    printf("true");
+                }
+            }
+            json::Item::Null => {
+                if debug {
+                    printf("null");
+                }
+            }
+        }
+    }
+
+    if err::check(e) { return; }
+
+
+}

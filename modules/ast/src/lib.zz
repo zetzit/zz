@@ -5,6 +5,8 @@ using parser;
 using json;
 using pool;
 using buffer;
+using log;
+using mem;
 
 using <stdio.h>::{stdin, stderr, fprintf, printf};
 
@@ -21,7 +23,8 @@ export enum ExpressionType {
 }
 
 export union ExpressionValue {
-    slice::slice::Slice     string;
+    Typed                   name;
+    slice::slice::Slice     literal;
     InfixExpression         infix;
     CallExpression          call;
 }
@@ -99,14 +102,14 @@ export struct Tail {
 }
 
 export struct Typed {
-    char *      name;
-    Tail        tail;
+    slice::Slice    name;
+    Tail            tail;
     vec::Vec+0  mut ptr;
     vec::Vec[vec::item = Expression,+0]  mut params;
 }
 
 export fn make_typed(Typed mut new*self, pool::Pool mut*p) {
-    self->name = 0;
+    slice::slice::empty(&self->name);
     self->ptr.make_with_pool(p);
     self->params.make_with_pool(p);
 }
@@ -122,13 +125,13 @@ export struct Array {
 }
 
 export struct Field {
-    char * name;
-    Typed typed;
-    Array array;
+    slice::Slice    name;
+    Typed           typed;
+    Array           array;
 }
 
 export fn make_field(Field mut new*self, pool::Pool mut*p) {
-    self->name = 0;
+    slice::slice::empty(&self->name);
     self->typed.make_typed(p);
 }
 
@@ -140,7 +143,7 @@ export fn make_def_struct(DefStruct mut new*self, pool::Pool mut*p) {
 }
 
 export struct EnumItem  {
-    char * name;
+    slice::Slice    name;
 }
 
 export struct DefEnum {
@@ -160,9 +163,9 @@ export fn make_def_alias(DefAlias mut new*self, pool::Pool mut*p) {
 
 export struct Local
 {
-    DefType     t;
-    DefValue    v;
-    char*   name;
+    DefType         t;
+    DefValue        v;
+    slice::Slice    name;
 }
 
 export struct Ast+
@@ -176,21 +179,23 @@ pub fn from_macro(Ast mut new *self, usize tail = static(len(self->pl.pmem)))
     where tail > tail/64
     model(vec::integrity(&self->args))
 {
+    mem::zero(self);
+    new+1000 e = err::make();
+
     self->pl.make(64, tail);
     self->args.make_with_pool(&self->pl);
-    new+1000 e = err::make();
-    new+1000 p = json::parser(&e, json::U{
-        it: parser::parse_doc,
-        user1: self,
-        user2: &self->pl,
-    });
-    e.abort();
 
-    new+1000 s = buffer::make();
-    for (; s.fgets(stdin) ; s.clear()) {
-        json::push(&p, &e, s.mem, s.at);
+    new+10000 s = buffer::make();
+    for (; s.fgets(stdin) ; ) {
         e.abort();
     }
+
+    new+2000 p = json::decode(s.cstr(), s.slen());
+    e.abort();
+
+    parser::decode_ast(self, &e, &p);
+    e.abort();
+
     static_attest(vec::integrity(&self->args));
 }
 

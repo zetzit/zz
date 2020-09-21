@@ -18,12 +18,12 @@ export macro repeat()  {
 
     err::assert2(arg0->t == ast::ExpressionType::LiteralString, "expected arg0: string");
     err::assert2(arg1->t == ast::ExpressionType::Literal,       "expected arg1: number");
-    static_attest(slice::slice::integrity(&arg1->v.string));
-    let num = arg1->v.string.atoi(10);
+    static_attest(slice::slice::integrity(&arg1->v.literal));
+    let num = arg1->v.literal.atoi(10);
 
     printf("\"");
     for (i64 mut i = 0; i < num; i++) {
-        printf("%.*s", arg0->v.string.size, arg0->v.string.mem);
+        printf("%.*s", arg0->v.literal.size, arg0->v.literal.mem);
     }
     printf("\"");
 }
@@ -48,13 +48,13 @@ export macro increment() {
 
     if arg0->t == ast::ExpressionType::Name {
         printf("%.*s = %.*s + 1;\n",
-            arg0->v.string.size, arg0->v.string.mem,
-            arg0->v.string.size, arg0->v.string.mem);
+            arg0->v.literal.size, arg0->v.literal.mem,
+            arg0->v.literal.size, arg0->v.literal.mem);
     }
 }
 
 export macro add() {
-    new+1000 a = ast::from_macro();
+    new+2000 a = ast::from_macro();
     err::assert(a.args.count == 3);
 
     let arg0 = (ast::Expression*)(a.args.items[0].mem);
@@ -66,9 +66,9 @@ export macro add() {
 
     if arg0->t == ast::ExpressionType::Name {
         printf("%.*s = %.*s + %.*s;\n",
-            arg0->v.string.size, arg0->v.string.mem,
-            arg1->v.string.size, arg1->v.string.mem,
-            arg2->v.string.size, arg2->v.string.mem);
+            arg0->v.literal.size, arg0->v.literal.mem,
+            arg1->v.literal.size, arg1->v.literal.mem,
+            arg2->v.literal.size, arg2->v.literal.mem);
     }
 }
 

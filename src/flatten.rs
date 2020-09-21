@@ -120,7 +120,7 @@ fn stm_deps(cr: &mut Collector, stm: &ast::Statement) -> Vec<(Name, TypeComplete
             }
             deps
         }
-        ast::Statement::For { e1, e2, e3, body } => {
+        ast::Statement::For { e1, e2, e3, body, ..} => {
             let mut deps = Vec::new();
             for s in e1 {
                 deps.extend(stm_deps(cr, s));

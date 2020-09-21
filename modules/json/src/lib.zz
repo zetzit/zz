@@ -1,494 +1,304 @@
-using <stdio.h>::{printf};
-using <stdlib.h>::{atoi};
-using <string.h>::{strcmp, memset};
 using err;
-using buffer;
+using slice;
+using log;
 
-const usize MAX_DEPTH = 64;
+using <stdlib.h>::{__builtin_ctz};
+using <string.h>::{memset};
 
-export symbol ParseError;
+export symbol DecodingError;
 
-pub enum ValueType {
-    String,
-    Object,
-    Integer,
-    Boolean,
+export enum Item {
+    Invalid,
     Array,
+    Map,
+    DirtyString,
+    String,
+    Uint,
+    True,
+    False,
     Null,
 }
 
-export struct Value {
-    ValueType t;
-    char*   string;
-    int     integer;
-    usize   index;
+export struct Decoder+ {
+    Item                mut item;
+    slice::slice::Slice mut key;
+    slice::slice::Slice mut val;
+
+    usize       blocks;
+    usize       mut block;
+    usize       mut start;
+    bool        mut emit_an_end;
+    char *      intext;
+    u16         mut mask[];
 }
 
-enum ParserState {
-    Document,
-    Object,
-    Key,
-    PostKey,
-    PreVal,
-    StringVal,
-    IntVal,
-    BoolVal,
-    NullVal,
-    PostVal,
-}
-
-export closure Iter      (U *u, err::Err mut *e, Parser mut* p, char *k, Value v);
-export closure Pop       (U *u, err::Err mut *e, Parser mut* p);
-
-export struct U {
-    Iter    it;
-    Pop     pop;
-
-    void mut*   user1;
-    usize       user2;
-}
-
-struct ParserStack {
-    ParserState     state;
-    U               user;
-    bool            in_array;
-    usize           index;
-}
-
-export struct Parser+ {
-    usize           col;
-    usize           line;
-    bool            esc;
-
-    ParserStack     state[MAX_DEPTH];
-    usize           depth;
-
-    usize           keylen;
-    buffer::Buffer+ mut capture;
-}
-
-export fn parser(Parser mut new*self, err::Err mut *e, U u, usize tail = static(len(self->capture.mem)))
-    where err::checked(*e)
-    where tail > 1
-    where safe(u.it)
+/// stage 1 create a bitmask over json text
+export fn decode(
+    Decoder mut new*self,
+    char * j,
+    usize l = static(len(j)),
+)
+    where len(self->mask) >= l / 8 + (2*(usize)(l % 16 > 0))
 {
-    memset(self, 0, sizeof(Parser));
-    buffer::make(&self->capture, tail);
 
-    self->line  = 1;
+    // note that we're creating only one mask, even though there are two modes
+    // (string, not-string) and not-string gets interrupted excessively.
+    // In my experiments, i found that cache locality of the mask matters ALOT more
+    // than number of iterations. That's somewhat counterintuitive, but i guess modern x86
+    // is really optimized to iterate tight loops stupid fast.
+    scanmask(self->mask, j, l);
 
-    ((self->state)[0]).user   = u;
+    *self = Decoder {
+        blocks: l / 16 + (usize)(l % 16 > 0),
+        intext: j,
+    };
 }
 
-export fn next(Parser mut*self, err::Err mut *e,  U u)
+/// stage 2 iterate
+export fn next(Decoder mut * self,err::Err mut *e) bool
     where err::checked(*e)
-    where safe(u.it)
-
+    model slice::slice::integrity(&self->key)
+    model slice::slice::integrity(&self->val)
+    model !return || err::checked(*e)
 {
-    if self->depth >= MAX_DEPTH {
-        err::fail(e, err::OutOfTail, "json structure too deep");
+    self->key.mem = 0;
+
+    static_attest(slice::slice::integrity(&self->key));
+    static_attest(slice::slice::integrity(&self->val));
+
+    if self->emit_an_end {
+        self->emit_an_end = false;
+        return false;
+    }
+
+    bool    mut instring = false;
+    Item    mut string_type = Item::String;
+    bool    mut escaped  = false;
+    usize   mut escaped_at;
+
+    slice::slice::Slice mut val = {0};
+
+    static_attest(len(self->mask) == self->blocks);
+    static_attest(self->block < self->blocks);
+
+    mainloop: for ; self->block < self->blocks; self->block += 1 {
+        while self->mask[self->block] != 0 {
+            usize xi = (self->block * 16 ) + unsafe<usize>(__builtin_ctz(self->mask[self->block]));
+            self->mask[self->block] &= self->mask[self->block] - 1;
+            static_attest(xi < len(self->intext));
+
+
+
+
+            // branching here is faster than inlining it into where we set instring = true
+            // i dunno, x86 is a cocaine cpu.
+            if instring {
+                switch self->intext[xi] {
+                    '"' => {
+                        if !escaped || escaped_at != xi - 1{
+                            instring = false;
+                            val.mem  =  (u8*)unsafe<char*>(self->intext + self->start);
+                            val.size = xi - self->start;
+                            static_attest(slice::slice::integrity(&val));
+                        }
+                        escaped = false;
+                    }
+                    92 => {
+                        string_type = Item::DirtyString;
+                        if escaped && escaped_at == xi - 1 {
+                            escaped = false;
+                        } else {
+                            escaped = true;
+                            escaped_at = xi;
+                        }
+                    }
+                }
+            } else {
+                switch self->intext[xi] {
+                    0 => {
+                        break mainloop;
+                    }
+                    '"' => {
+                        instring = true;
+                        self->start = xi+1;
+                        static_attest(xi < len(self->intext));
+                    }
+                    '{' => {
+                        self->start = xi+1;
+                        self->item = Item::Map;
+                        return true;
+                    }
+                    '[' => {
+                        self->start = xi+1;
+                        self->item = Item::Array;
+                        return true;
+                    }
+                    ':' => {
+                        self->key = val;
+                        val.mem = 0;
+                        self->start = xi+1;
+                    }
+                    '}', ']', ',' => {
+                        if self->intext[xi] == '}' || self->intext[xi] == ']' {
+                            self->emit_an_end = true;
+                        }
+                        self->item = Item::Invalid;
+                        if val.mem != 0 {
+                            self->item = string_type;
+                            string_type = Item::String;
+                        } else {
+                            // backtrack if we have not emitted a value, but maybe should have
+                            // again this seems counterintuitive, but i did try masking t,f,n,0-9 instead
+                            // and its alot slower than this flag mess, EVEN when we have a separate mask for
+                            // string mode.
+                            // also note how we're abusing the json spec here by assuming that anything below ' '
+                            // is whitespace because they're not allowed in json anyway
+                            for ;self->start < xi; self->start+=1 {
+                                if self->intext[self->start] > ' ' {
+                                    break;
+                                }
+                            }
+                            if xi != self->start {
+                                switch self->intext[self->start] {
+                                    'n' => {
+                                        self->item = Item::Null;
+                                    }
+                                    'f' => {
+                                        self->item = Item::False;
+                                    }
+                                    't' => {
+                                        self->item = Item::True;
+                                    }
+                                    '0', '1', '2', '3', '4', '5', '6', '7', '8','9','+','-' => {
+                                        val.mem  =  (u8*)unsafe<char*>(self->intext + self->start);
+                                        val.size = xi - self->start;
+                                        self->item = Item::Uint;
+                                        static_attest(slice::slice::integrity(&val));
+                                    }
+                                }
+                            }
+                        }
+
+                        self->start = xi+1;
+
+                        if self->item != Item::Invalid {
+                            self->val = val;
+                            return true;
+                        } else {
+                            if self->emit_an_end {
+                                self->emit_an_end = false;
+                                return false;
+                            }
+                        }
+                    }
+                    default => {
+                        e->fail(DecodingError, "unexpected '%c'", self->intext[xi]);
+                        self->item = Item::Invalid;
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+
+
+export fn skip(Decoder mut * self, err::Err mut *e)
+    where err::checked(*e)
+{
+    if self->item != Item::Array && self->item != Item::Map {
         return;
     }
 
-    static_attest(self->depth < len(self->state));
-    ParserStack mut * mut stack = &((self->state)[self->depth]);
-
-    if stack->state != ParserState::Object && (stack->state != ParserState::PreVal || !stack->in_array) {
-        err::fail(e, ParseError, "invalid parser state for next(), can only call when value is object or array");
-    }
-
-    ((self->state)[self->depth]).user   = u;
-}
-
-export fn push(Parser mut *self, err::Err mut *e, char *str, usize strlen)
-    @solver("yices2")
-    where err::checked(*e)
-    where len(str) >= strlen
-{
-    static_attest(buffer::integrity(&self->capture));
-    for (usize mut at = 0; at < strlen; at++) {
-        self->col += 1;
-
-        char mut ch = str[at];
-
-        static_attest(self->depth < len(self->state));
-        ParserState mut state = self->state[self->depth].state;
-
-        if state == ParserState::Key ||  state == ParserState::StringVal {
-            if ch == 92 && !self->esc {
-                self->esc = true;
-                continue;
-            } else if ch == '"' && !self->esc {
-                advance(self, e, ch);
-                if err::check(e) {
-                    return;
-                }
-            } else {
-                if self->esc {
-                    switch ch {
-                        'n' => { ch = '\n'  }
-                        92  => { ch = 92    }
-                        'r' => { ch = '\r'  }
-                        'f' => { ch = '\f'  }
-                        'b' => { ch = '\b'  }
-                        't' => { ch = '\t'  }
-                        '"' => { ch = '"'   }
-                        '/' => { ch = '/'   }
-                        default => {
-                            err::fail(e, ParseError, "invalid escape character '%c' at: %u:%u", ch, self->line, self->col);
-                            return;
-                        }
-                    }
-                }
-                self->esc = false;
-                if !(self->capture).push(ch) {
-                    err::fail(e, err::OutOfTail, "buffer overflow at %u:%u", self->line, self->col);
-                    return;
-                }
-            }
-        } else {
-            switch ch {
-                '\n' => {
-                    (self->line)++;
-                    self->col = 0;
-                    /*
-                    if state == ParserState::Key || state == ParserState::StringVal {
-                        if !buffer::push(&(self->capture), ch) {
-                            err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
-                            return;
-                        }
-                    }
-                    */
-                }
-                '\t' , '\r' , ' ', 0 => {
-                    /*
-                    if state == ParserState::Key || state == ParserState::StringVal {
-                        if !buffer::push(&(self->capture), ch) {
-                            err::fail(e, 10, "buffer overflow at %u:%u", self->line, self->col);
-                            return;
-                        }
-                    }
-                    */
-                    static_attest(err::checked(*e));
-                    if state == ParserState::IntVal || state == ParserState::BoolVal || state == ParserState::NullVal {
-                        advance(self, e, ch);
-                    }
-                }
-                '{' , '[' , '}' , ']' , '"' , ':' , ',' => {
-                    static_attest(err::checked(*e));
-                    advance(self, e, ch);
-                    if err::check(e) {
-                        return;
-                    }
-                }
-                default => {
-                    if state == ParserState::PreVal && ((ch >= '0' && ch <= '9') || ch == '-' || ch == 't' || ch == 'f' || ch == 'n') {
-                        advance(self, e, ch);
-                        static_attest(self->depth < len(self->state));
-                        state = ((self->state)[self->depth]).state;
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                    static_attest(err::checked(*e));
-
-                    if state == ParserState::IntVal || state == ParserState::BoolVal || state == ParserState::NullVal{
-                        if !buffer::push(&(self->capture), ch) {
-                            err::fail(e, err::OutOfTail, "buffer overflow at %u:%u", self->line, self->col);
-                            return;
-                        }
-                    } else {
-                        err::fail(e, ParseError, "unexpected '%c' at %u:%u while %u", ch, self->line, self->col, state);
-                        return;
-                    }
-                }
+    usize mut sk = 1;
+    while sk > 0 {
+        while self->next(e) {
+            if self->item == Item::Array || self->item == Item::Map  {
+                sk += 1;
             }
         }
-
+        sk -= 1;
     }
 }
 
-fn advance(Parser mut *self, err::Err mut *e, char token)
-    where err::checked(*e)
-{
-    static_attest(self->depth  < len(self->state));
-    ParserStack mut * mut stack = &((self->state)[self->depth]);
-    static_attest(buffer::integrity(&self->capture));
+inline using "sse.h" as sse;
 
-    switch stack->state {
-        ParserState::Document => {
-            if token == '{' {
-                 stack->state = ParserState::Object;
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected { at %u:%u", token, self->line, self->col);
-                return;
-            }
+fn scanmask(u16 mut * mask, char *hay, usize haylen)
+    where len(hay)  >= haylen
+    where len(mask) >= haylen / 16 + (2 * (usize)(haylen % 16 > 0))
+
+if #(sse::defined(sse::__x86_64__) && sse::defined(sse::__SSE2__)) {
+
+    unsafe {
+
+        sse::__m128i cmpS1 = sse::_mm_set1_epi8('[');
+        sse::__m128i cmpS2 = sse::_mm_set1_epi8(']');
+        sse::__m128i cmpS3 = sse::_mm_set1_epi8('{');
+        sse::__m128i cmpS4 = sse::_mm_set1_epi8('}');
+        sse::__m128i cmpS5 = sse::_mm_set1_epi8(',');
+        sse::__m128i cmpS6 = sse::_mm_set1_epi8('"');
+        sse::__m128i cmpS7 = sse::_mm_set1_epi8(':');
+        sse::__m128i cmpS8 = sse::_mm_set1_epi8(92);
+
+
+        usize mut i = 0;
+        for ; i + 16 < haylen; i += 16 {
+            sse::__m128i hv = sse::_mm_setr_epi8 (
+                hay[i + 0],
+                hay[i + 1],
+                hay[i + 2],
+                hay[i + 3],
+                hay[i + 4],
+                hay[i + 5],
+                hay[i + 6],
+                hay[i + 7],
+                hay[i + 8],
+                hay[i + 9],
+                hay[i + 10],
+                hay[i + 11],
+                hay[i + 12],
+                hay[i + 13],
+                hay[i + 14],
+                hay[i + 15]
+            );
+
+            sse::__m128i ra1 =
+                    sse::_mm_cmpeq_epi8(hv, cmpS1) |
+                    sse::_mm_cmpeq_epi8(hv, cmpS2) |
+                    sse::_mm_cmpeq_epi8(hv, cmpS3) |
+                    sse::_mm_cmpeq_epi8(hv, cmpS4) |
+                    sse::_mm_cmpeq_epi8(hv, cmpS5) |
+                    sse::_mm_cmpeq_epi8(hv, cmpS6) |
+                    sse::_mm_cmpeq_epi8(hv, cmpS7) |
+                    sse::_mm_cmpeq_epi8(hv, cmpS8);
+            mask[i / 16] = sse::_mm_movemask_epi8(ra1);
         }
-        ParserState::Object => {
-            if token == '"' {
-                stack->state = ParserState::Key;
-                buffer::clear(&self->capture);
-            } else if token == '}' {
-                if self->depth > 0 {
-                    (self->depth) -=1;
-                    if stack->user.pop.fn != 0 {
-                        static_attest(safe(stack->user.pop));
-                        stack->user.pop(&stack->user, e, self);
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                } else {
-                    stack->state = ParserState::Document;
-                }
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected '\"' or } at %u:%u", token, self->line, self->col);
-                return;
-            }
-        }
-        ParserState::Key => {
-            if token == '"' {
-                stack->state = ParserState::PostKey;
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
-                return;
-            }
-        }
-        ParserState::PostKey => {
-            if token == ':' {
-                stack->state = ParserState::PreVal;
-                buffer::push(&(self->capture), 0);
-                self->keylen = (self->capture).at;
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected ':' at %u:%u", token, self->line, self->col);
-                return;
-            }
-        }
-        ParserState::PreVal => {
-            if stack->in_array {
-                self->capture.clear();
-                self->capture.format("%d", self->state[self->depth].index);
-                self->capture.push(0);
-                self->keylen = self->capture.at;
-            }
-            if token == '"' {
-                stack->state = ParserState::StringVal;
-            } else if (token == 'n') {
-                stack->state = ParserState::NullVal;
-            } else if (token == 't' || token == 'f') {
-                stack->state = ParserState::BoolVal;
-            } else if (token >= '0' && token <= '9') || token == '-' {
-                stack->state = ParserState::IntVal;
-            } else if token == '{' {
-                stack->state = ParserState::PostVal;
-                if self->depth >= MAX_DEPTH - 1 {
-                    err::fail(e, err::OutOfTail, "json structure too deep");
-                    return;
-                } else {
-                    (self->depth)+=1;
-                    ParserStack mut* previous_stack = stack;
-                    stack = &((self->state)[self->depth]);
-                    memset(stack, 0, sizeof(ParserStack));
-                    stack->state = ParserState::Object;
-                    if previous_stack->user.it.fn != 0 {
-                        Iter de = previous_stack->user.it;
-                        static_attest(safe(de));
-                        Value val = Value{
-                            index:  previous_stack->index,
-                            t:      ValueType::Object,
-                        };
-                        de(&previous_stack->user, e, self, (self->capture).mem, val);
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                    previous_stack->index += 1;
-                }
-            } else if token == '[' {
-                stack->state = ParserState::PostVal;
-                (self->depth)+=1;
-                if self->depth >= MAX_DEPTH {
-                    err::fail(e, err::OutOfTail, "json structure too deep");
-                    return;
-                } else {
-                    ParserStack mut * previous_stack = stack;
-                    stack = &((self->state)[self->depth]);
-                    memset(stack, 0, sizeof(ParserStack));
-                    stack->state = ParserState::PreVal;
-                    stack->in_array = true;
-                    if previous_stack->user.it.fn != 0 {
-                        Iter de = previous_stack->user.it;
-                        static_attest(safe(de));
-                        Value val = Value{
-                            index:  previous_stack->index,
-                            t:      ValueType::Array,
-                        };
-                        de(&previous_stack->user, e, self, (self->capture).mem, val);
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                    previous_stack->index += 1;
-                }
-            } else if token == ']' && stack->in_array {
-                if self->depth > 0 {
-                    (self->depth) -=1;
-                    if stack->user.pop.fn != 0 {
-                        static_attest(safe(stack->user.pop));
-                        stack->user.pop(&stack->user, e, self);
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                } else {
-                    stack->state = ParserState::Document;
-                }
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
-                return;
-            }
-        }
-        ParserState::StringVal => {
-            if token == '"' {
-                stack->state = ParserState::PostVal;
-                if stack->user.it.fn != 0 {
-                    Iter de = stack->user.it;
-                    static_attest(safe(de));
-                    static_attest(self->keylen < len((self->capture).mem));
-                    Value val = Value{
-                        index:  stack->index,
-                        t:      ValueType::String,
-                        string: ((self->capture).mem + self->keylen),
-                    };
-                    de(&stack->user, e, self, (self->capture).mem, val);
-                    if err::check(e) {
-                        return;
-                    }
-                    stack->index += 1;
-                }
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected '\"' at %u:%u", token, self->line, self->col);
-                return;
-            }
-        }
-        ParserState::BoolVal , ParserState::NullVal => {
-            if stack->user.it.fn != 0 {
-                Iter de = stack->user.it;
-                static_attest(safe(de));
-                static_attest(self->keylen < len((self->capture).mem));
 
-                ValueType mut t = ValueType::Boolean;
-                if stack->state == ParserState::NullVal {
-                    t = ValueType::Null;
+        // do the rest as single bytes
+        mask[i / 16] = 0;
+        for ; i < haylen; i += 1 {
+            switch hay[i] {
+                '[', ']', '{', '}', ',', '"', ':', 92 => {
+                    mask[ i / 16 ] |= (1 << (i % 16));
                 }
-
-                Value val = Value{
-                    index:      stack->index,
-                    t:          t,
-                    integer:    (self->capture.mem + self->keylen)[0] == 't',
-                };
-                de(&stack->user, e, self, (self->capture).mem, val);
-                if err::check(e) { return; }
-                stack->index += 1;
-            }
-
-            if token == ',' {
-                if stack->in_array {
-                    stack->state = ParserState::PreVal;
-                } else {
-                    stack->state = ParserState::Object;
-                }
-            } else if token == ' ' {
-                stack->state = ParserState::PostVal;
-            } else if (token == '}' && !stack->in_array) || (token == ']' && stack->in_array) {
-                if self->depth > 0 {
-                    (self->depth) -=1;
-                    if stack->user.pop.fn != 0 {
-                        static_attest(safe(stack->user.pop));
-                        stack->user.pop(&stack->user, e, self);
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                } else {
-                    stack->state = ParserState::Document;
-                }
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected false or true or ',' or ' ' at %u:%u", token, self->line, self->col);
-                return;
-            }
-
-        }
-        ParserState::IntVal => {
-            if stack->user.it.fn != 0 {
-                Iter de = stack->user.it;
-                static_attest(safe(de));
-                static_attest(self->keylen < len((self->capture).mem));
-
-                Value val = Value{
-                    index:      stack->index,
-                    t:          ValueType::Integer,
-                    integer:    as<int>(atoi((self->capture).mem + self->keylen)),
-                };
-                de(&stack->user, e, self, (self->capture).mem, val);
-                if err::check(e) { return; }
-                stack->index += 1;
-            }
-
-            if token == ',' {
-                if stack->in_array {
-                    stack->state = ParserState::PreVal;
-                } else {
-                    stack->state = ParserState::Object;
-                }
-            } else if token == ' ' {
-                stack->state = ParserState::PostVal;
-            } else if (token == '}' && !stack->in_array) || (token == ']' && stack->in_array) {
-                if self->depth > 0 {
-                    (self->depth) -=1;
-                    if stack->user.pop.fn != 0 {
-                        static_attest(safe(stack->user.pop));
-                        stack->user.pop(&stack->user, e, self);
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                } else {
-                    stack->state = ParserState::Document;
-                }
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected [0-9] or ',' or ' ' at %u:%u", token, self->line, self->col);
-                return;
-            }
-
-
-
-
-        }
-        ParserState::PostVal => {
-            if token == ',' {
-                if stack->in_array {
-                    stack->state = ParserState::PreVal;
-                } else {
-                    stack->state = ParserState::Object;
-                }
-            } else if (token == '}' && !stack->in_array) || (token == ']' && stack->in_array) {
-                if self->depth > 0 {
-                    (self->depth) -=1;
-                    if stack->user.pop.fn != 0 {
-                        static_attest(safe(stack->user.pop));
-                        stack->user.pop(&stack->user, e, self);
-                        if err::check(e) {
-                            return;
-                        }
-                    }
-                } else {
-                    stack->state = ParserState::Document;
-                }
-            } else {
-                err::fail(e, ParseError, "unexpected '%c', expected ',' or '}' at %u:%u", token, self->line, self->col);
-                return;
             }
         }
     }
+} else {
+    memset(mask, 0, 2 * (haylen / 16 + (usize)(haylen % 16 > 0)));
+    for usize mut i = 0 ; i < haylen; i += 1 {
+        switch hay[i] {
+            '[', ']', '{', '}', ',', '"', ':', 92 => {
+                mask[ i / 16 ] |= (u16)(1 << (i % 16));
+            }
+        }
+    }
+}
+
+
+
+export macro from() {
+    ::json::des::impl();
 }
