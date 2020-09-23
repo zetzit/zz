@@ -573,13 +573,12 @@ impl Stack {
                                 (loc.clone(), "this new statement is uninitialized".to_string()),
                             ]));
                         }
-                        let assign = assign.as_mut().unwrap();
-                        if let ast::Expression::Call {
+                        if let Some(ast::Expression::Call{
                             loc,
                             args,
                             name: fname,
                             ..
-                        } = assign
+                        }) = assign
                         {
                             let mut nuargpos = None;
 
@@ -686,17 +685,22 @@ impl Stack {
                                 (loc.clone(), "this new statement is invalid".to_string()),
                             ]));
                         }
+                        let assign = std::mem::replace(assign, None).unwrap();
                         let stm = Box::new(ast::Statement::Expr {
                             loc: assign.loc().clone(),
-                            expr: assign.clone(),
+                            expr: assign,
                         });
-                        *assign = ast::Expression::ArrayInit {
-                            loc: loc.clone(),
-                            fields: vec![Box::new(ast::Expression::Literal {
-                                loc: loc.clone(),
-                                v: "0".to_string(),
-                            })],
-                        };
+                        // we used to initialize stack before passing it to new,
+                        // but this unessesary as constructors are required to reset
+                        // their args to a clean state anyway.
+                        // zero initializing large tails is expensive
+                        //*assign = Some(ast::Expression::ArrayInit {
+                        //    loc: loc.clone(),
+                        //    fields: vec![Box::new(ast::Expression::Literal {
+                        //        loc: loc.clone(),
+                        //        v: "0".to_string(),
+                        //    })],
+                        //});
                         body.insert(i + 1, stm);
                         i += 1;
                         len += 1;
@@ -759,7 +763,7 @@ impl Stack {
                 }
 
                 ast::Statement::Continue { .. } => {}
-                ast::Statement::Break { loc } => {
+                ast::Statement::Break { loc, ..} => {
                     let r = self.drop(&loc)?;
                     for stm in r.into_iter().rev() {
                         body.insert(i, stm);
