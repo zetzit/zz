@@ -75,6 +75,7 @@ export fn from_str(Address mut new*self, char * mut s, usize mut slen)
     where len(s) >= slen
 {
     if slen < 2 {
+        none(self);
         return;
     }
 
@@ -87,9 +88,10 @@ export fn from_str(Address mut new*self, char * mut s, usize mut slen)
         return;
     }
 
-    bool unused = (from_str_ipv4(self, s, slen) || from_str_ipv6(self, s, slen));
-    //bug in xtensa-esp32-elf-gcc
-    (void)unused;
+    bool ok = (from_str_ipv4(self, s, slen) || from_str_ipv6(self, s, slen));
+    if !ok {
+        none(self);
+    }
     return;
 }
 
