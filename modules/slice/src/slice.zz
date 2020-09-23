@@ -21,13 +21,33 @@ export fn eq(Slice *self, Slice other) -> bool
     return (c_string::memcmp(self->mem, other.mem, self->size) == 0);
 }
 
+
+export fn strlen(Slice *self) -> usize
+    where integrity(self)
+    model return < len(self->mem)
+{
+    if self->mem == 0 {
+        static_attest(len(self->mem) > 0);
+        return 0;
+    }
+    usize mut l = 0;
+    while unsafe<bool>(self->mem[l] != 0 && l < self->size) {
+        l++;
+    }
+    static_attest(l < len(self->mem));
+    return l;
+}
+
 export fn eq_cstr(Slice *self, char *other) -> bool
     where integrity(self)
     where nullterm(other)
 {
+    let l1 = strlen(self);
     usize othersize = (usize)c_string::strlen(other);
-    static_attest(len(other) == othersize);
-    return eq_bytes(self, (u8*)other, othersize);
+    if l1 != othersize {
+        return false;
+    }
+    return (c_string::memcmp(self->mem, other, l1) == 0);
 }
 
 export fn eq_bytes(Slice *self, u8 *other, usize othersize) -> bool
@@ -179,4 +199,3 @@ export fn atoi(Slice *self, usize base) -> i64
         return 0-num;
     }
 }
-
