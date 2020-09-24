@@ -1,0 +1,115 @@
+using map
+using pool
+
+export using map::{ key, val }
+
+/**
+ * A higher level `Map` abstraction for borrowed references.
+ */
+export struct WeakMap+ {
+  map::Map+ mut map;
+}
+
+/**
+ * Creates a new `WeakMap` with tail with support for `map::key` and
+ * `map::val` theories aliased to `weakmap::key` and `weakmap::val`
+ * respectively.
+ */
+export fn make(WeakMap new mut *self, usize tail = static(len(*self))) {
+  map::make(&self->map, tail);
+  static_attest(map::key(self->map) == map::key(*self));
+  static_attest(map::val(self->map) == map::val(*self));
+}
+
+/**
+ * Creates a new `WeakMap` from a pool with support for `map::key` and
+ * `map::val` theories aliased to `weakmap::key` and `weakmap::val`
+ * respectively.
+ */
+export fn make_with_pool(WeakMap new mut *self, pool::Pool+tail mut *pool) {
+  map::make_with_pool(&self->map, pool, 0);
+  static_attest(map::key(self->map) == map::key(*self));
+  static_attest(map::val(self->map) == map::val(*self));
+}
+
+/**
+ * Insert a _borrowed_ `value` for a _borrowed_ `key` into the `WeakMap`.
+ * Both the `key` and `value` need to exist for the lifetime of the
+ * `WeakMap`. This function returns `true` upon success, otherwise `false`
+ * if there is not enough memory to store the key (hash).
+ */
+export fn insert(WeakMap mut *self, void *key, void *value) bool {
+  return self->map.insert_bb(key, value);
+}
+
+/**
+ * An alias to `wm.insert(key, value)`
+ */
+export fn set(WeakMap mut *self, void *key, void *value) bool {
+  return self->insert(key, value);
+}
+
+/**
+ * Remove a value entry for a given `key`. Returns `true` on success,
+ * otherwise `false` if it does not exist.
+ */
+export fn remove(WeakMap mut *self, void *key) bool {
+  return self->map.remove(key);
+}
+
+/**
+* Returns an _iterator_ for all keys in the `WeakMap`.
+*
+* ```c++
+* for let mut it = wm.keys(); it.next(); {
+*   let key = it.key.mem;
+*   let value = wm.get(key);
+* }
+* ```
+ */
+export fn keys(WeakMap mut *self) map::Keys {
+  return self->map.keys();
+}
+
+/**
+ * Return a _borrowed_ reference for `key`. A call site attestation may be
+ * needed to use the return value as it may be unsafe.
+ */
+export fn get(WeakMap *self, void *key) void mut * {
+  return map::get(as<map::Map mut *>(&self->map), key);
+}
+
+/**
+ * Returns `true` if there is a value entry for a given `key`, otherwise
+ * `false`.
+ */
+export fn has(WeakMap *self, void *key) bool {
+  let value = self->get(key);
+  if 0 != self->get(key) {
+    static_attest(safe(value));
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Clear all references for all keys in the `WeakMap`. Returns `true` upon
+ * success, otherwise `false`.
+ */
+export fn clear(WeakMap mut *self) bool {
+  for let mut it = self->keys(); it.next(); {
+    if !self->remove(it.key.mem) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Returns the number of borrowed items the `WeakMap` references.
+ */
+export fn count(WeakMap *self) usize {
+  return self->map.count();
+}

@@ -1,0 +1,18 @@
+[project]
+version = "0.1.0"
+name = "weakmap"
+description = "A higher level Map abstraction for borrowed references"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+
+[dependencies]
+err = "1"
+list = "1"
+log = "1"
+map = "1"
+mem = "1"
+vec = "1"
+
+[repos]

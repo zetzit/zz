@@ -1,0 +1,46 @@
+using err::{ assert }
+using list
+using log
+using map
+using pool
+using vec
+using weakmap
+
+struct User {
+  char *username;
+}
+
+export fn count(void+length *array) usize {
+  return length;
+}
+
+fn main() int {
+  new[+1024] memory_pool = pool::make(8);
+  new[
+    weakmap::key = User,
+    weakmap::val = User
+  ] graph = weakmap::make_with_pool(&memory_pool);
+
+  User users[] = {
+    User { username: "jwerle" },
+    User { username: "aep" },
+  };
+
+  User following[] = {
+    users[1],
+    users[0]
+  };
+
+  for usize mut i = 0; i < count(users); ++i {
+    assert(graph.set(&users[i], &following[i]));
+  }
+
+  for let mut it = graph.keys(); it.next(); {
+    let key = it.key.mem;
+    let user = (User *) key;
+    assert(graph.has(key));
+    let follows = (User *) graph.get(key);
+  }
+
+  return 0;
+}
