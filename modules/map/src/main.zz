@@ -1,6 +1,7 @@
 using map;
 using err;
 using log;
+using pool;
 using slice;
 using buffer;
 
@@ -38,11 +39,30 @@ pub fn main() -> int {
 
     err::assert(amap.count() == 1);
 
+    err::assert(amap.insert_ob("beep", &a));
+    err::assert(amap.insert_ob("boop", &a));
+
+    err::assert(amap.count() == 3);
 
     let gimmeback = (A*)amap.get("bob");
     err::assert_safe(gimmeback);
     static_attest(buffer::integrity(&gimmeback->b));
     log::info("%s", gimmeback->b.cstr());
+
+    let free_bytes = amap.p.free_bytes();
+    let mut free_bytes_after_clear = free_bytes;
+
+    for let mut keys = amap.keys(); keys.next(); {
+        let mut keysize = pool::align(keys.key.size);
+        let mut nodesize = pool::align(unsafe<usize>(sizeof(map::Node)));
+
+        free_bytes_after_clear += keysize + nodesize;
+    }
+
+    amap.clear();
+
+    err::assert(amap.count() == 0);
+    err::assert(free_bytes_after_clear == amap.p.free_bytes());
 
 
 
