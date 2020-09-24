@@ -164,15 +164,18 @@ export fn insert_oo(
     if owned_k == 0 {
         return false;
     }
+
+    void mut * owned_v = self->p.malloc(vt);
+    if owned_v == 0 {
+        self->p.free(owned_k);
+        return false;
+    }
+
     static_attest(safe(owned_k));
     static_attest(len(k) == kt);
     static_attest(len(owned_k) == kt);
     mem::copy(k, owned_k, kt);
 
-    void mut * owned_v = self->p.malloc(vt);
-    if owned_v == 0 {
-        return false;
-    }
     static_attest(safe(owned_v));
     static_attest(len(v) == vt);
     static_attest(len(owned_v) == vt);
@@ -233,7 +236,7 @@ fn i_insert(Map mut* self, Node mut *node) -> bool
 ///     let x = (MyThing *x)map.borrow("bob");
 ///     if x == 0 { err::panic("no such key"); }
 ///
-export fn get(Map mut* self, void * k, usize kt = static(len(k), 1) * sizeof(*k)) void mut *
+export fn get(Map * self, void * k, usize kt = static(len(k), 1) * sizeof(*k)) void mut *
 {
     let r = (void mut*)(get_slice(self, k, kt).mem);
     return r;
@@ -246,7 +249,7 @@ export fn get(Map mut* self, void * k, usize kt = static(len(k), 1) * sizeof(*k)
 ///     let x = map.borrow_slice("bob");
 ///     if x.mem == 0 { err::panic("no such key"); }
 ///
-export fn get_slice(Map mut* self, void * k, usize kt = static(len(k), 1) * sizeof(*k)) slice::slice::Slice
+export fn get_slice(Map * self, void * k, usize kt = static(len(k), 1) * sizeof(*k)) slice::slice::Slice
 {
     static_attest(len(k) == kt);
 
@@ -282,7 +285,7 @@ export fn get_slice(Map mut* self, void * k, usize kt = static(len(k), 1) * size
 /// remove an entry by object key
 ///
 /// returns true if entry was found, false otherwise
-export fn remove(Map mut* self, void * k, usize kt = sizeof(*k)) -> bool
+export fn remove(Map mut* self, void * k, usize kt = static(len(k), 1) * sizeof(*k)) -> bool
 {
     static_attest(len(k) == kt);
     return remove_sl(self, slice::slice::Slice{mem:k, size: kt});
@@ -406,6 +409,56 @@ export fn next(Keys mut* self) -> bool
     return false;
 }
 
+/// Frees all keys and values. Any borrowed values are no longer valid
+export fn clear(Map mut *self)
+{
+    for usize mut index = 0; index < self->buckets_reserved; index++ {
+        static_attest(index < len(self->buckets));
+        let root = self->buckets[index].root;
+
+        if root != 0 {
+            static_attest(safe(root));
+            Node mut * mut no = root;
+
+            while no != 0 {
+                static_attest(safe(no));
+                static_attest(slice::slice::integrity(&no->k));
+                static_attest(slice::slice::integrity(&no->v));
+                let nn = no->next;
+                self->i_dealloc(no);
+                self->item_count -= 1;
+                no = nn;
+            }
+        }
+    }
+}
+
+/// Returns true if there is a value entry for a given key, otherwise
+/// false.
+export fn has(Map *self, void *key) bool
+{
+    let value = self->get(key);
+
+    if 0 != value {
+        static_attest(safe(value));
+        return true;
+    }
+
+    return false;
+}
+
+/// an alias to insert_oo()
+export fn insert(Map mut *self, void *key, void *value) bool
+{
+    return self->insert_oo(key, value);
+}
+
+/// an alias to insert_bb()
+export fn set(Map mut *self, void *key, void *value) bool
+{
+    return self->insert_bb(key, value);
+}
+
 
 
 
@@ -433,4 +486,6 @@ fn i_dealloc(Map mut* self, Node mut *node)
         static_attest(pool::member(node->v.mem, &self->p));
         self->p.free(node->v.mem);
     }
+    static_attest(pool::member(node, &self->p));
+    self->p.free(node);
 }
