@@ -31,19 +31,22 @@ jobs:
     - name: macos
       if: matrix.os == 'macos-latest'
       run: |
-        brew install z3
+        brew install SRI-CSL/sri-csl/yices2
         ./ci.sh
 
     - name: ubuntu
       if: matrix.os == 'ubuntu-latest'
       run: |
-        sudo apt-get install -y z3
+        sudo add-apt-repository ppa:sri-csl/formal-methods
+        sudo apt-get update
+        sudo apt-get install yices2
         ./ci.sh
 
     - name: windows
       if: matrix.os == 'windows-latest'
       run: |
-        curl -fsSL "https://github.com/Z3Prover/z3/releases/download/z3-4.8.8/z3-4.8.8-x64-win.zip" -o "z3-4.8.8-x64-win.zip"
+        curl -fsSL "https://yices.csl.sri.com/releases/2.6.2/yices-2.6.2-x86_64-pc-mingw32-static-gmp.zip" -o "yices2.zip"
+        7z e "yices2.zip" -o/c/z3_downloaded -r -y
         rm -rf /c/z3_downloaded/z3 ## this is an empty directory
         export "PATH=/c/z3_downloaded:/c/msys64/mingw64/bin/:$PATH"
         clang --version
