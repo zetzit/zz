@@ -67,7 +67,7 @@ pub fn parse_typed(ast::Ast mut* self, ast::Typed mut *typed, err::Err mut *e, j
                     static_attest(safe(m));
                     m->make_expression(&self->pl);
                     static_attest(vec::integrity(&typed->params));
-                    typed->params.push_b(m);
+                    typed->params.put(m);
                     parse_expression(self, m, e, dec);
                 } else {
                     dec->skip(e);
@@ -214,7 +214,7 @@ pub fn decode_struct(ast::Ast mut*self,err::Err mut *e, json::Decoder mut*dec)
                     static_attest(safe(m));
                     m->make_field(&self->pl);
                     static_attest(vec::integrity(&self->local.v.dstruct.fields));
-                    self->local.v.dstruct.fields.push_b(m);
+                    self->local.v.dstruct.fields.put(m);
 
                     while dec->next(e) {
                         if dec->item == json::Item::Map && dec->key.eq_cstr("typed") {
@@ -256,7 +256,7 @@ pub fn decode_enum(ast::Ast mut*self,err::Err mut *e, json::Decoder mut*dec)
                             static_attest(safe(m));
                             static_attest(vec::integrity(&self->local.v.denum.items));
                             m->name = dec->val;
-                            if !self->local.v.denum.items.push_b(m) {
+                            if !self->local.v.denum.items.put(m) {
                                 e->fail(err::OutOfTail,"oom");
                                 return;
                             }
@@ -310,7 +310,7 @@ pub fn decode_ast(ast::Ast mut*self,err::Err mut *e, json::Decoder mut*dec)
                     }
                     static_attest(safe(m));
                     m->make_expression(&self->pl);
-                    if !self->args.push_b(m) {
+                    if !self->args.put(m) {
                         e->fail(err::OutOfTail,"oom");
                         return;
                     }

@@ -23,7 +23,7 @@ export fn main() int {
 
 
     err::assert(l.push("hello"));
-    err::assert(l.push_b("bob"));
+    err::assert(l.put("bob"));
 
 
 

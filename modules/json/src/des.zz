@@ -89,7 +89,7 @@ export fn impl()
         );
         printf("        if v == 0 { e->fail(err::OutOfTail, \"oom\"); return; }\n");
         printf("        static_attest(safe(v));\n");
-        printf("        if !vec::push_b((::vec::Vec mut*)self, v) { e->fail(err::OutOfTail, \"oom\"); return; }\n");
+        printf("        if !vec::put((::vec::Vec mut*)self, v) { e->fail(err::OutOfTail, \"oom\"); return; }\n");
 
 
         if vec_item.eq_cstr("::slice::slice::Slice") {

@@ -18,6 +18,9 @@ export fn eq(Slice *self, Slice other) -> bool
     if self->size != other.size {
         return false;
     }
+    if self->mem == 0 || other.mem == 0 {
+        return false;
+    }
     return (c_string::memcmp(self->mem, other.mem, self->size) == 0);
 }
 
