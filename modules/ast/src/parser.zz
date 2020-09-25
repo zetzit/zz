@@ -164,6 +164,35 @@ pub fn parse_literal(ast::Ast mut* self, slice::slice::Slice mut *name, err::Err
     }
 }
 
+pub fn parse_expression_array_init(ast::Ast mut* self, ast::ArrayInit mut *arg, err::Err mut *e, json::Decoder mut*dec)
+    where err::checked(*e)
+{
+    while dec->next(e) {
+        if dec->item == json::Item::Array && dec->key.eq_cstr("fields") {
+            while dec->next(e) {
+                if dec->item == json::Item::Map {
+                    let m = (ast::Expression mut *)self->pl.malloc(sizeof(ast::Expression));
+                    if m == 0 {
+                        e->fail(err::OutOfTail,"oom");
+                        return;
+                    }
+                    static_attest(safe(m));
+                    m->make_expression(&self->pl);
+                    if !arg->fields.put(m) {
+                        e->fail(err::OutOfTail,"oom");
+                        return;
+                    }
+                    parse_expression(self, m, e , dec);
+                } else {
+                    dec->skip(e);
+                }
+            }
+        } else {
+            dec->skip(e);
+        }
+    }
+}
+
 
 pub fn parse_expression(ast::Ast mut* self, ast::Expression mut *arg, err::Err mut *e, json::Decoder mut*dec)
     where err::checked(*e)
@@ -187,8 +216,13 @@ pub fn parse_expression(ast::Ast mut* self, ast::Expression mut *arg, err::Err m
                 arg->t = ast::ExpressionType::Call;
                 arg->v.call.make_call_expression(&self->pl);
                 parse_expression_call(self, &arg->v.call, e , dec);
+            } else if dec->key.eq_cstr("array_init") {
+                arg->t = ast::ExpressionType::ArrayInit;
+                arg->v.array.make_array_init_expression(&self->pl);
+                parse_expression_array_init(self, &arg->v.array, e , dec);
             } else {
                 err::fail(e, ParseError, "unable to parse expression '%.*s' ", dec->key.size, dec->key.mem);
+                return;
             }
         } else {
             dec->skip(e);
