@@ -32,11 +32,7 @@ export fn make(Vec mut new* self, usize lt = static(len(self->pool.pmem)))
 {
     mem::zero(self);
     self->pool.make(sizeof(slice::Slice), lt);
-    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice) + sizeof(bool))/10;
-    if self->capacity == 0 {
-        self->capacity = 1;
-    }
-
+    self->capacity = 1;
     u8 mut* themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
     err::assert_safe(themem);
     self->items = (slice::slice::Slice mut*)themem;
@@ -59,11 +55,7 @@ export fn make_with_pool(Vec mut new* self, pool::Pool mut * pool, usize lt = st
     mem::zero(self);
     self->pool.make(sizeof(slice::Slice), lt);
     self->pool.extra = pool;
-    self->capacity = lt/unsafe<usize>(sizeof(slice::Slice) + sizeof(bool))/10;
-    if self->capacity == 0 {
-        self->capacity = 1;
-    }
-
+    self->capacity = 1;
     u8 mut * themem  = self->pool.malloc(unsafe<usize>(sizeof(slice::Slice) + sizeof(bool)) * self->capacity);
     err::assert_safe(themem);
     self->items = (slice::slice::Slice mut*)themem;
@@ -145,7 +137,7 @@ export fn push(Vec mut* self, void * val, usize vt = static(len(val), 1) * sizeo
 /// append borrowed value
 /// the borrowed references must be valid for the lifetime of the vec
 /// returns false if there is no memory left in the pool to grow the vec
-export fn push_b(Vec mut* self, void * val, usize vt = static(len(val), 1) * sizeof(*val)) bool
+export fn put(Vec mut* self, void * val, usize vt = static(len(val), 1) * sizeof(*val)) bool
     where integrity(self)
     model integrity(self)
 {
@@ -202,7 +194,7 @@ export fn delete(Vec mut* self) bool {
 /// an Iterator over a Vec
 export struct Iter {
     usize mut at;
-    Vec mut * mut v;
+    Vec * mut v;
 
     slice::Slice mut val;
 }
@@ -212,7 +204,7 @@ export struct Iter {
 /// for let mut i = l.iter(); i.next(); {
 ///     log::info(">%.*s<", i.val.size, i.val.mem);
 /// }
-export fn iter(Vec mut* self) Iter
+export fn iter(Vec * self) Iter
 {
     return Iter {
         v: self,
