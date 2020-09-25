@@ -725,11 +725,11 @@ impl Symbolic {
                 }
                 ast::Def::Testcase { .. } => {}
                 ast::Def::Include { .. } => {}
-                ast::Def::Type { .. } => {
+                ast::Def::Type { alias, .. } => {
                     let sym = self.alloc(
                         Name::from(&d.name),
                         ast::Typed {
-                            t: ast::Type::Other(Name::from(&d.name.clone())),
+                            t: ast::Type::Other(Name::from(&d.name)),
                             loc: d.loc.clone(),
                             ..Default::default()
                         },
@@ -1041,9 +1041,12 @@ impl Symbolic {
             self.current_function_ret = None;
         }
 
+
         self.execute_scope(&mut body.statements)?;
 
+        self.in_model = true;
         self.check_function_model(&body.end)?;
+        self.in_model = false;
 
         self.ssa.unbranch(false);
         self.ssa.pop(&format!("end of function {}\n\n", name));
@@ -3617,6 +3620,8 @@ impl Symbolic {
                 let mut syms = Vec::new();
                 let mut debug_arg_names = Vec::new();
                 self.ssa.debug("collecting theory invocation arguments");
+                let in_model = self.in_model;
+                self.in_model = true;
                 for (i, arg) in args.into_iter().enumerate() {
                     let s = self.execute_expr(arg)?;
 
@@ -3649,6 +3654,7 @@ impl Symbolic {
                         ));
                     }
                 }
+                self.in_model = in_model;
                 self.ssa.debug("end of collecting theory invocation arguments");
 
 
@@ -3893,7 +3899,10 @@ impl Symbolic {
                         self.cur().locals.insert(Name::from(&farg.name), syms[i].0);
                     }
 
+                    let in_model = self.in_model;
+                    self.in_model = true;
                     let casym = self.execute_expr(callsite_effect)?;
+                    self.in_model = in_model;
 
                     if !self.ssa.attest((casym, self.memory[casym].temporal), true) {
                         return Err(self.trace(
@@ -4176,7 +4185,9 @@ impl Symbolic {
 
         if let ast::Type::Other(o) = &typed.t {
             if let Some(ast::Def::Type{alias, ..}) = self.defs.get(&o) {
-                typed = alias.clone();
+                let mut c = alias.clone();
+                c.ptr = typed.ptr.clone();
+                typed = c;
             }
         }
 
@@ -4443,10 +4454,20 @@ impl Symbolic {
     fn temporary(
         &mut self,
         name: String,
-        typed: ast::Typed,
+        mut typed: ast::Typed,
         loc: ast::Location,
         tags: ast::Tags,
     ) -> Result<Symbol, Error> {
+
+        if let ast::Type::Other(o) = &typed.t {
+            if let Some(ast::Def::Type{alias, ..}) = self.defs.get(&o) {
+                let mut c = alias.clone();
+                c.ptr = typed.ptr.clone();
+                typed = c;
+            }
+        }
+
+
         self.ssa.debug_loc(&loc);
         let t = Self::smt_type(&typed);
         let symbol = self.memory.len();

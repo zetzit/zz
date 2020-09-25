@@ -1,5 +1,8 @@
 export using slice;
 export using mut_slice;
-export using slice::{Slice};
-export using slice::{integrity};
+export using slice::{
+    Slice,
+    integrity,
+    from_cstr,
+};
 export using mut_slice::{MutSlice};

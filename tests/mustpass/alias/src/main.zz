@@ -2,7 +2,7 @@ using log;
 
 
 
-struct A{
+struct A {
     int dummy;
 };
 
@@ -10,13 +10,41 @@ theory booze(void _) bool;
 
 export type B = A[booze = true];
 
+
+export struct X {
+    B b;
+}
+
 export fn main() int {
 
     B mut b;
     b.dummy = 3;
 
     static_assert(booze(b));
+    bleep(&b);
+    static_assert(booze(b));
 
-    log::info("hello %s", "alias");
+
+
+
+    X mut x = {0};
+    x.b.dummy = 3;
+    static_assert(booze(x.b));
+
+
+
+
     return 0;
+}
+
+export fn mop(B *b) int
+    where b->dummy == 3
+{
+    return bleep(b);
+}
+
+export fn bleep(B *b) int
+    where b->dummy == 3
+{
+    return b->dummy;
 }

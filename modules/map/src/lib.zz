@@ -234,7 +234,6 @@ fn i_insert(Map mut* self, Node mut *node) -> bool
 ///     if x == 0 { err::panic("no such key"); }
 ///
 export fn get(Map mut* self, void * k, usize kt = static(len(k), 1) * sizeof(*k)) void mut *
-    where !constrained(key(*self)) || typeof(*k) == key(*self)
 {
     let r = (void mut*)(get_slice(self, k, kt).mem);
     return r;
