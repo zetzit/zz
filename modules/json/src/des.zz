@@ -6,7 +6,6 @@ using json;
 using pool;
 using slice;
 
-
 export fn impl()
 {
     new+10000 a = ast::from_macro();
@@ -20,16 +19,6 @@ export fn impl()
     }
 
 
-        printf(r#"pub fn %.*s_from_json(
-    %.*s mut new* self,
-    err::Err mut *e,
-    json::Decoder mut *dec,
-    pool::Pool mut*pl,
-    usize tail = static(tailof(*self), 0),
-)
-    where err::checked(*e)
-{
-"#,    a.local.name.size, a.local.name.mem, a.local.name.size, a.local.name.mem);
 
 
 
@@ -39,7 +28,18 @@ export fn impl()
     static_attest(slice::slice::integrity(&a.local.v.dalias.alias.name));
     if a.local.t == ast::DefType::Type && a.local.v.dalias.alias.name.eq_cstr("::vec::Vec") {
 
-        printf("    ::vec::make_with_pool((::vec::Vec mut*)self, pl, tail);\n");
+        printf(r#"pub fn %.*s_from_json(
+    ::vec::Vec  mut new* self,
+    err::Err mut *e,
+    json::Decoder mut *dec,
+    pool::Pool mut*pl,
+    usize tail = 0,
+)
+    where err::checked(*e)
+{
+"#,    a.local.name.size, a.local.name.mem, a.local.name.size, a.local.name.mem);
+
+        printf("    ::vec::make_with_pool(self, pl, tail);\n");
 
         slice::Slice mut vec_item = {0};
         for let mut it = a.local.v.dalias.alias.params.iter(); it.next(); {
@@ -89,7 +89,7 @@ export fn impl()
         );
         printf("        if v == 0 { e->fail(err::OutOfTail, \"oom\"); return; }\n");
         printf("        static_attest(safe(v));\n");
-        printf("        if !vec::put((::vec::Vec mut*)self, v) { e->fail(err::OutOfTail, \"oom\"); return; }\n");
+        printf("        if !vec::put(self, v) { e->fail(err::OutOfTail, \"oom\"); return; }\n");
 
 
         if vec_item.eq_cstr("::slice::slice::Slice") {
@@ -127,7 +127,21 @@ export fn impl()
 
     // ===================== MAP ==============================
     } else if a.local.t == ast::DefType::Type && a.local.v.dalias.alias.name.eq_cstr("::map::Map") {
-        printf("    ::map::make_with_pool((::map::Map mut*)self, pl, tail);\n");
+
+        printf(r#"pub fn %.*s_from_json(
+    ::map::Map mut new* self,
+    err::Err mut *e,
+    json::Decoder mut *dec,
+    pool::Pool mut*pl,
+    usize tail = 0,
+)
+    where err::checked(*e)
+{
+"#,    a.local.name.size, a.local.name.mem, a.local.name.size, a.local.name.mem);
+
+
+
+        printf("    ::map::make_with_pool(self, pl, tail);\n");
 
         slice::Slice mut map_key = {0};
         slice::Slice mut map_val = {0};
@@ -187,7 +201,7 @@ export fn impl()
         );
         printf("        if v == 0 { e->fail(err::OutOfTail, \"oom\"); return; }\n");
         printf("        static_attest(safe(v));\n");
-        printf("        if !map::insert_bb((::map::Map mut*)self, dec->key.mem, v, dec->key.size) { e->fail(err::OutOfTail, \"oom\"); return; }\n");
+        printf("        if !map::insert_bb(self, dec->key.mem, v, dec->key.size) { e->fail(err::OutOfTail, \"oom\"); return; }\n");
 
         if map_val.eq_cstr("::slice::slice::Slice") {
             printf("    ::json::des::Slice_from_json(v, e, dec, pl);\n");
@@ -225,6 +239,17 @@ export fn impl()
     // ===================== ENUM ==============================
     } else if a.local.t == ast::DefType::Enum {
 
+        printf(r#"pub fn %.*s_from_json(
+    %.*s mut * self,
+    err::Err mut *e,
+    json::Decoder mut *dec,
+    pool::Pool mut*pl,
+    usize tail = 0,
+)
+    where err::checked(*e)
+{
+"#,    a.local.name.size, a.local.name.mem, a.local.name.size, a.local.name.mem);
+
         printf("    ::mem::zero(self);\n");
         printf("    if dec->item != json::Item::String { \n");
         printf("        e->fail(err::InvalidArgument, \"only string can be decoded to %.*s\"); return;\n",
@@ -250,6 +275,17 @@ export fn impl()
 
     // ===================== STRUCT ==============================
     } else if a.local.t == ast::DefType::Struct {
+
+        printf(r#"pub fn %.*s_from_json(
+    %.*s mut * self,
+    err::Err mut *e,
+    json::Decoder mut *dec,
+    pool::Pool mut*pl,
+    usize tail = 0,
+)
+    where err::checked(*e)
+{
+"#,    a.local.name.size, a.local.name.mem, a.local.name.size, a.local.name.mem);
 
         printf("    ::mem::zero(self);\n");
         printf("    while dec->next(e) {\n");

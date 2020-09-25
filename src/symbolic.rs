@@ -3917,7 +3917,9 @@ impl Symbolic {
                 Ok(return_sym)
             }
             Value::Closure{..} => {
-                self.assert_safe(name_sym, loc)?;
+                if !self.in_model {
+                    self.assert_safe(name_sym, loc)?;
+                }
 
                 args.push(Box::new(ast::Expression::MemberAccess{
                     loc: loc.clone(),

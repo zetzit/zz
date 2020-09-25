@@ -241,6 +241,9 @@ impl Scope {
             "sizeof" => {
                 return;
             }
+            "static"| "len"| "nullterm"| "typeof"| "tailof" => {
+                return;
+            }
             _ => (),
         };
 
@@ -1281,6 +1284,10 @@ fn abs_args(
         scope.tags(&mut arg.tags);
         if let ast::Type::Other(ref mut name) = &mut arg.typed.t {
             check_abs_available(name, astvis, all_modules, &arg.typed.loc, mdname);
+        }
+
+        if let Some(assign) = &mut arg.assign {
+            abs_expr(assign, scope, false, all_modules, mdname);
         }
 
         args.push(arg.clone());

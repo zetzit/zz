@@ -505,6 +505,10 @@ pub fn flatten(md: &ast::Module, all_modules: &HashMap<Name, loader::Module>, ex
                     }
 
                     for (i, arg) in args.into_iter().enumerate() {
+                        if let Some(assign) = &arg.assign {
+                            decl_deps.extend(expr_deps(cr, assign));
+                        }
+
                         decl_deps.extend(type_deps(cr, &arg.typed));
                         decl_deps.extend(tag_deps(cr, &arg.tags));
 
