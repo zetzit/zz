@@ -13,6 +13,7 @@ using <stdio.h>::{stdin, stderr, fprintf, printf};
 //  {"args":[{"Literal":{"loc":{"file":"/Users/aep/proj/zz/tests/mustpass/procmacro/src/main.zz"},"v":"3"}}]}
 
 
+
 export enum ExpressionType {
     Invalid,
     Literal,
@@ -20,6 +21,7 @@ export enum ExpressionType {
     Name,
     Infix,
     Call,
+    ArrayInit,
 }
 
 export union ExpressionValue {
@@ -27,6 +29,7 @@ export union ExpressionValue {
     slice::slice::Slice     literal;
     InfixExpression         infix;
     CallExpression          call;
+    ArrayInit               array;
 }
 
 export struct Expression
@@ -58,6 +61,16 @@ export enum InfixOperator {
     Bitand,
     Bitor,
 }
+
+export struct ArrayInit
+{
+    vec::Vec[vec::item = Expression,+0] mut fields;
+}
+export fn make_array_init_expression(ArrayInit mut new*self, pool::Pool mut*p) {
+    self->fields.make_with_pool(p, 0);
+}
+
+
 
 export struct InfixExpression {
     Expression mut*lhs;
