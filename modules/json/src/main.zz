@@ -6,6 +6,8 @@ using <stdio.h>::{printf};
 using map;
 using log;
 using vec;
+using hex;
+using mem;
 
 pub fn main(int argc, char ** argv) int {
 
@@ -47,6 +49,9 @@ pub fn main(int argc, char ** argv) int {
     "honk if you're a goose",
     "escape the \"\\\""
   ],
+  "firmware": {
+    "motor": "696e647573747279207374616e6461726420656e6372797074696f6e21"
+  }
 }
 "#;
     new+800 decoder = json::decode(&e, inp);
@@ -90,6 +95,8 @@ pub fn main(int argc, char ** argv) int {
         err::assert_safe(v);
         log::info("car.people[%.*s].seat = %d", iter.key.size, iter.key.mem, v->seat);
     }
+    log::info("car.firmware.motor = %.*s", car.firmware.motor.size, car.firmware.motor.mem);
+
 
     return 0;
 }
@@ -117,12 +124,15 @@ struct Window  @json::from()
     bool open;
 }
 
-type WindowListList @json::from() = vec::Vec[vec::item = WindowList];
-type WindowList     @json::from() = vec::Vec[vec::item = Window, +200];
-type SensorList     @json::from() = vec::Vec[vec::item = u8];
-type StringList     @json::from() = vec::Vec[vec::item = slice::slice::Slice];
-type PeopleMap      @json::from() = map::Map[map::key  = char, map::val = Person];
+struct Firmware @json::from() {
+    HexString   motor;
+}
 
+type WindowListList @json::from()       = vec::Vec[vec::item = WindowList];
+type WindowList     @json::from()       = vec::Vec[vec::item = Window, +200];
+type SensorList     @json::from()       = vec::Vec[vec::item = u8];
+type StringList     @json::from()       = vec::Vec[vec::item = slice::slice::Slice];
+type PeopleMap      @json::from()       = map::Map[map::key  = char, map::val = Person];
 
 struct Car @json::from() {
     int             tires;
@@ -133,5 +143,39 @@ struct Car @json::from() {
     SensorList      sensors;
     StringList      stickers;
     PeopleMap       people;
+    Firmware        firmware;
 }
 
+
+type HexString = slice::slice::Slice;
+
+pub fn HexString_from_json(
+    slice::slice::Slice mut*self,
+    err::Err mut *e,
+    json::Decoder mut *dec,
+    pool::Pool mut*pl,
+)
+    where err::checked(*e)
+{
+    switch dec->item {
+        json::Item::String => {
+            u8 mut b[1000];
+            static_attest(slice::slice::integrity(&dec->val));
+            usize l = hex::str2bin((char*)dec->val.mem, dec->val.size, b, static(len(b)));
+            char mut * num = pl->malloc(l);
+            if num != 0 {
+                static_attest(safe(num));
+                static_attest(len(num) == l);
+                mem::copy(b, num, l);
+            }
+            *self = slice::slice::Slice {
+                mem:  (u8*)num,
+                size: l,
+            };
+        }
+        default => {
+            e->fail(err::InvalidArgument, "can only decode string to slice::slice::Slice");
+            return;
+        }
+    }
+}
