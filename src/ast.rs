@@ -204,7 +204,7 @@ pub struct Pointer {
     pub tags: Tags,
 }
 
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "lowercase")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Type {
     Void,
@@ -231,7 +231,7 @@ pub enum Type {
     UInt,
 
     // size of a pointer
-    ISize,
+    ISize ,
     USize,
 
     // may be just emitted as int

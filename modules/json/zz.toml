@@ -14,6 +14,7 @@ map  = "1"
 vec  = "1"
 hex  = "1"
 ast  = "1"
+byteorder = "1"
 
 [variants]
 default = []

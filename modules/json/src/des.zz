@@ -5,6 +5,7 @@ using map;
 using json;
 using pool;
 using slice;
+using byteorder;
 
 export fn impl()
 {
@@ -256,14 +257,14 @@ export fn impl()
             a.local.name.size, a.local.name.mem);
         printf("    }\n");
         printf("    static_attest(slice::slice::integrity(&dec->val));\n");
-        printf("    let hashk = ::map::hash(dec->val);\n");
+        printf("    let hashk = ::byteorder::to_le64(::map::hash(dec->val));\n");
         printf("    if false {}\n");
         for let mut it = a.local.v.denum.items.iter(); it.next(); {
             let item = (ast::EnumItem *)it.val.mem;
             err::assert_safe(item);
             static_attest(slice::slice::integrity(&item->name));
 
-            let hashk = map::hash(item->name);
+            let hashk = ::byteorder::to_le64(::map::hash(item->name));
             printf("    else if hashk == 0x%llx && dec->val.eq_cstr(\"%.*s\") {\n", hashk, (int)item->name.size, item->name.mem);
             printf("        *self = %.*s::%.*s;\n",
                 (int)a.local.name.size, a.local.name.mem, (int)item->name.size, item->name.mem);
@@ -290,7 +291,7 @@ export fn impl()
         printf("    ::mem::zero(self);\n");
         printf("    while dec->next(e) {\n");
         printf("        if dec->key.mem == 0 { dec->skip(e); continue; }\n");
-        printf("        let hashk = ::map::hash(dec->key);\n");
+        printf("        let hashk = ::byteorder::to_le64(::map::hash(dec->key));\n");
         printf("        if false {}\n");
 
         for let mut it = a.local.v.dstruct.fields.iter(); it.next(); {
@@ -299,7 +300,7 @@ export fn impl()
             static_attest(slice::slice::integrity(&field->name));
             static_attest(slice::slice::integrity(&field->typed.name));
 
-            let hashk = map::hash(field->name);
+            let hashk = ::byteorder::to_le64(::map::hash(field->name));
             printf("        else if hashk == 0x%llx && dec->key.eq_cstr(\"%.*s\") {\n", hashk, (int)field->name.size, field->name.mem);
 
             if field->typed.ptr.count == 0 {
