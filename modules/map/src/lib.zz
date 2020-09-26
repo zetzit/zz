@@ -448,17 +448,26 @@ export fn has(Map *self, void *key) bool
 }
 
 /// an alias to insert_oo()
-export fn insert(Map mut *self, void *key, void *value) bool
+export fn insert(Map mut* self, void * k, void * v,
+    usize kt = static(len(k), 1) * sizeof(*k),
+    usize vt = static(len(v), 1) * sizeof(*v)
+) -> bool
+    where !constrained(key(*self)) || typeof(*k) == key(*self)
+    where !constrained(val(*self)) || typeof(*v) == val(*self)
 {
-    return self->insert_oo(key, value);
+    return self->insert_oo(k, v, kt, vt);
 }
 
 /// an alias to insert_bb()
-export fn set(Map mut *self, void *key, void *value) bool
+export fn set(Map mut* self, void * k, void * v,
+    usize kt = static(len(k), 1) * sizeof(*k),
+    usize vt = static(len(v), 1) * sizeof(*v)
+) -> bool
+    where !constrained(key(*self)) || typeof(*k) == key(*self)
+    where !constrained(val(*self)) || typeof(*v) == val(*self)
 {
-    return self->insert_bb(key, value);
+    return self->insert_bb(k, v, kt, vt);
 }
-
 
 
 

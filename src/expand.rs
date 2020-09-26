@@ -750,8 +750,13 @@ impl Stack {
                 }
                 ast::Statement::Label { .. } => {}
                 ast::Statement::Mark { .. } => {}
-                ast::Statement::Switch { cases, .. } => {
+                ast::Statement::Switch { cases, default, .. } => {
                     for (_, block) in cases {
+                        self.push("case".to_string());
+                        self.expand_scope(&mut block.statements)?;
+                        self.pop();
+                    }
+                    if let Some(block) = default {
                         self.push("case".to_string());
                         self.expand_scope(&mut block.statements)?;
                         self.pop();

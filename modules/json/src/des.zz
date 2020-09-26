@@ -14,7 +14,7 @@ export fn impl()
         err::assert(a.args.count == 1);
         let arg0 = (ast::Expression*)(a.args.items[0].mem);
         err::assert_safe(arg0);
-        printf("%.*s_from_json", arg0->v.literal.size , arg0->v.literal.mem);
+        printf("%.*s_from_json", (int)arg0->v.literal.size , arg0->v.literal.mem);
         return;
     }
 

@@ -4433,8 +4433,8 @@ impl Symbolic {
             Some(v) => v,
             None => {
                 return Err(self.trace(
-                    format!("tail value on non struct"),
-                    vec![(loc.clone(), format!("cannot emit tail binding to ssa"))],
+                    format!("tail value on non struct {}", self.memory[sym].typed),
+                    vec![(loc.clone(), format!("cannot emit tail binding to ssa. this might be a bug in zz"))],
                 ));
             }
         };
