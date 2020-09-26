@@ -9,3 +9,6 @@ lflags = []
 
 [variants]
 default = []
+
+[dependencies]
+byteorder = "1"

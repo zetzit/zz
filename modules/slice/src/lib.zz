@@ -2,6 +2,8 @@ export using slice;
 export using mut_slice;
 export using slice::{
     Slice,
+    empty,
+    make,
     integrity,
     from_cstr,
 };

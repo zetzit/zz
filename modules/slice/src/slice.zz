@@ -1,3 +1,4 @@
+using byteorder;
 using <string.h> as c_string;
 
 export struct Slice {
@@ -156,7 +157,171 @@ export fn sub(Slice *self, usize from, usize mut size) -> Slice
     return r;
 }
 
+/// read slice as an u8 little endian value
+export fn readu8le(Slice *self, usize offset = 0) -> u8
+    where len(self->mem) >= 0
+    where offset < len(self->mem)
+{
+    let ptr = self->mem + offset;
+    return ptr[0];
+}
 
+/// read slice as an u16 little endian value
+export fn readu16le(Slice *self, usize offset = 0) -> u16
+    where len(self->mem) >= 2
+    where offset <= len(self->mem) - 2
+{
+    let ptr = self->mem + offset;
+    return as<u16>(ptr[0]) | as<u16>(ptr[1]) << 8;
+}
+
+/// read slice as an u32 little endian value
+export fn readu32le(Slice *self, usize offset = 0) -> u32
+    where len(self->mem) >= 4
+    where offset <= len(self->mem) - 4
+{
+    let ptr = self->mem + offset;
+    return (
+        as<u32>(ptr[0])       |
+        as<u32>(ptr[1]) << 8  |
+        as<u32>(ptr[2]) << 16 |
+        as<u32>(ptr[3]) << 24
+    );
+}
+
+/// read slice as an u64 little endian value
+export fn readu64le(Slice *self, usize offset = 0) -> u64
+    where len(self->mem) >= 8
+    where offset <= len(self->mem) - 8
+{
+    let ptr = self->mem + offset;
+    return (
+        as<u64>(ptr[0])       |
+        as<u64>(ptr[1]) << 8  |
+        as<u64>(ptr[2]) << 16 |
+        as<u64>(ptr[4]) << 32 |
+        as<u64>(ptr[5]) << 40 |
+        as<u64>(ptr[3]) << 24 |
+        as<u64>(ptr[6]) << 48 |
+        as<u64>(ptr[7]) << 56
+    );
+}
+
+/// read slice as an u8 big endian value
+export fn readu8be(Slice *self, usize offset = 0) -> u8
+    where len(self->mem) >= 0
+    where offset < len(self->mem)
+{
+    let ptr = self->mem + offset;
+    return ptr[0];
+}
+
+/// read slice as an u16 big endian value
+export fn readu16be(Slice *self, usize offset = 0) -> u16
+    where len(self->mem) >= 2
+    where offset <= len(self->mem) - 2
+{
+    let ptr = self->mem + offset;
+    return as<u16>(ptr[0]) << 8 | as<u16>(ptr[1]);
+}
+
+/// read slice as an u32 big endian value
+export fn readu32be(Slice *self, usize offset = 0) -> u32
+    where len(self->mem) >= 4
+    where offset <= len(self->mem) - 4
+{
+    let ptr = self->mem + offset;
+    return (
+        as<u32>(ptr[0]) << 24 |
+        as<u32>(ptr[1]) << 16 |
+        as<u32>(ptr[2]) << 8  |
+        as<u32>(ptr[3])
+    );
+}
+
+/// read slice as an u64 big endian value
+export fn readu64be(Slice *self, usize offset = 0) -> u64
+    where len(self->mem) >= 8
+    where offset <= len(self->mem) - 8
+{
+    let ptr = self->mem + offset;
+    return (
+        as<u64>(ptr[0]) << 56 |
+        as<u64>(ptr[1]) << 48 |
+        as<u64>(ptr[2]) << 40 |
+        as<u64>(ptr[3]) << 32 |
+        as<u64>(ptr[4]) << 24 |
+        as<u64>(ptr[5]) << 16 |
+        as<u64>(ptr[6]) << 8  |
+        as<u64>(ptr[7])
+    );
+}
+
+/// read slice as an i8 little endian value
+export fn readi8le(Slice *self, usize offset = 0) -> i8
+    where len(self->mem) >= 0
+    where offset < len(self->mem)
+{
+    return as<i8>self->readu8le(offset);
+}
+
+/// read slice as an i16 little endian value
+export fn readi16le(Slice *self, usize offset = 0) -> i16
+    where len(self->mem) >= 2
+    where offset <= len(self->mem) - 2
+{
+    return as<i16>self->readu16le(offset);
+}
+
+/// read slice as an i32 little endian value
+export fn readi32le(Slice *self, usize offset = 0) -> i32
+    where len(self->mem) >= 4
+    where offset <= len(self->mem) - 4
+{
+    return as<i32>(self->readu32le(offset));
+}
+
+/// read slice as an i64 little endian value
+export fn readi64le(Slice *self, usize offset = 0) -> i64
+    where len(self->mem) >= 8
+    where offset <= len(self->mem) - 8
+{
+    return as<i64>(self->readu64le(offset));
+}
+
+/// read slice as an i8 big endian value
+export fn readi8be(Slice *self, usize offset = 0) -> i8
+    where len(self->mem) >= 0
+    where offset < len(self->mem)
+{
+    return as<i8>self->readu8le(offset);
+}
+
+/// read slice as an i16 big endian value
+export fn readi16be(Slice *self, usize offset = 0) -> i16
+    where len(self->mem) >= 2
+    where offset <= len(self->mem) - 2
+{
+    let ptr = self->mem + offset;
+    u16 val = as<u16>(ptr[0] * 256 + ptr[1]);
+    return as<i16>(val);
+}
+
+/// read slice as an i32 big endian value
+export fn readi32be(Slice *self, usize offset = 0) -> i32
+    where len(self->mem) >= 4
+    where offset <= len(self->mem) - 4
+{
+    return as<i32>(self->readu32be(offset));
+}
+
+/// read slice as an i64 big endian value
+export fn readi64be(Slice *self, usize offset = 0) -> i64
+    where len(self->mem) >= 8
+    where offset <= len(self->mem) - 8
+{
+    return as<i64>(self->readu64be(offset));
+}
 
 fn isspace(char c) -> bool {
     return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';

@@ -1,4 +1,5 @@
 using slice;
+using byteorder;
 using <assert.h>::{assert}
 
 export fn main() -> int {
@@ -15,7 +16,128 @@ export fn main() -> int {
     usize here = at;
     sl.append_cstr("");
     assert(here == at);
-    
+
+    {
+        u64 mut n = 0;
+        u8 mut tmp[32] = {0};
+        new mut nums = slice::make(tmp, static(len(tmp)));
+
+        n = 32;
+        tmp[0] = as<u8>(n);
+        assert(as<u8>(n) == nums.readu8be());
+
+        n = 259;
+        tmp[0] = as<u8>(n);
+        tmp[1] = as<u8>(n >> 8);
+        assert(as<u16>(byteorder::to_be16(n)) == nums.readu16be());
+
+        n = 4123;
+        tmp[0] = as<u8>(n);
+        tmp[1] = as<u8>(n >> 8);
+        tmp[2] = as<u8>(n >> 16);
+        tmp[3] = as<u8>(n >> 24);
+        assert(as<u32>(byteorder::to_be32(n)) == nums.readu32be());
+
+        n = 65535;
+        tmp[0] = as<u8>(n);
+        tmp[1] = as<u8>(n >> 8);
+        tmp[2] = as<u8>(n >> 32);
+        tmp[3] = as<u8>(n >> 16);
+        tmp[4] = as<u8>(n >> 24);
+        tmp[5] = as<u8>(n >> 40);
+        tmp[6] = as<u8>(n >> 48);
+        tmp[7] = as<u8>(n >> 56);
+        assert(as<u64>(byteorder::to_be64(n)) == nums.readu64be());
+
+        n = 32;
+        tmp[0] = as<u8>(n);
+        assert(as<u8>(n) == nums.readu8le());
+
+        n = 259;
+        tmp[0] = as<u8>(n);
+        tmp[1] = as<u8>(n >> 8);
+        assert(as<u16>(byteorder::to_le16(n)) == nums.readu16le());
+
+        n = 4123;
+        tmp[0] = as<u8>(n);
+        tmp[1] = as<u8>(n >> 8);
+        tmp[2] = as<u8>(n >> 16);
+        tmp[3] = as<u8>(n >> 24);
+
+        assert(as<u32>(byteorder::to_le32(n)) == nums.readu32le());
+
+        n = 65535;
+        tmp[0] = as<u8>(n);
+        tmp[1] = as<u8>(n >> 8);
+        tmp[2] = as<u8>(n >> 16);
+        tmp[3] = as<u8>(n >> 24);
+        tmp[4] = as<u8>(n >> 32);
+        tmp[5] = as<u8>(n >> 40);
+        tmp[6] = as<u8>(n >> 48);
+        tmp[7] = as<u8>(n >> 56);
+        assert(as<u64>(byteorder::to_le64(n)) == nums.readu64le());
+    }
+
+    {
+        i64 mut n = 0;
+        u8 mut tmp[32] = {0};
+        new mut nums = slice::make(tmp, static(len(tmp)));
+
+        n = 130;
+        tmp[0] = as<u8>(as<u64>(n));
+        assert(as<i8>(n) == nums.readi8be());
+
+        n = 259;
+        tmp[0] = as<u8>(as<u64>(n));
+        tmp[1] = as<u8>(as<u64>(n) >> 8);
+        assert(as<i16>(byteorder::to_be16(n)) == nums.readi16be());
+
+        n = 4123;
+        tmp[0] = as<u8>(as<u64>(n));
+        tmp[1] = as<u8>(as<u64>(n) >> 8);
+        tmp[2] = as<u8>(as<u64>(n) >> 16);
+        tmp[3] = as<u8>(as<u64>(n) >> 24);
+        assert(as<i32>(byteorder::to_be32(n)) == nums.readi32be());
+
+        n = 65535;
+        tmp[0] = as<u8>(n);
+        tmp[1] = as<u8>(as<u64>(n) >> 8);
+        tmp[2] = as<u8>(as<u64>(n) >> 32);
+        tmp[3] = as<u8>(as<u64>(n) >> 16);
+        tmp[4] = as<u8>(as<u64>(n) >> 24);
+        tmp[5] = as<u8>(as<u64>(n) >> 40);
+        tmp[6] = as<u8>(as<u64>(n) >> 48);
+        tmp[7] = as<u8>(as<u64>(n) >> 56);
+        assert(as<i64>(byteorder::to_be64(n)) == nums.readi64be());
+
+        n = 32;
+        tmp[0] = as<u8>(n);
+        assert(as<i8>(n) == nums.readi8le());
+
+        n = 259;
+        tmp[0] = as<u8>(as<u64>(n));
+        tmp[1] = as<u8>(as<u64>(n) >> 8);
+        assert(as<i16>(byteorder::to_le16(n)) == nums.readi16le());
+
+        n = 4123;
+        tmp[0] = as<u8>(as<u64>(n));
+        tmp[1] = as<u8>(as<u64>(n) >> 8);
+        tmp[2] = as<u8>(as<u64>(n) >> 16);
+        tmp[3] = as<u8>(as<u64>(n) >> 24);
+
+        assert(as<i32>(byteorder::to_le32(n)) == nums.readi32le());
+
+        n = 65535;
+        tmp[0] = as<u8>(as<u64>(n));
+        tmp[1] = as<u8>(as<u64>(n) >> 8);
+        tmp[2] = as<u8>(as<u64>(n) >> 16);
+        tmp[3] = as<u8>(as<u64>(n) >> 24);
+        tmp[4] = as<u8>(as<u64>(n) >> 32);
+        tmp[5] = as<u8>(as<u64>(n) >> 40);
+        tmp[6] = as<u8>(as<u64>(n) >> 48);
+        tmp[7] = as<u8>(as<u64>(n) >> 56);
+        assert(as<i64>(byteorder::to_le64(n)) == nums.readi64le());
+    }
 
     return 0;
 }
