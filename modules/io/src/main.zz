@@ -1,0 +1,147 @@
+using log;
+using slice;
+using err;
+using mem;
+
+export closure read_fn  (H mut* h, err::Err mut* e, u8 mut* to, usize l) -> usize;
+export closure write_fn (H mut* h, err::Err mut* e, u8* to, usize l)     -> usize;
+export closure close_fn (H mut* h);
+
+/// a runtime Read/Write handle to an associated resource
+/// such as files, sockets, buffers, etc
+export struct H {
+    read_fn     read_impl;
+    write_fn    write_impl;
+    close_fn    close_impl;
+
+    usize       user1;
+    void mut*   user2;
+    int         user3;
+}
+
+/// write a l bytes into H from a buffer provided at to
+/// and returns the number of bytes actually written
+///
+/// note that some implementations may write partially
+export fn write(H mut* self, err::Err mut* e, u8 * to, usize l) usize
+    where len(to) >= l
+    model return <= l
+{
+    if self->write_impl.fn == 0 {
+        e->fail(err::NotImplemented, "not writable");
+        return 0;
+    }
+    static_attest(safe(self->write_impl));
+    let r = self->write_impl(self,e,to,l);
+    static_attest(r <= l);
+    return r;
+}
+
+/// read a maximum of l bytes from H into a buffer provided at to
+/// and returns the number of bytes actually read
+///
+/// note that some implementations may read partially
+export fn read(H mut* self, err::Err mut* e, u8 mut* to, usize l) usize
+    where len(to) >= l
+    model return <= l
+{
+    if self->read_impl.fn == 0 {
+        e->fail(err::NotImplemented, "not readable");
+        return 0;
+    }
+    static_attest(safe(self->read_impl));
+    let r = self->read_impl(self,e,to,l);
+    static_attest(r <= l);
+    return r;
+}
+
+/// close the H and free any associated resources
+export fn close(H mut* self)
+{
+    if self->close_impl.fn == 0 {
+        return;
+    }
+    static_attest(safe(self->close_impl));
+    return self->close_impl(self);
+}
+
+/// write a single byte
+export fn write8(H mut * self, err::Err mut* e, u8 b) -> bool
+{
+    return self->write(e, (void*)&b, 1) == 1;
+}
+
+
+/// write a 16bit integer as 2 bytes in host byte order
+export fn write16(H mut * self, err::Err mut* e, u16 b) -> bool
+{
+    unsafe {
+        return write(self, e, (void*)&b, 2) == 1;
+    }
+}
+
+/// write a 32bit integer as 4 bytes in host byte order
+export fn write32(H mut * self, err::Err mut* e, u32 b) -> bool
+{
+    unsafe {
+        return write(self, e, (void*)&b, 4) == 1;
+    }
+}
+
+/// write a 64bit integer as 8 bytes in host byte order
+export fn write64(H mut * self, err::Err mut* e, u64 b) -> bool
+{
+    unsafe {
+        return write(self, e, (void*)&b, 8) == 1;
+    }
+}
+
+
+
+
+
+
+
+export fn main() int {
+    new+1000 e = err::make();
+
+    let sl = slice::from_cstr("hello world");
+    let mut h  = from_slice(sl);
+
+    u8 mut to = 0;
+    while h.read(&e, &to, 1) > 0 {
+        log::info(">%c<", to);
+    }
+
+    e.abort();
+    return 0;
+}
+
+
+fn read_slice(H mut* self, err::Err mut* e, u8 mut* to, usize mut l) usize
+{
+    let rest = (usize)self->user1 - (usize)self->user3;
+    if l > rest {
+        l = rest;
+    }
+
+    if l > 0 {
+        unsafe {
+            mem::copy(self->user2 + (usize)self->user3, to, l);
+        }
+    }
+    self->user3 += (int)l;
+
+    return l;
+}
+
+export fn from_slice(slice::Slice sl) H
+    where slice::integrity(&sl)
+{
+    return H {
+        read_impl:  read_slice,
+        user1:      sl.size,
+        user2:      (void mut*)sl.mem,
+        user3:      0,
+    };
+}
