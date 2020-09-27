@@ -9,7 +9,7 @@ static u8 map[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // HIJKLMNO
 };
 
-export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usize
+export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen = static(len(out))) -> usize
     where len(in)  >= inlen
     where len(out) >= outlen
     model return <= inlen
@@ -39,7 +39,7 @@ export fn str2bin(char *in, usize inlen, u8 mut * mut out, usize outlen) -> usiz
 }
 
 
-export fn print(u8 *data, usize l)
+export fn print(u8 *data, usize l = static(len(data)))
     where len(data) >= l
 {
     for (usize mut i = 0; i < l; i++) {
@@ -60,7 +60,7 @@ export fn dump_slice(slice::Slice s)
     printf("\n");
 }
 
-export fn dump(u8 * unsafe data, usize l)
+export fn dump(u8 * unsafe data, usize l = static(len(data)))
     where len(data) >= l
 {
     for (usize mut i = 0; i < l; i++) {
@@ -72,7 +72,7 @@ export fn dump(u8 * unsafe data, usize l)
     printf("\n");
 }
 
-export fn fdump(FILE mut *f, u8 * unsafe data, usize l)
+export fn fdump(FILE mut *f, u8 * unsafe data, usize l = static(len(data)))
     where len(data) >= l
 {
     for (usize mut i = 0; i < l; i++) {
