@@ -88,8 +88,8 @@ export fn from_cstr(char *cs) Slice
     model integrity(&return)
 {
     let r = Slice {
-        size : (usize)c_string::strlen(cs) + 1,
-        mem  :  (u8*)cs,
+        size : (usize)c_string::strlen(cs),
+        mem  : (u8*)cs,
     };
     static_attest(integrity(&r));
     return r;

@@ -8,7 +8,7 @@ using slice;
 
 using ast;
 
-using <string.h>::{memcpy, strncat};
+using <string.h>::{memcpy, strncat, strcat};
 
 export symbol ParseError;
 
@@ -31,7 +31,7 @@ pub fn parse_typed(ast::Ast mut* self, ast::Typed mut *typed, err::Err mut *e, j
                             static_attest(safe(dup));
                             if typed->name.mem != 0 {
                                 strncat(dup, (char*)typed->name.mem, typed->name.size);
-                                strncat(dup, "::", 2);
+                                strcat(dup, "::");
                             }
                             strncat(dup, (char*)dec->val.mem, dec->val.size);
 
