@@ -290,6 +290,7 @@ impl Make {
 
         if self.stage.fuzz {
             args.push("-m32".into());
+            args.push("-fno-sanitize=integer".into());
         }
 
         args.push("-c".to_string());
@@ -432,6 +433,7 @@ impl Make {
 
         if self.stage.fuzz {
             args.push("-m32".into());
+            args.push("-fno-sanitize=integer".into());
         }
 
         args.push("-c".to_string());
@@ -546,13 +548,17 @@ impl Make {
             args.push("-g".into());
             args.push("-fstack-protector-strong".into());
         }
+
         if self.stage.asan {
             args.push("-fsanitize=address".into());
             args.push("-fsanitize=undefined".into());
         }
         if self.stage.fuzz {
             args.push("-m32".into());
+            args.push("-fno-sanitize=integer".into());
         }
+
+
         if self.stage.lto {
             args.push("-flto".into());
         }
