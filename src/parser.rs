@@ -2097,6 +2097,7 @@ fn flip_sign(int: Option<Integer>) -> Option<Integer> {
 /// assert_eq!(parse_int("0b101").unwrap(), Unsigned(0b101));
 /// assert_eq!(parse_int("123").unwrap(), Unsigned(123));
 /// assert_eq!(parse_int("-0b101").unwrap(), Signed(-0b101));
+/// assert_eq!(parse_int("-0B101").unwrap(), Signed(-0b101));
 /// assert_eq!(parse_int("-0x10000").unwrap(), Signed(-0x10000));
 /// assert_eq!(parse_int("-0X123A5").unwrap(), Signed(-0x123A5));
 /// assert_eq!(parse_int("-0XF23A5").unwrap(), Signed(-0xF23A5));
@@ -2114,7 +2115,7 @@ pub fn parse_int(s: &str) -> Option<Integer> {
         Some('-') => flip_sign(parse_int(&s[1..])),
         Some('0') => match chars.next() {
             Some('x') | Some('X') => u64::from_str_radix(&s[2..], 16).map(Integer::Unsigned).ok(),
-            Some('b') => u64::from_str_radix(&s[2..], 2).map(Integer::Unsigned).ok(),
+            Some('b') | Some('B') => u64::from_str_radix(&s[2..], 2).map(Integer::Unsigned).ok(),
             Some('0'..='7') => None, // TODO: Octal?
             Some(_) => None, // Invalid "octal" literal
             None => Some(Integer::Unsigned(0)),

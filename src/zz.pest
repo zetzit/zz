@@ -27,7 +27,7 @@ char_literal    = @{ "'" ~ ( "''" | "\\'" | (!"'" ~ ANY) )* ~ "'" }
 number_literal  = @{ hex_literal | bit_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
 int_literal     = @{ ("+" | "-")? ~ digit+ }
 hex_literal     = @{ ("0x" | "0X")  ~ hexdigit+ }
-bit_literal     = @{ "0b"  ~ bitdigit+ }
+bit_literal     = @{ ("0b" | "0B")  ~ bitdigit+ }
 
 // keywords
 
