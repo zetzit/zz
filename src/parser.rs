@@ -4,6 +4,7 @@ use super::name::Name;
 use pest::prec_climber::{Assoc, Operator, PrecClimber};
 use pest::Parser;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -2081,17 +2082,44 @@ pub enum Integer {
     Unsigned(u64),
 }
 
+fn flip_sign(int: Option<Integer>) -> Option<Integer> {
+    match int? {
+        Integer::Signed(val) => Some(Integer::Signed(-val)),
+        Integer::Unsigned(val) => Some(Integer::Signed(-val.try_into().ok()?)),
+    }
+}
+
+/// Parse an integer from a string
+///
+/// ```rust
+/// use zz::parser::{Integer::*, parse_int};
+///
+/// assert_eq!(parse_int("0b101").unwrap(), Unsigned(0b101));
+/// assert_eq!(parse_int("123").unwrap(), Unsigned(123));
+/// assert_eq!(parse_int("-0b101").unwrap(), Signed(-0b101));
+/// assert_eq!(parse_int("-0x10000").unwrap(), Signed(-0x10000));
+/// assert_eq!(parse_int("-0X123A5").unwrap(), Signed(-0x123A5));
+/// assert_eq!(parse_int("-0XF23A5").unwrap(), Signed(-0xF23A5));
+/// assert_eq!(parse_int("-123").unwrap(), Signed(-123));
+/// assert_eq!(parse_int("0").unwrap(), Unsigned(0));
+/// assert_eq!(parse_int("test"), None);
+/// assert_eq!(parse_int("0test"), None);
+/// assert_eq!(parse_int("0xtest"), None);
+/// assert_eq!(parse_int("0btest"), None);
+/// ```
 pub fn parse_int(s: &str) -> Option<Integer> {
-    if s.len() > 2 && s.chars().nth(0) == Some('0') && s.chars().nth(1) == Some('x') {
-        return u64::from_str_radix(&s[2..], 16).map(|v|Integer::Unsigned(v)).ok();
-    }
+    let mut chars = s.chars();
 
-    if let Ok(v) = s.parse::<u64>() {
-        return Some(Integer::Unsigned(v));
-    } else  if let Ok(v) = s.parse::<i64>() {
-        return Some(Integer::Signed(v));
+    match chars.next() {
+        Some('-') => flip_sign(parse_int(&s[1..])),
+        Some('0') => match chars.next() {
+            Some('x') | Some('X') => u64::from_str_radix(&s[2..], 16).map(Integer::Unsigned).ok(),
+            Some('b') => u64::from_str_radix(&s[2..], 2).map(Integer::Unsigned).ok(),
+            Some('0'..='7') => None, // TODO: Octal?
+            Some(_) => None, // Invalid "octal" literal
+            None => Some(Integer::Unsigned(0)),
+        }
+        _ => s.parse().map(Integer::Unsigned).ok()
     }
-
-    None
 }
 
