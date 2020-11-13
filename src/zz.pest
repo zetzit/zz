@@ -14,7 +14,7 @@ doc_comment = @{
 
 alpha       = { 'a'..'z' | 'A'..'Z' }
 digit       = { '0'..'9' }
-hexdigit    = { '0'..'9' | 'a'..'f' }
+hexdigit    = { '0'..'9' | 'A'..'F' | 'a'..'f' }
 bitdigit    = { '0'..'1' }
 
 
@@ -26,7 +26,7 @@ bool_literal    = @{"false" | "true"}
 char_literal    = @{ "'" ~ ( "''" | "\\'" | (!"'" ~ ANY) )* ~ "'" }
 number_literal  = @{ hex_literal | bit_literal | (int_literal ~ ("." ~ digit*)? ~ (^"e" ~ int_literal)?) }
 int_literal     = @{ ("+" | "-")? ~ digit+ }
-hex_literal     = @{ "0x"  ~ hexdigit+ }
+hex_literal     = @{ ("0x" | "0X")  ~ hexdigit+ }
 bit_literal     = @{ "0b"  ~ bitdigit+ }
 
 // keywords
