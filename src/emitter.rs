@@ -1612,7 +1612,21 @@ impl Emitter {
             }
             ast::Expression::Literal { loc, v } => {
                 self.emit_loc(&loc);
-                write!(self.f, "    {}", v).unwrap();
+                match parser::parse_int(&v) {
+                    // Output as decimal if an integer to avoid warnings for binary literals
+                    // (binary literals are a GNU extension)
+                    Some(parser::Integer::Signed(int)) => {
+                        write!(self.f, "    {}", int).unwrap();
+                    }
+                    Some(parser::Integer::Unsigned(int)) => {
+                        write!(self.f, "    {}", int).unwrap();
+                    }
+                    // If the literal is not an integer (boolean literals, for example), write
+                    // it as-is
+                    None => {
+                        write!(self.f, "    {}", v).unwrap();
+                    }
+                }
             }
             ast::Expression::Call {
                 loc,
