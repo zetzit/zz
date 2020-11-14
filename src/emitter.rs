@@ -1616,10 +1616,10 @@ impl Emitter {
                     // Output as decimal if an integer to avoid warnings for binary literals
                     // (binary literals are a GNU extension)
                     Some(parser::Integer::Signed(int)) => {
-                        write!(self.f, "    {}", int).unwrap();
+                        write!(self.f, "    {:#x}", int).unwrap();
                     }
                     Some(parser::Integer::Unsigned(int)) => {
-                        write!(self.f, "    {}", int).unwrap();
+                        write!(self.f, "    {:#x}", int).unwrap();
                     }
                     // If the literal is not an integer (boolean literals, for example), write
                     // it as-is
