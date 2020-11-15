@@ -14,6 +14,12 @@ at compile time.
 
 Get the latest binary from http://bin.zetz.it
 
+## Community
+
+https://discord.gg/EsMxjWtcf5
+
+https://zetz.zulipchat.com/join/5c4eoaqmwjdxmcrlvaxx7itw/
+
 
 ## editor support
 
