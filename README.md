@@ -24,7 +24,7 @@ https://zetz.zulipchat.com/join/5c4eoaqmwjdxmcrlvaxx7itw/
 ## editor support
 
 - Emacs: [zetz-mode](https://github.com/damon-kwok/zetz-mode)
-- Vim: [zz.vim](https://github.com/zetzit/zz/tree/master/zz.vim)
+- Vim: [zz.vim](https://github.com/zetzit/vim)
 
 
 ### how it looks

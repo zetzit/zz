@@ -1,0 +1,3 @@
+[submodule "zz.vim"]
+	path = zz.vim
+	url = https://github.com/zetzit/vim.git
