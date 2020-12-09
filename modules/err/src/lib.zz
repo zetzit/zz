@@ -199,7 +199,7 @@ export fn eprintf(Err * self, FILE mut * unsafe out)
 }
 
 export fn to_str(
-    Err+et * self,
+    Err * self,
     char mut *dest,
     usize dest_len,
 )
