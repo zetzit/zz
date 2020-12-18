@@ -382,7 +382,7 @@ impl Pipeline {
     fn pb_reset(&self) {
         let mut pb = pbr::ProgressBar::new(self.modules.len() as u64);
         pb.show_speed = false;
-        std::mem::replace(&mut *self.pb.lock().unwrap(), pb);
+        let _ = std::mem::replace(&mut *self.pb.lock().unwrap(), pb);
     }
 
     fn pb_doing(&self, action: &str, on: String) {

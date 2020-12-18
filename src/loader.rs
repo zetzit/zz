@@ -9,7 +9,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::io::Write;
 
 #[derive(Clone)]
 pub enum Module {
