@@ -946,16 +946,18 @@ pub fn abs(
                     scope.insert(ast.name.clone(), ns, &ast.loc, false, true);
                 }
                 ast::Def::Enum { names, .. } => {
-                    let mut value = 0;
-                    for (_, val) in names.iter_mut() {
-                        if let Some(val) = val {
-                            value = *val;
-                        } else {
-                            *val = Some(value);
+                    {
+                        let mut value = 0;
+                        for (_, val) in names.iter_mut() {
+                            if let Some(val) = val {
+                                value = *val;
+                            } else {
+                                *val = Some(value);
+                            }
+                            value += 1;
                         }
-                        value += 1;
                     }
-                    for (name, value) in names {
+                    for (name, _value) in names {
                         let subname = format!("{}::{}", ast.name, name);
 
                         //new_locals.push(ast::Local {

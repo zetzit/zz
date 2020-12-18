@@ -193,7 +193,7 @@ fn main() {
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::test();
             zz::build(zz::BuildSet::Tests, variant, stage.clone(), false);
-            let (root, mut project) = zz::project::load_cwd();
+            let (_root, mut project) = zz::project::load_cwd();
 
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
                 if let zz::project::ArtifactType::Test = artifact.typ {
@@ -363,7 +363,7 @@ fn main() {
             };
             let variant = submatches.value_of("variant").unwrap_or("default");
             zz::build(zz::BuildSet::Run, variant, stage.clone(), false);
-            let (root, mut project) = zz::project::load_cwd();
+            let (_root, mut project) = zz::project::load_cwd();
 
             let mut exes = Vec::new();
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
@@ -395,7 +395,7 @@ fn main() {
             let variant = submatches.value_of("variant").unwrap_or("default");
             let stage = zz::make::Stage::fuzz();
             zz::build(zz::BuildSet::Tests, variant, stage.clone(), false);
-            let (root, mut project) = zz::project::load_cwd();
+            let (_root, mut project) = zz::project::load_cwd();
 
             let mut exes = Vec::new();
             for artifact in std::mem::replace(&mut project.artifacts, None).expect("no artifacts") {
