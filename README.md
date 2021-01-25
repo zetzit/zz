@@ -108,8 +108,9 @@ by default, everything is const. this is the opposite of C. the mut keyword is u
 ZZ follows the C model of polymorphism: any struct can be cast to the same type as its first member.
 In ZZ the cast is implicit because it is always safe.
 
-
 ```C++
+using <assert.h>::{assert}
+
 struct Vehicle {
     int wheels;
 }
@@ -123,21 +124,16 @@ fn allowed_entry(Vehicle *self) bool {
 }
 
 
-fn main() {
-    Car c{
-        base: Vehicle {
+fn main() int {
+    Car c = {
+        Vehicle {
             wheels: 4,
         }
     };
     assert(!c.allowed_entry());
+    return 0;
 }
-
-
-
-
-
 ```
-
 
 #### where and model
 
@@ -151,7 +147,7 @@ like indexing into an array.
 
 this is not ok:
 
-```C
+```C++
 fn bla(int * a) {
     a[2];
 }
@@ -159,7 +155,7 @@ fn bla(int * a) {
 
 you must tell the compiler that accessing the array at position 2 is defined. quick fix for this one:
 
-```C
+```C++
 fn bla(int * a)
     where len(a) == 3
 {
@@ -170,8 +166,8 @@ fn bla(int * a)
 this will compile. its not a very useful function tho, because trying to use it in any context where the array is not len 3 will not be allowed.
 here's a better example:
 
-```C
-fn bla(int * a, int l)
+```C++
+fn bla(int * a, usize l)
     where len(a) >= l
 {
     if l >= 3 {
@@ -185,11 +181,11 @@ thanks to the underlying SMT solver, the ZZ symbolic executor will know that `a[
 
 The where keyword requires behaviour in the callsite, and the model keyword declares how the function itself will behave.
 
-```C
+```C++
 fn bla(int a) int
-    model return == 2 * a
+    model return == (2 * a)
 {
-    return a * a;
+    return (a * a);
 }
 ```
 
@@ -202,11 +198,8 @@ But it actually does not, so this won't compile.
 we can use annotations to define states for types, which neatly lets you define which calls are legal on which
 type at a given time in the program without ANY runtime code.
 
-
-
 ```C++
-
-theory is_open(int*) bool;
+theory is_open(int * a) bool;
 
 fn open(int mut* a)
     model is_open(a)
@@ -215,7 +208,7 @@ fn open(int mut* a)
     *a = 1;
 }
 
-fn read(int require<open> mut* a)
+fn read(int require<open> mut* a) int
     where is_open(a)
     model is_open(a)
 {
@@ -237,11 +230,14 @@ any other combination will lead to a compile error, such as read before open.
 
 const and static work exactly like in rust, but with C syntax.
 
-```C
+```C++
+using <stdint.h>::{uint32_t}
+using <float.h>::{float}
+
 export const uint32_t foo = 3;
-static mutable float blarg = 2.0/0.3;
-thread_local mutable bool bob = true;
-atomic mutable int marvin = 0;
+static float mut blarg = 2.0/0.3;
+thread_local bool mut bob = true;
+atomic int mut marvin = 0;
 ```
 
 const is inlined in each module and therefore points to different memory in each module.
@@ -264,20 +260,23 @@ by default all declarations are private to a module
 "export" can be used to make sure the declaration ends in the final result. that is in the binary and the export header.
 
 "pub" marks a declaration as local to the project. it is usable in other zz modules, but not exported into the resulting binary
+
 #### struct initialization
 
 To prepare for type elision, all expressions have to have a known type.
 
-```C
+```C++
 struct A {
     int a;
     int b;
 }
 
-fn main() {
+fn main() int {
     A a = A{
         a : 2,
     };
+
+    return 0;
 }
 ```
 
@@ -288,7 +287,7 @@ This makes it behave very different than C, even if the syntax is the same as C.
 
 The right hand side of #if is evaluated immediately and can only access preprocessor scope.
 
-```C
+```C++
 struct A {
     int a;
 #if def("TEST")
@@ -305,7 +304,7 @@ Every branch of an #if / #else must contain a completed statement,
 and can only appear where a statement would be valid,
 so this is not possible:
 
-```C
+```C++
 pub fn foo(
 #if os("unix")
 )
@@ -324,7 +323,7 @@ west-const with left aligned star reads as if the pointer is part of the type, a
 ```C++
     int mut* foo;
     foo = 0; // compile error
-    *foo = 0 // valid
+    *foo = 0; // valid
 ```
 
 unless you want to apply mutability to the local storage named foo
@@ -332,7 +331,7 @@ unless you want to apply mutability to the local storage named foo
 ```C++
     void * mut foo;
     foo = 0; // valid
-    *foo = 0 // compile error
+    *foo = 0; // compile error
 ```
 
 Coincidentally this is roughly equivalent to Rust, so Rust devs should feel right at home.
@@ -379,7 +378,7 @@ The tail here is mem, which is specified as array with no size.
 a length function could be implemented with this signature:
 
 ```C++
-fn len(String+t mut * self) {
+fn len(String+t mut * self) usize {
     return t;
 }
 ```
@@ -407,20 +406,21 @@ simply returning from the current function will clear up any memory used, withou
 Symbols are a big global enum that lets you create unique values from anywhere in your code.
 
 ```C++
-    using symbols;
+using symbols;
+using <stdio.h>::{printf};
 
-    symbol Car;
-    symbol Bike;
+symbol Car;
+symbol Bike;
 
-    fn drive_this(usize sym)
-        where symbol(sym)
-    {
-        if sym == Car {
-            printf("bzzzz\n");
-        } else {
-            printf("what do i do with a %s?\n", symbols::nameof(sym));
-        }
+fn drive_this(usize sym)
+    where symbol(sym)
+{
+    if sym == Car {
+        printf("bzzzz\n");
+    } else {
+        printf("what do i do with a %s?\n", symbols::nameof(sym));
     }
+}
 ```
 
 note that you cannot make assumptions about the integer value of a symbol,
@@ -435,21 +435,25 @@ intstead you should be using a function that takes a mut pointer as its first ar
 zz has syntactic sugar for this with the 'new' keyword.
 
 ```C++
-    struct A {
-        int a;
-        int b;
-    }
+using <assert.h>::{assert};
 
-    fn empty(A mut new * self, int a)
-    {
-        self->a = a;
-    }
+struct A {
+    int a;
+    int b;
+}
 
-    fn main() {
-        new a = empty(3);
-        assert(a.a == 3)
-        assert(a.b == 0)
-    }
+fn empty(A mut new * self, int a)
+{
+    self->a = a;
+}
+
+fn main() int {
+    new a = empty(3);
+    assert(a.a == 3);
+    assert(a.b == 0);
+
+    return 0;
+}
 ```
 
 new creates a new local variable with the correct size and passes it as self argument to the constructor
@@ -473,27 +477,30 @@ the call arguments and derive context is passed as json to stdin,
 and the macro is expected to print zz code to stdout.
 
 ```C++
-/! creates literal string with arg0 repeated arg1 times
-export macro repeat()  {
+using <stdlib.h>::{atoi};
+using <stdio.h>::{printf};
+using err;
+using ast;
 
+//! creates literal string with arg0 repeated arg1 times
+export macro repeat()  {
     new+1000 a = ast::from_macro();
     err::assert2(a.args[0].t == ast::Expression::LiteralString, "expected arg0: string");
     err::assert2(a.args[1].t == ast::Expression::Literal,       "expected arg1: number");
     let num = (int)atoi(a.args[1].v.string);
 
     printf("\"");
-    for int mut i = 0; i < num; i++ {
+    for(int mut i = 0; i < num; i++) {
         printf("%s", a.args[0].v.string);
     }
     printf("\"");
 }
 
 export fn main() int {
-    printf("hello %s\n", repeat("world ", 32));
+    printf("hello %s\n", @repeat("world ", 32));
     return 0;
 }
 ```
-
 
 #### inline included C source
 
@@ -540,7 +547,8 @@ pub fn print(Container *self) {
 ```
 
 ```C++
-using example
+// main.zz
+using example;
 
 fn main() int {
   new container = example::create_container("hello");
@@ -565,18 +573,18 @@ using <stdio.h>::{ printf }
 struct Packed packed {
   u8 a;
   u8 b;
-  int b;
+  int c;
 }
 
 struct Unpacked {
   u8 a;
   u8 b;
-  int b;
+  int c;
 }
 
 fn main() int {
-  printf("sizeof(Packed) == lu\n", sizeof(Packed)); // 6
-  printf("sizeof(Unpacked) == lu\n", sizeof(Unpacked)); // 8
+  printf("sizeof(Packed) == %lu\n", sizeof(Packed)); // 6
+  printf("sizeof(Unpacked) == %lu\n", sizeof(Unpacked)); // 8
   return 0;
 }
 ```
