@@ -87,7 +87,7 @@ export fn fail_with_errno(
     if self->trace.size > 2 && self->trace.at > 0 {
         self->trace.push('\n');
     }
-    self->trace.format("%s : ", strerror(errno));
+    self->trace.format("%s (%d) : ", strerror(errno), errno);
 
     va_list mut vargs;
     va_start(vargs, fmt);
