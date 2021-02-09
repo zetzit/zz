@@ -12,6 +12,7 @@ pub theory checked(Err * self) -> bool;
 
 export symbol SystemError;
 export symbol OutOfTail;
+export symbol OutOfHeap;
 export symbol InvalidArgument;
 export symbol NotImplemented;
 
