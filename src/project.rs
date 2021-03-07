@@ -224,7 +224,14 @@ fn sanitize(s: &mut String) {
             '0'..='9' => c,
             _ => '_',
         })
-        .collect()
+        .collect();
+
+    if s.len() == 0 || !s.chars().next().unwrap().is_ascii_alphabetic() {
+        error!(
+            "invalid name in \"zz.toml\" cannot be emitted into C : \"{}\"", s
+        );
+        std::process::exit(9);
+    }
 }
 
 pub fn load(search: &std::path::Path) -> (PathBuf, Config) {
