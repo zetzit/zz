@@ -17,6 +17,12 @@ pub struct Index {
 }
 
 pub fn index(project: &project::Config) -> HashSet<PathBuf> {
+
+    // shortcut so we dont try to write to read only modules such when installed as distro pkg
+    if project.repos.len() == 0 {
+        return HashSet::new();
+    }
+
     let td = super::project::target_dir();
     let cachepath = td.join("repos").join("index");
     let index = if let Some(index) = cache("zz.toml", &cachepath) {
