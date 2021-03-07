@@ -63,7 +63,7 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
     std::env::set_current_dir(&root).unwrap();
     //
     //
-    let mut searchpaths = repos::index(&project);
+    let mut searchpaths : Vec<std::path::PathBuf> = repos::index(&project).into_iter().collect();
 
     let td = project::target_dir();
     std::fs::create_dir_all(td.join(stage.to_string()).join("c"))
@@ -104,7 +104,7 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
         );
     }
 
-    searchpaths.insert(
+    searchpaths.push(
         std::env::current_exe()
             .expect("self path")
             .canonicalize()
@@ -117,7 +117,7 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
             .expect("self path")
             .join("modules"),
     );
-    searchpaths.insert(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules"));
+    searchpaths.push(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules"));
 
     if let Ok(zz_path) = std::env::var("ZZ_MODULE_PATHS") {
         let module_paths = if cfg!(windows) {
@@ -127,7 +127,7 @@ pub fn build(buildset: BuildSet, variant: &str, stage: make::Stage, _slow: bool)
         };
 
         for path in module_paths {
-            searchpaths.insert(std::path::Path::new(&path).to_path_buf());
+            searchpaths.push(std::path::Path::new(&path).to_path_buf());
         }
     }
 
@@ -161,14 +161,14 @@ fn getdep(
     name: &str,
     modules: &mut HashMap<Name, loader::Module>,
     rootproj: &mut project::Project,
-    searchpaths: &mut HashSet<std::path::PathBuf>,
+    searchpaths: &mut Vec<std::path::PathBuf>,
     stage: &make::Stage,
 ) {
     if !visited.insert(name.to_string()) {
         return;
     }
 
-    searchpaths.insert(std::env::current_dir().unwrap().join("modules"));
+    searchpaths.push(std::env::current_dir().unwrap().join("modules"));
 
     let mut found = None;
     for searchpath in searchpaths.iter() {
@@ -207,7 +207,7 @@ fn getdep(
     let depsearchpaths = repos::index(&project);
     std::env::set_current_dir(pp).unwrap();
 
-    searchpaths.insert(root.join("modules"));
+    searchpaths.push(root.join("modules"));
     searchpaths.extend(depsearchpaths);
 
     for i in project.project.cincludes {
