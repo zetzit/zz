@@ -64,6 +64,42 @@ export  fn check(
     return false;
 }
 
+/// check if error was set.
+///
+/// returns true if error was set
+export  fn check_ctx(
+        Err mut* self,
+        char* callsite_source<file>      unsafe file,
+        char* callsite_source<function>  unsafe scope,
+        usize callsite_source<line>      line,
+        char*  fmt,
+        ...
+) -> bool
+    where nullterm(fmt)
+    model   return == true || checked(*self)
+{
+    if (self->error != 0) {
+        static_attest(buffer::integrity(&self->trace));
+
+        if self->trace.size > 2 && self->trace.at > 0 {
+            self->trace.push('\n');
+        }
+
+        va_list mut vargs;
+        va_start(vargs, fmt);
+        static_attest((self->trace).at < self->trace.size);
+        self->trace.vformat(fmt, vargs);
+        va_end(vargs);
+
+        self->trace.format("\n");
+        backtrace(self, file, scope, line);
+
+        static_attest(checked(*self));
+        return true;
+    }
+    return false;
+}
+
 export fn backtrace(Err mut* self, char * unsafe file, char * unsafe scope, usize line)
 {
     static_attest(buffer::integrity(&self->trace));
