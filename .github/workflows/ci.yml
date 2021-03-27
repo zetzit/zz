@@ -15,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-latest, windows-latest, ubuntu-18.04]
 
     defaults:
       run:
@@ -35,7 +35,7 @@ jobs:
         ./ci.sh
 
     - name: ubuntu
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-18.04'
       run: |
         sudo add-apt-repository ppa:sri-csl/formal-methods
         sudo apt-get update
@@ -69,9 +69,9 @@ jobs:
         echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}" >> ~/.aws/credentials
 
         7z a artifact.zip target/release/zz*
-        export BNAME="zz-${GITHUB_RUN_NUMBER}-${GITHUB_SHA}-${GITHUB_OS%-latest}.zip"
+        export BNAME="zz-${GITHUB_RUN_NUMBER}-${GITHUB_SHA}-$(echo $GITHUB_OS | cut -d '-' -f 1).zip"
         aws s3 cp artifact.zip s3://${S3_BUCKET}/${BNAME} --region ${AWS_REGION} --acl public-read
-        export BNAME="zz-master-${GITHUB_OS%-latest}.zip"
+        export BNAME="zz-master-$(echo $GITHUB_OS | cut -d '-' -f 1).zip"
         aws s3 cp artifact.zip s3://${S3_BUCKET}/${BNAME} --region ${AWS_REGION} --acl public-read
 
 
