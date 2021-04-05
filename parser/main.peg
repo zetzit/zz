@@ -1,0 +1,379 @@
+%prefix "zz"
+
+file
+    <- tld+
+
+tld
+    <-  const
+    / static
+    / fn
+    / __
+    /   <.+> {emit_error(auxil, "expected top level declaration", $0s, $0e); }
+
+
+
+###########################
+# top level declarations
+###########################
+
+
+const
+    <- kw_const _ ident _ "=" _ expr _ ';' _                { printf("ME GOTS CONST |%s|\n", $0); }
+    /  kw_const _ ident _ "=" _ expr <_ !';' err> notld     { emit_error(auxil, "expected ;",       $1s, $1e); }
+    /  kw_const _ ident _ "=" _ <!expr err> notld           { emit_error(auxil, "expected expr",    $2s, $2e); }
+    /  kw_const _ ident _ <!"=" err> notld                  { emit_error(auxil, "expected =",       $3s, $3e); }
+    /  kw_const _ <!ident err> notld                        { emit_error(auxil, "expected ident ",  $4s, $4e); }
+
+static
+    <- kw_static _ ident _ "=" _ expr _ ';' _               { printf("ME GOTS STATIC |%s|\n", $0); }
+    /  kw_static _ ident _ "=" _ expr _ <!';' err> notld    { emit_error(auxil, "expected ;",       $1s, $1e); }
+    /  kw_static _ ident _ "=" _ <!expr err> notld          { emit_error(auxil, "expected expr",    $2s, $2e); }
+    /  kw_static _ ident _ <!"=" err> notld                 { emit_error(auxil, "expected =",       $3s, $3e); }
+    /  kw_static _ <(!ident) err> notld                     { emit_error(auxil, "expected ident ",  $4s, $4e); }
+
+fn
+    <- kw_fn _ ident _ "(" _ arglist? _ ")" _ body _ ';'?           { printf("ME GOTS FN |%s|\n", $0); }
+    /  kw_fn _ ident _ "(" _ arglist? _ ")" _ <!body err> notld     { emit_error(auxil, "expected {", $1s, $1e); }
+    /  kw_fn _ ident _ "(" _ arglist? _ <!")" err> notld            { emit_error(auxil, "expected )", $2s, $2e); }
+    /  kw_fn _ ident _ <!"(" err> notld                             { emit_error(auxil, "expected (", $3s, $3e); }
+    /  kw_fn _ <!ident err> notld                                   { emit_error(auxil, "expected function name", $4s, $4e); }
+
+body
+    <- "{" _ "}"
+
+arglist
+    <- arg (_ ',' _ arg) *
+
+arg
+    <- ident __ ident
+    /  ident __ <')'> { emit_error(auxil, "expected argument name", $1s, $1e); }
+    /  ident __ <!ident err> [^')']* { emit_error(auxil, "expected argument name", $2s, $2e); }
+
+
+
+
+###########################
+# Statements
+###########################
+
+
+
+
+
+
+
+###########################
+# Expressions
+###########################
+
+expr <- expr12
+
+expr12
+    <-   <expr12> _ '||' _ <expr12> { printf("( %s ) || ( %s ) \n", $1, $2); }
+    /    <expr11>                   { printf("( %s )\n", $0); }
+
+expr11
+    <-   <expr11> _ '&&' _ <expr10> { printf("( %s ) && ( %s ) \n", $1, $2); }
+    /    <expr10>                   { printf("( %s )\n", $0); }
+
+expr10
+    <-   <expr10> _ '|' _ <expr9>   { printf("( %s ) | ( %s ) \n", $1, $2); }
+    /    <expr9 >                   { printf("( %s )\n", $0); }
+
+expr9
+    <-   <expr9> _ '^' _ <expr8>    { printf("( %s ) ^ ( %s ) \n", $1, $2); }
+    /    <expr8 >                   { printf("( %s )\n", $0); }
+
+expr8
+    <-   <expr8> _ '&' _ <expr7>    { printf("( %s ) & ( %s ) \n", $1, $2); }
+    /    <expr7 >                   { printf("( %s )\n", $0); }
+
+expr7
+    <-   <expr7> _ '==' _ <expr6>   { printf("( %s ) == ( %s ) \n", $1, $2); }
+    /    <expr7> _ '!=' _ <expr6>   { printf("( %s ) != ( %s ) \n", $3, $4); }
+    /    <expr6 >                   { printf("( %s )\n", $0); }
+
+expr6
+    <-   <expr6> _ '<=' _ <expr5>   { printf("( %s ) <= ( %s ) \n", $1, $2); }
+    /    <expr6> _ '>=' _ <expr5>   { printf("( %s ) >= ( %s ) \n", $3, $4); }
+    /    <expr6> _ '<'  _ <expr5>   { printf("( %s ) < ( %s ) \n", $5, $6); }
+    /    <expr6> _ '>'  _ <expr5>   { printf("( %s ) > ( %s ) \n", $7, $8); }
+    /    <expr5 >                   { printf("( %s )\n", $0); }
+
+expr5
+    <-   < expr5> _ '<<'  _ <expr4>   { printf("( %s ) << ( %s ) \n", $1, $2); }
+    /    < expr5> _ '>>'  _ <expr4>   { printf("( %s ) >> ( %s ) \n", $3, $4); }
+    /    < expr4 >                    { printf("( %s )\n", $0); }
+
+expr4
+    <-   < expr4> _ '+'  _ <expr3>   { printf("( %s ) + ( %s ) \n", $1, $2); }
+    /    < expr4> _ '-'  _ <expr3>   { printf("( %s ) - ( %s ) \n", $3, $4); }
+    /    < expr3 >                   { printf("( %s )\n", $0); }
+
+expr3
+    <-   < expr3> _ '*'  _ <expr1>   { printf("( %s ) * ( %s ) \n", $1, $2); }
+    /    < expr3> _ '/'  _ <expr1>   { printf("( %s ) / ( %s ) \n", $3, $4); }
+    /    < expr3> _ '%'  _ <expr1>   { printf("( %s ) % ( %s ) \n", $5, $6); }
+    /    < expr1 >                   { printf("( %s )\n", $0); }
+
+expr1
+    <-   lhs:term  _ '.'  _ rhs:term   { $$ = make_infix_op(lhs, '.' ,  rhs); }
+    /    t:term                        { $$ = t; }
+
+
+term
+    <- l:ident                  { }
+    /  l:literal_number         { }
+    /  l:literal_char           { }
+    /  l:literal_string         { }
+    /  l:literal_bool           { }
+    / "(" _ l:expr _ ")"  { }
+
+
+literal_number  <- literal_hex
+                / literal_bits
+                / literal_int
+                / literal_float
+
+
+literal_int     <- < ('+' / '-')? [0-9]+>
+
+literal_hex     <- <'0x' [0-9A-Fa-f]+>
+
+literal_bits    <-  '0b' <[0-1]>
+
+literal_float   <-     <[0-9]>? '.' <[0-9]>
+                /  '+' <[0-9]>? '.' <[0-9]>
+                /  '-' <[0-9]>? '.' <[0-9]>
+
+literal_char    <- "'" <[^']> "'"
+                /  "'\x5c''"
+                /  "'\x5c\x5c'"
+
+
+literal_bool    <- 'true'
+                /  'false'
+
+
+
+literal_string  <- '"' literal_string_char * '"'
+
+literal_string_char <-
+    !('"' / "\x5c") .
+    / "\x5c" string_esc_sequence
+    / "\x5c" <!string_esc_sequence> { emit_error(auxil, "unknown escape sequence", $0s, $0e+1); }
+
+
+string_esc_sequence
+    <- "'"      { $$ = '\'';   }
+    / '"'       { $$ = '"';    }
+    / "\x5c"    { $$ = '\\';   }
+    / "b"       { $$ = '\b';   }
+    / "f"       { $$ = '\f';   }
+    / "n"       { $$ = '\n';   }
+    / "r"       { $$ = '\r';   }
+    / "t"       { $$ = '\t';   }
+    / "v"       { $$ = '\x0B'; }
+
+###########################
+# Utility
+###########################
+
+err     <- [^ ]*
+notld   <- !keyword .*
+
+keyword
+    <-  kw_const
+    /   kw_static
+    /   kw_fn
+
+kw_const    <- 'const'  !(L/D)
+kw_static   <- 'static' !(L/D)
+kw_fn       <- 'fn'     !(L/D)
+
+D <- [0-9_]
+L <- [a-zA-Z_]
+
+ident <- !keyword L(L/D)*
+
+
+
+
+__   <-  ( [ \t] / EOL )+
+_    <-  ( [ \t] / EOL )*
+EOL <-  ("\r\n"  / "\n" / "\r" ) {
+
+    auxil->line++;
+    auxil->prevlinestart=auxil->linestart;
+    auxil->linestart=$0s+1;
+}
+
+
+
+%header {
+    typedef struct {
+        const char *  filename;
+        const char *  file;
+        int     pos;
+        int     size;
+
+        int     line;
+        int     linestart;
+        int     prevlinestart;
+
+        int     abort;
+    } State;
+
+
+    #define TYPE_IDENT          1
+    #define TYPE_LITERAL_NUMBER 2
+    #define TYPE_LITERAL_CHAR   3
+    #define TYPE_LITERAL_STRING 4
+    #define TYPE_LITERAL_BOOL   5
+    #define TYPE_LITERAL_ARRAY  6
+    #define TYPE_LITERAL_STRUCT 7
+    #define TYPE_EXPRESSION     8
+
+    typedef struct {
+        const char *name;
+    } Ident;
+
+    typedef union {
+        Ident ident;
+    } NodeV;
+
+    typedef struct {
+        int     t;
+        NodeV   v;
+    } Node;
+
+}
+
+%source {
+    #include <stdio.h>
+    #include <stdlib.h>
+
+
+    Node * make_infix_op(Node *lhs, char op, Node *rhs) {
+    }
+
+
+
+    #define PCC_GETCHAR(auxil) nextchar(auxil)
+
+    static int nextchar(State *self) {
+        if (self->abort || (self->pos >= self->size)) {
+            return EOF;
+        }
+
+        return self->file[self->pos++];
+    }
+
+    static const char *dbg_str[] = { "Evaluating rule", "Matched rule", "Abandoning rule" };
+    #define PCC_DEBUG(event, rule, level, pos, buffer, length) \
+        fprintf(stderr, "%*s%s %s @%d [%.*s]\n", (int)level * 2, "", dbg_str[event], rule, (int)pos, (int)length, buffer)
+
+
+
+    static void emit_error(State *self , const char *reason, int start, int end) {
+        self->abort = 1;
+
+        fprintf(stderr, "\nsyntax error in %s:%d:%d\n", self->filename, self->line, start - self->linestart);
+
+        if (self->prevlinestart != self->linestart  ){
+            fprintf(stderr, " | ");
+            for (int i = self->prevlinestart; i < self->size; i++) {
+                fputc(self->file[i], stderr);
+                if (self->file[i] == '\n') {
+                    break;
+                }
+            }
+        }
+        fprintf(stderr, " | ");
+        for (int i = self->linestart; i < self->size; i++) {
+            if (self->file[i] == '\n') {
+                break;
+            }
+            fputc(self->file[i], stderr);
+        }
+        fputc('\n', stderr);
+
+        fprintf(stderr, " | ");
+        for (int i = self->linestart; i < self->size; i++) {
+            if (i >= start && ((start != end && i < end) || i <= end)) {
+                fputc('^', stderr);
+            } else {
+                fputc(' ', stderr);
+            }
+            if (self->file[i] == '\n') {
+                break;
+            }
+        }
+        fputc('\n', stderr);
+        fprintf(stderr, " | %s\n", reason);
+
+    }
+
+}
+
+
+%auxil  "State* "
+%value  "Node* "
+
+
+
+
+%%
+
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char ** argv) {
+
+    const char *filepath = argv[1];
+    int fd = open(filepath, O_RDONLY);
+    if(fd < 0){
+        fprintf(stderr, "\n\"%s\" could not open\n", filepath);
+        return 1;
+    }
+
+    struct stat statbuf;
+    int err = fstat(fd, &statbuf);
+    if (err < 0) {
+        fprintf(stderr, "\n\"%s\" could not fstat\n", filepath);
+        return 2;
+    }
+
+    char *ptr = mmap(NULL,statbuf.st_size, PROT_READ,MAP_SHARED, fd,0);
+    if(ptr == MAP_FAILED){
+        fprintf(stderr, "\n\"%s\" could not mmap\n", filepath);
+        close(fd);
+        return 1;
+    }
+    close(fd);
+
+
+
+    State s = {
+        .filename   = filepath,
+        .file = ptr,
+        .size = statbuf.st_size,
+        .line = 1,
+    };
+
+    zz_context_t *ctx = zz_create(&s);
+    while (zz_parse(ctx, NULL));
+    zz_destroy(ctx);
+
+
+    err = munmap(ptr, statbuf.st_size);
+    if(err != 0){
+        printf("UnMapping Failed\n");
+        return 1;
+    }
+
+    return 0;
+}
+
