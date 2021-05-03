@@ -5,9 +5,8 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 
-
-#[serde(rename_all = "snake_case")]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
 pub struct Location {
     pub file: String,
     pub line: usize,
@@ -46,28 +45,28 @@ impl std::fmt::Display for Location {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Tags(pub HashMap<String, HashMap<String, Location>>);
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Storage {
     Static,
     ThreadLocal,
     Atomic,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Visibility {
     Shared,
     Object,
     Export,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Import {
     pub name: Name,
     pub alias: Option<String>,
@@ -78,8 +77,8 @@ pub struct Import {
     pub needs: Vec<(Typed, Location)>,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Tail {
     None,
     Dynamic(Option<Box<Typed>> /*final*/),
@@ -93,24 +92,24 @@ impl Default for Tail {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Derive {
     pub loc: Location,
     pub makro: String,
     pub args: Vec<Box<Expression>>,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Array {
     None,
     Unsized,
     Sized(Expression),
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Def {
     Static {
         tags: Tags,
@@ -187,8 +186,8 @@ pub enum Def {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Local {
     pub name: String,
     pub vis: Visibility,
@@ -197,15 +196,15 @@ pub struct Local {
     pub doc: String,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Pointer {
     pub loc: Location,
     pub tags: Tags,
 }
 
-#[serde(rename_all = "lowercase")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Type {
     Void,
     New,
@@ -289,8 +288,8 @@ impl Default for Type {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
 pub struct Typed {
     pub t:      Type,
     pub loc:    Location,
@@ -347,8 +346,8 @@ impl std::fmt::Display for Typed {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Module {
     pub name: Name,
     pub source: PathBuf,
@@ -357,14 +356,14 @@ pub struct Module {
     pub sources: HashSet<PathBuf>,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct AnonArg {
     pub typed: Typed,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
 pub struct NamedArg {
     pub typed:      Typed,
     pub name:       String,
@@ -373,8 +372,8 @@ pub struct NamedArg {
     pub assign:     Option<Expression>,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Field {
     pub typed: Typed,
     pub name: String,
@@ -383,8 +382,8 @@ pub struct Field {
     pub loc: Location,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum InfixOperator {
     Equals,
     Nequals,
@@ -477,8 +476,8 @@ impl InfixOperator {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PrefixOperator {
     Boolnot,
     Bitnot,
@@ -488,15 +487,15 @@ pub enum PrefixOperator {
     Deref,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PostfixOperator {
     Increment,
     Decrement,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AssignOperator {
     Bitor,
     Bitand,
@@ -505,16 +504,16 @@ pub enum AssignOperator {
     Eq,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EmitBehaviour {
     Default,
     Skip,
     Error { loc: Location, message: String },
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Expression {
     Name(Typed),
     MemberAccess {
@@ -616,8 +615,8 @@ impl Expression {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Statement {
     Mark {
         lhs: Expression,
@@ -691,14 +690,14 @@ pub enum Statement {
     },
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct ConditionalBlock {
     pub branches: Vec<(Location, Option<Expression>, Block)>,
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Block {
     pub end: Location,
     pub statements: Vec<Box<Statement>>,
