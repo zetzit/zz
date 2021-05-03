@@ -39,17 +39,14 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                         .expect(&format!("unable to parse repo url: {}", surl))
                 }
                 Err(e) => {
-                    panic!(format!("unable to parse repo url: {}: {}", surl, e));
+                    panic!("unable to parse repo url: {}: {}", surl, e);
                 }
             };
 
             match url.scheme() {
                 "file" => {}
                 "https" => {
-                    panic!(format!(
-                        "unsupported scheme in repo url: {}, did you mean git:// ?",
-                        surl
-                    ));
+                    panic!("unsupported scheme in repo url: {}, did you mean git:// ?", surl);
                 }
                 "git" | "git+ssh" => {
                     let np = td.join("repos").join(name);
@@ -87,7 +84,7 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                     }
                 }
                 _ => {
-                    panic!(format!("unsupported scheme in repo url: {}", surl));
+                    panic!("unsupported scheme in repo url: {}", surl);
                 }
             }
             index.repos.insert(
@@ -117,7 +114,7 @@ pub fn index(project: &project::Config) -> HashSet<PathBuf> {
                     .expect(&format!("unable to parse repo url: {}", repo.origin))
             }
             Err(e) => {
-                panic!(format!("unable to parse repo url: {}: {}", repo.origin, e));
+                panic!("unable to parse repo url: {}: {}", repo.origin, e);
             }
         };
         match url.scheme() {
