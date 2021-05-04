@@ -12,7 +12,8 @@ at compile time.
 
 ### quick quick start
 
-Get the latest binary from http://bin.zetz.it
+1. Install https://github.com/Z3Prover/z3 usually through a distro package 
+2. Get the latest binary from http://bin.zetz.it
 
 ## Discord Community
 
