@@ -1,0 +1,103 @@
+using async;
+using time;
+using buffer;
+using err;
+using log;
+
+export fn main() -> int {
+    new+1000 e      = err::make();
+    new+64 driver   = async::system(&e);
+    e.abort();
+
+    new input = async::stdio::stdin(&e);
+    e.abort();
+    new output = async::stdio::stdout(&e);
+    e.abort();
+
+    new read  = async::future(&driver);
+    new write = async::future(&driver);
+
+    new+1000 mem = buffer::make();
+    input.read(&e, mem.as_mut_slice(), &read);
+    e.abort();
+
+    for (;;) {
+        log::info(".");
+
+        if read.state == async::State::Ready {
+            mem.at = (usize)read.take(&e);
+            e.abort();
+            static_attest(buffer::integrity(&mem, 1000));
+
+            output.write(&e, mem.as_slice(), &write);
+            e.abort();
+        }
+
+        if write.state == async::State::Ready {
+            write.take(&e);
+            e.abort();
+            input.read(&e, mem.as_mut_slice(), &read);
+            e.abort();
+        }
+
+        driver.wait(&e);
+        e.abort();
+    }
+
+
+    /*
+
+    new i = async::stdin(&e, &driver);
+    e.abort();
+
+    fprintf(stderr, "timeout will happen after 1 seconds, then every 3 second.\ninterval must remain uneffected from stdin input\n\n");
+
+
+    new t = async::tick(&driver, time::from_seconds(1));
+    e.abort();
+
+
+    bool mut is_3_second = false;
+    let mut last_wakeup  = time::tick();
+
+    for (;;) {
+        log::info(".");
+
+        string::String+2 mut buf;
+        buf.clear();
+
+        switch i.read_string(&e, &buf) {
+            async::Result::Ready => {
+                printf(">%s<\n", buf.mem);
+            }
+            async::Result::Later => {}
+            async::Result::Eof => {
+                e.abort();
+                i.close(&e);
+                e.abort();
+                return 0;
+            }
+            async::Result::Error => {
+                e.abort();
+            }
+        }
+        e.abort();
+
+        if t.expired() {
+            let now = time::tick();
+            fprintf(stderr, "tick after %u ms\n", now.to_millis() - last_wakeup.to_millis());
+            last_wakeup = now;
+
+            if !is_3_second {
+                async::tick(&t, &driver, time::from_seconds(3));
+            }
+        }
+
+        driver.wait(&e);
+        e.abort();
+    }
+    return 0;
+    */
+
+}
+
