@@ -976,24 +976,24 @@ impl Solver {
         let want_z3 = if let Some(s) = solver.as_ref() { s == "z3"  } else {false};
 
         let conf = if want_z3 && which::which("z3").is_ok() {
-            rsmt2::SmtConf::z3()
+            rsmt2::SmtConf::default_z3()
         } else if which::which("yices_smt2_mt").is_ok() {
-            let mut conf = rsmt2::SmtConf::yices_2();
+            let mut conf = rsmt2::SmtConf::default_yices_2();
             conf.incremental();
             conf.cmd("yices_smt2_mt");
             conf
         } else if which::which("yices_smt2").is_ok() {
-            let mut conf = rsmt2::SmtConf::yices_2();
+            let mut conf = rsmt2::SmtConf::default_yices_2();
             conf.incremental();
             conf.cmd("yices_smt2");
             conf
         } else if which::which("yices-smt2").is_ok() {
-            let mut conf = rsmt2::SmtConf::yices_2();
+            let mut conf = rsmt2::SmtConf::default_yices_2();
             conf.incremental();
             conf.cmd("yices-smt2");
             conf
         } else if which::which("z3").is_ok() {
-            rsmt2::SmtConf::z3()
+            rsmt2::SmtConf::default_z3()
         } else {
             panic!("z3 or yices-smt2 required in PATH")
         };
