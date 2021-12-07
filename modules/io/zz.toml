@@ -1,0 +1,14 @@
+[project]
+version = "0.1.0"
+name = "io"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+
+[dependencies]
+log = "1"
+mem = "1"
+err = "1"
+
+[repos]
