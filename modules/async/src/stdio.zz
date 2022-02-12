@@ -1,0 +1,94 @@
+using err;
+using async;
+using slice;
+
+inline using "os.h" as os;
+
+export struct Stdio
+{
+    os::async_os_Io os;
+}
+
+export fn stdin(Stdio mut new * self, err::Err+et mut* e)
+    where err::checked(*e)
+if #(os::ZZ_ASYNC_UNIX)
+{
+    unsafe {
+        self->os.fd = os::fileno(os::stdin);
+    }
+    make_async(unsafe<int>(self->os.fd), e);
+}
+
+export fn stdout(Stdio mut new * self, err::Err+et mut* e)
+    where err::checked(*e)
+if #(os::ZZ_ASYNC_UNIX)
+{
+    unsafe {
+        self->os.fd = os::fileno(os::stdout);
+    }
+    make_async(unsafe<int>(self->os.fd), e);
+}
+
+pub fn make_async(int fd, err::Err+et mut* e)
+    where err::checked(*e)
+    if #(os::defined(os::ZZ_ASYNC_UNIX))
+{
+    int mut flags = unsafe<int>(os::fcntl(fd, os::F_GETFL, 0));
+    if (flags == -1) {
+        err::fail_with_errno(e, "F_GETFL");
+        return;
+    }
+    flags = flags | unsafe<int>(os::O_NONBLOCK);
+
+    if unsafe<int>(os::fcntl(fd, os::F_SETFL, flags)) != 0 {
+        err::fail_with_errno(e, "F_SETFL");
+    }
+}
+
+pub fn read(
+    Stdio mut * self,
+    err::Err+et mut* e,
+    slice::MutSlice to,
+    async::Future new mut *future,
+)
+    where err::checked(*e)
+    if #(os::defined(os::ZZ_ASYNC_URING))
+{
+    unsafe {
+        future->os.sqe = os::io_uring_get_sqe(&future->driver->os.ring);
+    }
+    if !unsafe<bool>(future->os.sqe) {
+        e->fail(err::OutOfTail, "maxq");
+        return;
+    }
+
+    unsafe {
+        os::io_uring_prep_read(future->os.sqe, self->os.fd, (u8 mut *)to.mem, to.size, *to.at);
+        os::io_uring_sqe_set_data(future->os.sqe, future);
+    }
+
+    //FIXME how to store and advance to->at ?
+}
+
+pub fn write(
+    Stdio mut * self,
+    err::Err+et mut* e,
+    slice::Slice to,
+    async::Future new mut *future,
+)
+    where err::checked(*e)
+    if #(os::defined(os::ZZ_ASYNC_URING))
+{
+    unsafe {
+        future->os.sqe = os::io_uring_get_sqe(&future->driver->os.ring);
+    }
+    if !unsafe<bool>(future->os.sqe) {
+        e->fail(err::OutOfTail, "maxq");
+        return;
+    }
+
+    unsafe {
+        os::io_uring_prep_write(future->os.sqe, self->os.fd, (u8 *)to.mem, to.size, 0);
+        os::io_uring_sqe_set_data(future->os.sqe, future);
+    }
+}
